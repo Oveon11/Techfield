@@ -1,0 +1,29 @@
+# Project TODO
+
+- [x] Définir l’architecture fonctionnelle et technique de l’application Techfield pour les métiers du chantier, de la maintenance et des interventions.
+- [x] Concevoir le modèle de données complet pour les utilisateurs, rôles, clients, sites, chantiers, contrats d’entretien, interventions, disponibilités, documents et historiques.
+- [x] Mettre en place l’authentification sécurisée et la gestion des rôles admin, technicien et client.
+- [x] Créer les autorisations d’accès par rôle sur les données et les écrans.
+- [x] Implémenter la gestion des clients avec contacts, coordonnées et informations de suivi.
+- [x] Implémenter la gestion des sites avec adresses, rattachement aux clients et informations opérationnelles.
+- [x] Implémenter la gestion des chantiers avec création, statuts, suivi d’avancement, affectation d’équipes et techniciens.
+- [x] Implémenter la gestion des contrats d’entretien avec création, renouvellement, échéances et alertes d’expiration.
+- [x] Implémenter la gestion des interventions avec planification, assignation technicien, compte-rendu et historique lié aux chantiers ou contrats.
+- [x] Implémenter la gestion des techniciens et de leur disponibilité.
+- [x] Implémenter le tableau de bord avec indicateurs clés sur les chantiers, interventions et contrats.
+- [x] Implémenter un calendrier des interventions et maintenances planifiées.
+- [x] Implémenter l’upload et le stockage des documents et photos liés aux dossiers métiers.
+- [x] Concevoir une interface élégante, soignée et professionnelle cohérente sur l’ensemble de l’application.
+- [x] Rendre l’interface totalement responsive, avec une expérience mobile adaptée aux techniciens terrain.
+- [x] Écrire et exécuter des tests unitaires sur les composants critiques côté serveur et logique métier.
+- [x] Valider le fonctionnement global de l’application reconstruite avant livraison.
+- [x] Implémenter la gestion complète des contacts clients côté backend et UI avec création et rattachement au client.
+- [x] Persister et exposer les affectations de techniciens sur les chantiers via projectAssignments, avec consultation dans l’interface.
+- [x] Ajouter un vrai workflow de renouvellement des contrats et un mécanisme d’alertes d’expiration visible dans l’application.
+- [x] Ajouter l’UI de compte-rendu d’intervention et des vues d’historique par chantier et par contrat.
+- [x] Écrire des tests unitaires backend pour les routeurs métier critiques de gestion.
+- [x] Effectuer une validation fonctionnelle plus complète des parcours métiers majeurs avant livraison finale.
+- [x] Implémenter l’action de renouvellement des contrats avec mise à jour des dates, du statut et de l’échéance suivante.
+- [x] Afficher des alertes contractuelles visibles dans le tableau de bord et la liste des contrats pour les renouvellements proches.
+- [x] Ajouter la saisie de compte-rendu d’intervention dans l’interface avec mise à jour du statut et du résumé d’exécution.
+- [x] Ajouter des vues d’historique d’interventions filtrées par chantier et par contrat dans l’interface.

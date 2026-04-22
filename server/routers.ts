@@ -1,13 +1,27 @@
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { getUserAccessProfile } from "./db";
+import { managementRouter } from "./routers/management";
+
+function assertAllowedRole(role: string, allowedRoles: string[]) {
+  if (!allowedRoles.includes(role)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Vous n'avez pas les droits nécessaires pour accéder à cette ressource.",
+    });
+  }
+}
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    session: protectedProcedure.query(async ({ ctx }) => {
+      return getUserAccessProfile(ctx.user.openId);
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -17,12 +31,72 @@ export const appRouter = router({
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  security: router({
+    roleMatrix: protectedProcedure.query(({ ctx }) => {
+      const common = {
+        dashboard: true,
+        profile: true,
+        documents: true,
+      };
+
+      if (ctx.user.role === "admin") {
+        return {
+          role: ctx.user.role,
+          permissions: {
+            ...common,
+            manageUsers: true,
+            manageClients: true,
+            manageSites: true,
+            manageProjects: true,
+            manageContracts: true,
+            manageInterventions: true,
+            manageTechnicians: true,
+          },
+        };
+      }
+
+      if (ctx.user.role === "technicien") {
+        return {
+          role: ctx.user.role,
+          permissions: {
+            ...common,
+            manageUsers: false,
+            manageClients: false,
+            manageSites: false,
+            manageProjects: false,
+            manageContracts: false,
+            manageInterventions: true,
+            manageTechnicians: false,
+          },
+        };
+      }
+
+      return {
+        role: ctx.user.role,
+        permissions: {
+          ...common,
+          manageUsers: false,
+          manageClients: false,
+          manageSites: false,
+          manageProjects: false,
+          manageContracts: false,
+          manageInterventions: false,
+          manageTechnicians: false,
+        },
+      };
+    }),
+    requireAdmin: adminProcedure.query(() => ({ authorized: true })),
+    requireTechnician: protectedProcedure.query(({ ctx }) => {
+      assertAllowedRole(ctx.user.role, ["admin", "technicien"]);
+      return { authorized: true };
+    }),
+    requireClient: protectedProcedure.query(({ ctx }) => {
+      assertAllowedRole(ctx.user.role, ["admin", "client"]);
+      return { authorized: true };
+    }),
+  }),
+
+  management: managementRouter,
 });
 
 export type AppRouter = typeof appRouter;
