@@ -3,6 +3,12 @@
 // Downloads return /manus-storage/{key} paths served via 307 redirect.
 
 import { ENV } from "./_core/env";
+import { SUPABASE_ENV } from "./integrations/supabase/env";
+import {
+  createTechfieldSignedUrl,
+  TECHFIELD_STORAGE_BUCKET,
+  uploadTechfieldDocument,
+} from "./integrations/supabase/storage/admin";
 
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
@@ -33,8 +39,25 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
+
+  if (SUPABASE_ENV.isConfigured) {
+    const fileBuffer =
+      typeof data === "string" ? Buffer.from(data) : data instanceof Uint8Array ? data : Buffer.from(data);
+
+    const uploaded = await uploadTechfieldDocument({
+      path: key,
+      file: fileBuffer,
+      contentType,
+    });
+
+    return {
+      key: uploaded.path,
+      url: `supabase://${TECHFIELD_STORAGE_BUCKET}/${uploaded.path}`,
+    };
+  }
+
+  const { forgeUrl, forgeKey } = getForgeConfig();
 
   // 1. Get presigned PUT URL from Forge
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
@@ -73,6 +96,12 @@ export async function storagePut(
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
+
+  if (SUPABASE_ENV.isConfigured) {
+    const signed = await createTechfieldSignedUrl(key);
+    return { key, url: signed.signedUrl };
+  }
+
   return { key, url: `/manus-storage/${key}` };
 }
 
