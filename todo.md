@@ -27,3 +27,17 @@
 - [x] Afficher des alertes contractuelles visibles dans le tableau de bord et la liste des contrats pour les renouvellements proches.
 - [x] Ajouter la saisie de compte-rendu d’intervention dans l’interface avec mise à jour du statut et du résumé d’exécution.
 - [x] Ajouter des vues d’historique d’interventions filtrées par chantier et par contrat dans l’interface.
+- [ ] Auditer les incompatibilités actuelles entre l’architecture Techfield reconstruite et un déploiement externe sur Vercel.
+- [ ] Préparer la migration de la couche base de données actuelle vers Supabase.
+- [ ] Évaluer l’impact de la migration sur l’authentification et les sessions utilisateur hors environnement Manus.
+- [ ] Adapter la configuration applicative et le code serveur pour une cible de déploiement Vercel.
+- [ ] Documenter la procédure de déploiement externe et les limites de compatibilité éventuelles.
+- [ ] Définir une séparation d’architecture claire entre le code applicatif déployé sur Vercel et les services de données gérés par Supabase.
+- [ ] Structurer la couche SQL Supabase séparément de la logique applicative pour faciliter les migrations et la maintenance.
+- [ ] Structurer le stockage Supabase séparément des modules métier pour distinguer clairement fichiers, métadonnées et accès applicatifs.
+- [ ] Adapter l’application Techfield à une cible Vercel en isolant les dépendances spécifiques à l’environnement actuel.
+- [ ] Préparer une organisation de code qui distingue explicitement interface, logique métier, accès SQL Supabase et stockage Supabase.
+- [x] Convertir le schéma métier Techfield actuel en scripts SQL PostgreSQL compatibles avec Supabase.
+- [x] Découper les scripts Supabase en lots d’exécution sûrs pour SQL Editor avec ordre précis.
+- [x] Préparer les scripts de stockage Supabase et les structures de métadonnées associées.
+- [x] Rédiger un guide pas à pas pour l’exécution manuelle dans SQL Editor sans connexion directe.
