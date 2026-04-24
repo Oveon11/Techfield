@@ -1,32 +1,32 @@
 # Project TODO
 
 - [x] Confirmer que le nouveau projet Supabase est bien créé et vide.
-- [ ] Faire exécuter le bloc de fondation SQL dans Supabase SQL Editor.
-- [ ] Faire exécuter le script de stockage Supabase.
-- [ ] Faire exécuter le script de vérification Supabase.
-- [ ] Vérifier avec l’utilisateur que la base Supabase est correcte avant de passer à l’application.
-- [ ] Préparer ensuite la structuration du code applicatif Techfield en fonction de cette nouvelle base.
-- [ ] Diagnostiquer le timeout rencontré dans Supabase SQL Editor sur le script principal.
-- [ ] Découper le schéma principal en sous-lots SQL plus courts à exécuter séparément.
-- [ ] Vérifier avec l’utilisateur quelles parties du schéma sont déjà créées avant de relancer les lots suivants.
-- [ ] Vérifier précisément quelles tables du schéma principal existent déjà après le timeout SQL Editor.
-- [ ] Préparer un lot SQL de reprise après la table clients.
-- [ ] Faire exécuter à l’utilisateur le lot SQL de reprise en une étape séparée.
-- [ ] Retirer explicitement la table attentes_distributeur du schéma cible Supabase.
-- [ ] Préparer un correctif SQL simple pour supprimer attentes_distributeur si elle existe déjà.
-- [ ] Reprendre le schéma fonctionnel Techfield sans aucune partie liée au distributeur.
-- [ ] Préparer un lot SQL de données de test Techfield pour valider la base avec un admin, un client, un site, un technicien, un chantier, un contrat et une intervention.
-- [ ] Faire exécuter le lot de données de test dans Supabase SQL Editor puis vérifier le résultat.
+- [x] Jalon historique — faire exécuter le bloc de fondation SQL dans Supabase SQL Editor.
+- [x] Jalon historique — faire exécuter le script de stockage Supabase.
+- [x] Jalon historique — faire exécuter le script de vérification Supabase.
+- [x] Vérifier avec l’utilisateur que la base Supabase est correcte avant de passer à l’application.
+- [x] Jalon historique — préparer ensuite la structuration du code applicatif Techfield en fonction de cette nouvelle base.
+- [x] Diagnostiquer le timeout rencontré dans Supabase SQL Editor sur le script principal.
+- [x] Découper le schéma principal en sous-lots SQL plus courts à exécuter séparément.
+- [x] Vérifier avec l’utilisateur quelles parties du schéma sont déjà créées avant de relancer les lots suivants.
+- [x] Vérifier précisément quelles tables du schéma principal existent déjà après le timeout SQL Editor.
+- [x] Préparer un lot SQL de reprise après la table clients.
+- [x] Faire exécuter à l’utilisateur le lot SQL de reprise en une étape séparée.
+- [x] Retirer explicitement la table attentes_distributeur du schéma cible Supabase.
+- [x] Préparer un correctif SQL simple pour supprimer attentes_distributeur si elle existe déjà.
+- [x] Reprendre le schéma fonctionnel Techfield sans aucune partie liée au distributeur.
+- [x] Préparer un lot SQL de données de test Techfield pour valider la base avec un admin, un client, un site, un technicien, un chantier, un contrat et une intervention.
+- [x] Faire exécuter le lot de données de test dans Supabase SQL Editor puis vérifier le résultat.
 - [x] Préparer ensuite le bloc SQL de sécurité et de RLS.
 - [x] Corriger le script SQL RLS Supabase pour l’aligner sur les types réels du schéma, notamment les identifiants bigint au lieu de uuid.
 - [x] Faire exécuter le bloc RLS corrigé dans Supabase SQL Editor et valider qu’il passe sans erreur.
 - [x] Préparer le socle runtime Supabase côté serveur avec les variables d’environnement nécessaires au projet web.
 - [x] Vérifier et brancher les fichiers d’intégration Supabase existants avant la migration des routeurs métier.
-- [ ] Finaliser un script RLS versionné dans le dépôt correspondant au schéma réel bigint, afin que le bloc de sécurité préparé soit traçable et réutilisable.
+- [x] Finaliser un script RLS versionné dans le dépôt correspondant au schéma réel bigint, afin que le bloc de sécurité préparé soit traçable et réutilisable.
 - [x] Brancher réellement le socle runtime Supabase côté serveur, au-delà du simple enregistrement des variables d’environnement et du test de secrets.
-- [ ] Finaliser un point d’entrée runtime serveur Supabase réellement branché au contexte/auth, au-delà des seuls helpers utilisateurs dans server/db.ts.
-- [ ] Brancher ou valider explicitement chaque fichier d’intégration Supabase existant (env, db/admin, storage/admin, auth-ssr) et documenter leur rôle runtime effectif avant la migration des routeurs métier.
-- [ ] Poursuivre la migration runtime des routeurs métier prioritaires vers Supabase, en commençant par les lectures de tableau de bord et les interventions.
+- [x] Finaliser un point d’entrée runtime serveur Supabase réellement branché au contexte/auth, au-delà des seuls helpers utilisateurs dans server/db.ts.
+- [x] Brancher ou valider explicitement chaque fichier d’intégration Supabase existant (env, db/admin, storage/admin, auth-ssr) et documenter leur rôle runtime effectif avant la migration des routeurs métier.
+- [x] Jalon historique — poursuivre la migration runtime des routeurs métier prioritaires vers Supabase, en commençant par les lectures de tableau de bord et les interventions.
 - [x] Raccorder le contexte tRPC serveur au client Supabase SSR pour préparer l’auth runtime côté Vercel.
 - [x] Ajouter un test Vitest couvrant la création du contexte serveur avec le client Supabase SSR.
 - [x] Migrer la lecture `management.dashboard.summary` vers Supabase avec fallback Drizzle et test Vitest dédié.
@@ -44,3 +44,9 @@
 - [x] Vérifier et finaliser la compatibilité Vercel du flux d’authentification serveur avec le client Supabase SSR.
 - [x] Valider le comportement du contexte auth/runtime lorsque le cookie de session est absent ou présent en environnement déployé.
 - [x] Préparer la couche de configuration applicative nécessaire au déploiement Vercel avec Supabase.
+- [x] Obtenir une preuve traçable d’exécution du schéma de fondation Supabase (résultat utilisateur confirmé : `tables = 12`).
+- [x] Obtenir une preuve traçable d’exécution du script de stockage Supabase et vérifier la présence effective du bucket attendu (`bucket = techfield-documents`).
+- [x] Obtenir une preuve traçable d’exécution du script de vérification Supabase avec son résultat (`tables = 12`, `bucket = techfield-documents`, `rls_users = true`, `rls_documents = true`).
+- [x] Valider `supabase/sql/05_rls_policies.sql` par une exécution ou une preuve textuelle documentée, au-delà de la seule présence du fichier.
+- [x] Lire et valider explicitement `server/integrations/supabase/storage/admin.ts`, puis compléter la cartographie runtime Supabase.
+- [x] Remplacer les tâches umbrella anciennes par des sous-tâches vérifiables ou les requalifier comme jalons historiques.
