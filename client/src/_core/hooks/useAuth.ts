@@ -1,7 +1,8 @@
-import { getLoginUrl } from "@/const";
+import { getAuthRedirectPath } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { getSupabaseBrowserClient, resolveSupabasePublicConfig } from "@/lib/supabase";
 import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -9,9 +10,12 @@ type UseAuthOptions = {
 };
 
 export function useAuth(options?: UseAuthOptions) {
-  const { redirectOnUnauthenticated = false, redirectPath = getLoginUrl() } =
-    options ?? {};
+  const { redirectOnUnauthenticated = false, redirectPath = getAuthRedirectPath() } = options ?? {};
   const utils = trpc.useUtils();
+  const [isRequestingMagicLink, setIsRequestingMagicLink] = useState(false);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const supabaseConfig = useMemo(() => resolveSupabasePublicConfig(import.meta.env), []);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -24,8 +28,72 @@ export function useAuth(options?: UseAuthOptions) {
     },
   });
 
-  const logout = useCallback(async () => {
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      return;
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async () => {
+      setAuthError(null);
+      await utils.auth.me.invalidate();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [utils.auth.me]);
+
+  const requestMagicLink = useCallback(async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new Error("Veuillez saisir une adresse e-mail.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      throw new Error("L’authentification Supabase n’est pas configurée côté navigateur. Ajoutez VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.");
+    }
+
+    setIsRequestingMagicLink(true);
+    setAuthError(null);
+    setAuthMessage(null);
+
     try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: window.location.origin,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setAuthMessage("Un lien de connexion a été envoyé à votre adresse e-mail.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Impossible d’envoyer le lien de connexion.";
+      setAuthError(message);
+      throw error;
+    } finally {
+      setIsRequestingMagicLink(false);
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient();
+
+    try {
+      if (supabase) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          throw error;
+        }
+      }
+
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {
       if (
@@ -49,10 +117,11 @@ export function useAuth(options?: UseAuthOptions) {
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
-      error: meQuery.error ?? logoutMutation.error ?? null,
+      error: meQuery.error ?? logoutMutation.error ?? (authError ? new Error(authError) : null),
       isAuthenticated: Boolean(meQuery.data),
     };
   }, [
+    authError,
     meQuery.data,
     meQuery.error,
     meQuery.isLoading,
@@ -67,7 +136,7 @@ export function useAuth(options?: UseAuthOptions) {
     if (typeof window === "undefined") return;
     if (window.location.pathname === redirectPath) return;
 
-    window.location.href = redirectPath
+    window.location.replace(redirectPath);
   }, [
     redirectOnUnauthenticated,
     redirectPath,
@@ -78,7 +147,11 @@ export function useAuth(options?: UseAuthOptions) {
 
   return {
     ...state,
+    authAvailable: supabaseConfig.isConfigured,
+    authMessage,
+    isRequestingMagicLink,
     refresh: () => meQuery.refetch(),
+    requestMagicLink,
     logout,
   };
 }

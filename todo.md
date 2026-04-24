@@ -50,12 +50,12 @@
 - [x] Valider `supabase/sql/05_rls_policies.sql` par une exécution ou une preuve textuelle documentée, au-delà de la seule présence du fichier.
 - [x] Lire et valider explicitement `server/integrations/supabase/storage/admin.ts`, puis compléter la cartographie runtime Supabase.
 - [x] Remplacer les tâches umbrella anciennes par des sous-tâches vérifiables ou les requalifier comme jalons historiques.
-- [ ] Guider l’utilisateur dans la création du projet Vercel connecté au dépôt Techfield.
-- [ ] Guider l’utilisateur dans la saisie des variables d’environnement Vercel requises pour Supabase et l’API serveur.
+- [x] Guider l’utilisateur dans la création du projet Vercel connecté au dépôt Techfield.
+- [x] Guider l’utilisateur dans la saisie des variables d’environnement Vercel requises pour Supabase et l’API serveur.
 - [ ] Guider l’utilisateur dans le premier déploiement Vercel et les vérifications post-déploiement immédiates.
 - [x] Mettre à jour le dépôt GitHub Techfield avec l’état final validé du projet avant reprise du déploiement Vercel.
 - [x] Vérifier que le dépôt GitHub pointe bien sur le code Supabase/Vercel le plus récent.
-- [ ] Reprendre ensuite le guidage de déploiement Vercel à partir du dépôt GitHub mis à jour.
+- [x] Reprendre ensuite le guidage de déploiement Vercel à partir du dépôt GitHub mis à jour.
 - [x] Corriger la configuration Vercel invalide qui provoque l’erreur de runtime au build
 - [x] Vérifier la compatibilité de api/[...path].ts avec le routage et le runtime Vercel actuels
 - [x] Relancer le flux GitHub puis préparer les consignes de redéploiement Vercel après correctif
@@ -65,3 +65,7 @@
 - [x] Diagnostiquer puis corriger l’erreur d’exécution affichée par l’application déployée sur Vercel après chargement du front
 - [ ] Redéployer le commit `e05f484` sur Vercel et vérifier que l’URL de production ne montre plus `TypeError: Invalid URL`
 - [ ] Requalifier les lignes d’erreur TypeScript observées dans Vercel si elles réapparaissent après redéploiement, en corrigeant les fichiers réellement concernés
+- [x] Remplacer le flux d’authentification dépendant de Manus par un flux Supabase Auth compatible Vercel
+- [x] Adapter le frontend pour utiliser Supabase Auth sans dépendre de `VITE_OAUTH_PORTAL_URL`, `VITE_APP_ID` ni des variables `VITE_FRONTEND_FORGE_API_*`
+- [x] Rendre la carte Google Maps optionnelle quand aucune clé valide n’est fournie, ou la brancher sur une vraie intégration Google Maps configurable
+- [x] Valider le nouveau flux d’authentification et le comportement des cartes par build et tests avant redéploiement Vercel

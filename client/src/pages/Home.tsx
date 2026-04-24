@@ -1,30 +1,27 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import { getLoginUrl } from "@/const";
-import { Streamdown } from 'streamdown';
+import { Streamdown } from "streamdown";
 
 /**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Workflow, Frontend Best Practices, Design Guide and Common Pitfalls
+ * Page exemple minimale conservée compilable pendant le refactor auth.
  */
 export default function Home() {
-  // The userAuth hooks provides authentication state
-  // To implement login/logout functionality, simply call logout() or redirect to getLoginUrl()
-  let { user, loading, error, isAuthenticated, logout } = useAuth();
-
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  const { user, loading, logout } = useAuth();
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
+    <div className="min-h-screen flex flex-col gap-6 p-6">
+      <main className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Loader2 className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <span className="text-sm text-muted-foreground">
+            {user ? `Connecté en tant que ${user.email ?? user.name ?? "utilisateur"}` : "Aucun utilisateur connecté"}
+          </span>
+        </div>
+        <Streamdown>La démonstration frontend utilise désormais **Supabase Auth** pour la connexion.</Streamdown>
+        <Button variant="default" onClick={() => void logout()} disabled={!user}>
+          Se déconnecter
+        </Button>
       </main>
     </div>
   );

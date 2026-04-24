@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Sidebar,
   SidebarContent,
@@ -20,11 +21,10 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { techfieldMenu } from "@/pages/TechfieldPages";
-import { Building2, LogOut, PanelLeft } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { Building2, LogOut, Mail, PanelLeft } from "lucide-react";
+import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
@@ -49,33 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.14),_transparent_40%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] px-6">
-        <div className="w-full max-w-lg rounded-[2rem] border border-white/60 bg-white/90 p-10 shadow-2xl shadow-slate-950/10 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <Building2 className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Techfield</p>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Accédez à votre espace opérationnel</h1>
-            </div>
-          </div>
-          <p className="mt-6 text-sm leading-7 text-muted-foreground">
-            La plateforme centralise les chantiers, contrats d’entretien, interventions et informations terrain. Connectez-vous pour accéder à votre périmètre métier sécurisé.
-          </p>
-          <Button
-            onClick={() => {
-              window.location.href = getLoginUrl();
-            }}
-            size="lg"
-            className="mt-8 w-full shadow-lg shadow-primary/20"
-          >
-            Se connecter
-          </Button>
-        </div>
-      </div>
-    );
+    return <UnauthenticatedCard />;
   }
 
   return (
@@ -88,6 +62,82 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     >
       <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent>
     </SidebarProvider>
+  );
+}
+
+function UnauthenticatedCard() {
+  const { authAvailable, authMessage, error, isRequestingMagicLink, requestMagicLink } = useAuth();
+  const [email, setEmail] = useState("");
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalMessage(null);
+
+    try {
+      await requestMagicLink(email);
+      setLocalMessage("Le lien de connexion a bien été envoyé. Ouvrez votre e-mail puis revenez sur cette page.");
+    } catch {
+      // Le message détaillé est porté par le hook.
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.14),_transparent_40%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] px-6">
+      <div className="w-full max-w-lg rounded-[2rem] border border-white/60 bg-white/90 p-10 shadow-2xl shadow-slate-950/10 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+            <Building2 className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Techfield</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Accédez à votre espace opérationnel</h1>
+          </div>
+        </div>
+        <p className="mt-6 text-sm leading-7 text-muted-foreground">
+          La plateforme centralise les chantiers, contrats d’entretien, interventions et informations terrain. Connectez-vous avec un lien sécurisé envoyé par e-mail via Supabase Auth.
+        </p>
+
+        {authAvailable ? (
+          <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2">
+              <label htmlFor="login-email" className="text-sm font-medium text-foreground">
+                Adresse e-mail professionnelle
+              </label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  className="pl-9"
+                  placeholder="nom@entreprise.fr"
+                  value={email}
+                  onChange={event => setEmail(event.target.value)}
+                />
+              </div>
+            </div>
+            <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isRequestingMagicLink}>
+              {isRequestingMagicLink ? "Envoi en cours..." : "Recevoir un lien de connexion"}
+            </Button>
+            {localMessage || authMessage ? (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {localMessage ?? authMessage}
+              </p>
+            ) : null}
+            {error ? (
+              <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {error.message}
+              </p>
+            ) : null}
+          </form>
+        ) : (
+          <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
+            L’authentification Supabase côté navigateur n’est pas encore configurée. Ajoutez <code>VITE_SUPABASE_URL</code> et <code>VITE_SUPABASE_ANON_KEY</code> dans l’environnement de déploiement pour activer la connexion.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

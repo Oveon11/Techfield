@@ -3,7 +3,6 @@ import type { User } from "../../drizzle/schema";
 import { resolveUserFromSupabaseIdentity } from "../db";
 import { createSupabaseServerSsrClient } from "../integrations/supabase/auth-ssr";
 import { SUPABASE_ENV } from "../integrations/supabase/env";
-import { sdk } from "./sdk";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -20,14 +19,7 @@ export async function createContext(
     ? createSupabaseServerSsrClient(opts.req, opts.res)
     : null;
 
-  try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    // Authentication is optional for public procedures.
-    user = null;
-  }
-
-  if (!user && supabase) {
+  if (supabase) {
     try {
       const {
         data: { user: supabaseUser },
@@ -51,7 +43,7 @@ export async function createContext(
         user = resolved ?? null;
       }
     } catch (error) {
-      console.warn("[Auth] Supabase SSR fallback failed", String(error));
+      console.warn("[Auth] Supabase SSR lookup failed", String(error));
     }
   }
 
