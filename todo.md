@@ -114,3 +114,14 @@
 - [x] Revalider localement `pnpm check:vercel`, `pnpm test` et l’endpoint API principal après ce correctif OAuth/SDK.
 - [x] Resynchroniser GitHub avec le correctif OAuth/SDK si la compilation Vercel redevient propre.
 - [ ] Guider un nouveau redéploiement Vercel puis vérifier que `/api/trpc/auth.me` ne plante plus en `500 FUNCTION_INVOCATION_FAILED`.
+- [ ] Diagnostiquer pourquoi la function Vercel crashe encore en production sur `/api/trpc/auth.me` malgré un build réussi et des variables `VITE_*` présentes.
+- [ ] Identifier si le crash runtime provient de l’entrée Vercel unifiée, de l’initialisation Express, d’OAuth, du SDK, ou d’un accès à secret/configuration uniquement visible en production.
+- [ ] Corriger la cause réelle du `500 FUNCTION_INVOCATION_FAILED` côté production.
+- [x] Revalider localement le correctif par compilation, tests et vérification ciblée de l’endpoint API principal.
+- [ ] Resynchroniser GitHub avec le correctif du crash runtime Vercel si nécessaire.
+- [ ] Guider une nouvelle vérification en production une fois le crash runtime supprimé.
+- [x] Implémenter localement le fallback `getHeader`/`setHeader` pour l’écriture des cookies Supabase SSR quand `appendHeader` n’existe pas.
+- [x] Ajouter un test Vitest couvrant l’écriture des cookies Supabase SSR sur une réponse serverless sans `appendHeader`.
+- [ ] Redéployer sur Vercel le correctif `auth-ssr.ts` puis vérifier que `https://techfield.vercel.app/api/trpc/auth.me` répond 200 avec JSON en production.
+- [ ] Confirmer via les logs runtime Vercel que l’erreur initiale provenait bien de l’écriture de cookies Supabase SSR, ou ajuster le diagnostic si une autre cause apparaît.
+- [ ] Corriger le crash runtime Vercel de `/api/trpc/auth.me` en rendant l’écriture des cookies Supabase SSR compatible avec la réponse serverless et valider la route en production.

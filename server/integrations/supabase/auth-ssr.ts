@@ -2,6 +2,10 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { IncomingMessage, ServerResponse } from "http";
 import { SUPABASE_ENV, assertSupabaseEnv } from "./env";
 
+type HeaderWritableResponse = Pick<ServerResponse, "getHeader" | "setHeader"> & {
+  appendHeader?: (name: string, value: string) => unknown;
+};
+
 function parseCookies(cookieHeader?: string) {
   return (cookieHeader ?? "")
     .split(";")
@@ -14,10 +18,26 @@ function parseCookies(cookieHeader?: string) {
     }, {});
 }
 
+function appendSetCookie(res: HeaderWritableResponse, serialized: string) {
+  if (typeof res.appendHeader === "function") {
+    res.appendHeader("Set-Cookie", serialized);
+    return;
+  }
+
+  const existing = res.getHeader("Set-Cookie");
+  const cookies = existing ? (Array.isArray(existing) ? existing : [String(existing)]) : [];
+  res.setHeader("Set-Cookie", [...cookies, serialized]);
+}
+
+function serializeCookie(name: string, value: string, options: CookieOptions, maxAge?: number) {
+  return `${name}=${encodeURIComponent(value)}; Path=${options.path ?? "/"}; HttpOnly; SameSite=${options.sameSite ?? "Lax"}${options.secure ? "; Secure" : ""}${typeof maxAge === "number" ? `; Max-Age=${maxAge}` : ""}`;
+}
+
 export function createSupabaseServerSsrClient(req: IncomingMessage, res: ServerResponse) {
   assertSupabaseEnv(["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
 
   const cookieStore = parseCookies(req.headers.cookie);
+  const writableResponse = res as HeaderWritableResponse;
 
   return createServerClient(SUPABASE_ENV.url, SUPABASE_ENV.anonKey, {
     cookies: {
@@ -25,12 +45,12 @@ export function createSupabaseServerSsrClient(req: IncomingMessage, res: ServerR
         return cookieStore[name];
       },
       set(name: string, value: string, options: CookieOptions) {
-        const serialized = `${name}=${encodeURIComponent(value)}; Path=${options.path ?? "/"}; HttpOnly; SameSite=${options.sameSite ?? "Lax"}${options.secure ? "; Secure" : ""}${typeof options.maxAge === "number" ? `; Max-Age=${options.maxAge}` : ""}`;
-        res.appendHeader("Set-Cookie", serialized);
+        cookieStore[name] = value;
+        appendSetCookie(writableResponse, serializeCookie(name, value, options, options.maxAge));
       },
       remove(name: string, options: CookieOptions) {
-        const serialized = `${name}=; Path=${options.path ?? "/"}; Max-Age=0; HttpOnly; SameSite=${options.sameSite ?? "Lax"}${options.secure ? "; Secure" : ""}`;
-        res.appendHeader("Set-Cookie", serialized);
+        delete cookieStore[name];
+        appendSetCookie(writableResponse, serializeCookie(name, "", options, 0));
       },
     },
   });
