@@ -232,7 +232,7 @@ export async function getSupabaseClientsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapClientRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapClientRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseClientContactsList(scope: AccessScope) {
@@ -253,7 +253,7 @@ export async function getSupabaseClientContactsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapClientContactRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapClientContactRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseSitesList(scope: AccessScope) {
@@ -273,7 +273,7 @@ export async function getSupabaseSitesList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapSiteRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapSiteRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseTechniciansList() {
@@ -289,7 +289,7 @@ export async function getSupabaseTechniciansList() {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapTechnicianRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapTechnicianRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseTechnicianAvailability(scope: AccessScope) {
@@ -309,7 +309,7 @@ export async function getSupabaseTechnicianAvailability(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapTechnicianAvailabilityRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapTechnicianAvailabilityRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseProjectsList(scope: AccessScope) {
@@ -326,8 +326,8 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
       throw assignmentError;
     }
 
-    projectIds = (assignmentRows ?? []).map((row) => Number((row as Record<string, unknown>).project_id)).filter(Boolean);
-    if (projectIds.length === 0) {
+    projectIds = (assignmentRows ?? []).map((row: unknown) => Number((row as Record<string, unknown>).project_id)).filter(Boolean);
+    if (!projectIds || projectIds.length === 0) {
       return [];
     }
   }
@@ -348,7 +348,7 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapProjectRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapProjectRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseDashboardSummary(scope: AccessScope) {
@@ -433,8 +433,8 @@ export async function getSupabaseDashboardSummary(scope: AccessScope) {
       upcomingInterventions: Number(upcomingCount ?? 0),
       expiringContracts: Number(expiringCount ?? 0),
     },
-    upcomingInterventions: (upcomingRows ?? []).map((row) => mapUpcomingIntervention(row as Record<string, unknown>)),
-    expiringContracts: (expiringRows ?? []).map((row) => mapExpiringContract(row as Record<string, unknown>)),
+    upcomingInterventions: (upcomingRows ?? []).map((row: unknown) => mapUpcomingIntervention(row as Record<string, unknown>)),
+    expiringContracts: (expiringRows ?? []).map((row: unknown) => mapExpiringContract(row as Record<string, unknown>)),
   };
 }
 
@@ -458,7 +458,7 @@ export async function getSupabaseInterventionsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapInterventionRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapInterventionRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseContractsList(scope: AccessScope) {
@@ -479,7 +479,7 @@ export async function getSupabaseContractsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapContractRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => mapContractRow(row as Record<string, unknown>));
 }
 
 export async function getSupabaseCalendarEvents(scope: AccessScope) {
@@ -515,7 +515,7 @@ export async function getSupabaseCalendarEvents(scope: AccessScope) {
     throw contractsResult.error;
   }
 
-  const interventionRows = (interventionsResult.data ?? []).map((row) => {
+  const interventionRows = (interventionsResult.data ?? []).map((row: unknown) => {
     const item = row as Record<string, unknown>;
     return {
       id: Number(item.id),
@@ -527,7 +527,7 @@ export async function getSupabaseCalendarEvents(scope: AccessScope) {
     };
   });
 
-  const contractRows = (contractsResult.data ?? []).map((row) => {
+  const contractRows = (contractsResult.data ?? []).map((row: unknown) => {
     const item = row as Record<string, unknown>;
     const nextServiceDate = (item.next_service_date as string | null | undefined) ?? null;
     return {
@@ -562,7 +562,7 @@ export async function getSupabaseDocumentsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row) => {
+  return (data ?? []).map((row: unknown) => {
     const item = row as Record<string, unknown>;
     return {
       id: Number(item.id),
@@ -609,7 +609,7 @@ export async function getSupabaseInterventionsHistory(
     throw error;
   }
 
-  return (data ?? []).map((row) => {
+  return (data ?? []).map((row: unknown) => {
     const item = row as Record<string, unknown>;
     const client = getSingleRelation(item, "clients");
     const site = getSingleRelation(item, "sites");
