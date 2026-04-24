@@ -1,16 +1,44 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-import type { Express, Request, Response } from "express";
 import * as db from "../db";
-import { getSessionCookieOptions } from "./cookies";
+import { getSessionCookieOptions, type SessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 
-function getQueryParam(req: Request, key: string): string | undefined {
-  const value = req.query[key];
-  return typeof value === "string" ? value : undefined;
+type QueryValue = string | string[] | undefined;
+
+type RequestLike = {
+  query?: Record<string, QueryValue>;
+  headers: Record<string, string | string[] | undefined>;
+  protocol?: string;
+  hostname?: string;
+};
+
+type ResponseLike = {
+  status: (code: number) => ResponseLike;
+  json: (body: unknown) => void;
+  cookie: (
+    name: string,
+    value: string,
+    options: SessionCookieOptions & { maxAge?: number }
+  ) => void;
+  redirect: (status: number, url: string) => void;
+};
+
+type AppLike = {
+  get: (
+    path: string,
+    handler: (req: RequestLike, res: ResponseLike) => void | Promise<void>
+  ) => void;
+};
+
+function getQueryParam(req: RequestLike, key: string): string | undefined {
+  const value = req.query?.[key];
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : undefined;
+  return undefined;
 }
 
-export function registerOAuthRoutes(app: Express) {
-  app.get("/api/oauth/callback", async (req: Request, res: Response) => {
+export function registerOAuthRoutes(app: AppLike) {
+  app.get("/api/oauth/callback", async (req, res) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
 
@@ -43,7 +71,6 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-
       res.redirect(302, "/");
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
