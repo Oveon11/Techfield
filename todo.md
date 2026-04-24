@@ -107,5 +107,5 @@
 - [x] Diagnostiquer pourquoi l’application Techfield reste vide en production Vercel malgré un build désormais réussi.
 - [x] Corriger la cause frontend ou runtime responsable de l’écran vide en production.
 - [x] Revalider localement le comportement UI, le build et les tests après ce correctif d’affichage.
-- [ ] Resynchroniser GitHub avec le correctif de rendu vide si un nouveau commit est nécessaire.
+- [x] Resynchroniser GitHub avec le correctif de rendu vide si un nouveau commit est nécessaire.
 - [ ] Guider la vérification finale en production une fois l’affichage restauré.
