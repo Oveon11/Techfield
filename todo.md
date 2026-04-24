@@ -50,3 +50,9 @@
 - [x] Valider `supabase/sql/05_rls_policies.sql` par une exécution ou une preuve textuelle documentée, au-delà de la seule présence du fichier.
 - [x] Lire et valider explicitement `server/integrations/supabase/storage/admin.ts`, puis compléter la cartographie runtime Supabase.
 - [x] Remplacer les tâches umbrella anciennes par des sous-tâches vérifiables ou les requalifier comme jalons historiques.
+- [ ] Guider l’utilisateur dans la création du projet Vercel connecté au dépôt Techfield.
+- [ ] Guider l’utilisateur dans la saisie des variables d’environnement Vercel requises pour Supabase et l’API serveur.
+- [ ] Guider l’utilisateur dans le premier déploiement Vercel et les vérifications post-déploiement immédiates.
+- [ ] Mettre à jour le dépôt GitHub Techfield avec l’état final validé du projet avant reprise du déploiement Vercel.
+- [ ] Vérifier que le dépôt GitHub pointe bien sur le code Supabase/Vercel le plus récent.
+- [ ] Reprendre ensuite le guidage de déploiement Vercel à partir du dépôt GitHub mis à jour.
