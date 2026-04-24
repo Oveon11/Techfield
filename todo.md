@@ -58,4 +58,4 @@
 - [ ] Reprendre ensuite le guidage de déploiement Vercel à partir du dépôt GitHub mis à jour.
 - [x] Corriger la configuration Vercel invalide qui provoque l’erreur de runtime au build
 - [x] Vérifier la compatibilité de api/[...path].ts avec le routage et le runtime Vercel actuels
-- [ ] Relancer le flux GitHub puis préparer les consignes de redéploiement Vercel après correctif
+- [x] Relancer le flux GitHub puis préparer les consignes de redéploiement Vercel après correctif
