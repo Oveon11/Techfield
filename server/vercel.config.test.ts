@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("configuration Vercel", () => {
-  it("déclare une fonction full-stack explicite sans runtime custom invalide", () => {
+  it("déclare une fonction API explicite et un fallback SPA statique compatibles avec Vercel", () => {
     const raw = readFileSync(resolve(process.cwd(), "vercel.json"), "utf8");
     const config = JSON.parse(raw) as {
       buildCommand?: string;
@@ -15,15 +15,15 @@ describe("configuration Vercel", () => {
     const apiFunction = config.functions?.["api/[...path].ts"];
 
     expect(config.buildCommand).toBe("pnpm build:vercel");
-    expect(config.outputDirectory).toBeUndefined();
+    expect(config.outputDirectory).toBe("dist/public");
     expect(apiFunction).toBeDefined();
     expect(apiFunction?.maxDuration).toBe(10);
-    expect(apiFunction?.includeFiles).toBe("dist/public/**");
+    expect(apiFunction?.includeFiles).toBeUndefined();
     expect(apiFunction?.runtime).toBeUndefined();
     expect(config.rewrites).toEqual([
       {
         source: "/((?!api/).*)",
-        destination: "/api/$1",
+        destination: "/index.html",
       },
     ]);
   });

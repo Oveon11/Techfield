@@ -1,16 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm build:vercel",
+  "outputDirectory": "dist/public",
   "functions": {
     "api/[...path].ts": {
-      "maxDuration": 10,
-      "includeFiles": "dist/public/**"
+      "maxDuration": 10
     }
   },
   "rewrites": [
     {
       "source": "/((?!api/).*)",
-      "destination": "/api/$1"
+      "destination": "/index.html"
     }
   ]
 }

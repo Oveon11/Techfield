@@ -1,31 +1,8 @@
-import fs from "node:fs";
-import path from "node:path";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { registerStorageProxy } from "./storageProxy";
-
-function registerVercelStatic(app: express.Express) {
-  const distPath = path.resolve(process.cwd(), "dist", "public");
-
-  if (!fs.existsSync(distPath)) {
-    console.error(
-      `Could not find the Vercel static build directory: ${distPath}`,
-    );
-    return;
-  }
-
-  app.use(express.static(distPath));
-  app.use("*", (req, res, next) => {
-    if (req.path.startsWith("/api/")) {
-      next();
-      return;
-    }
-
-    res.sendFile(path.resolve(distPath, "index.html"));
-  });
-}
 
 export function createTechfieldApp() {
   const app = express();
@@ -42,10 +19,6 @@ export function createTechfieldApp() {
       createContext,
     }),
   );
-
-  if (process.env.DEPLOY_TARGET === "vercel") {
-    registerVercelStatic(app);
-  }
 
   return app;
 }
