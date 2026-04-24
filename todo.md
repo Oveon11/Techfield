@@ -87,5 +87,5 @@
 - [x] Corriger dans `server/integrations/supabase/db/management.ts` les callbacks `.map((row) => ...)` pour typer explicitement `row: unknown` afin de satisfaire TypeScript strict utilisé par la function Vercel.
 - [x] Corriger dans `server/integrations/supabase/db/management.ts` le cas `projectIds` potentiellement nul avant utilisation.
 - [x] Valider localement le bundling Vercel après correctifs avec `pnpm check:vercel`.
-- [ ] Resynchroniser GitHub avec le correctif de bundling TypeScript Vercel.
+- [x] Resynchroniser GitHub avec le correctif de bundling TypeScript Vercel.
 - [ ] Guider le redéploiement Vercel sans cache puis vérifier que `/api/trpc/auth.me` répond en JSON.
