@@ -59,3 +59,5 @@
 - [x] Corriger la configuration Vercel invalide qui provoque l’erreur de runtime au build
 - [x] Vérifier la compatibilité de api/[...path].ts avec le routage et le runtime Vercel actuels
 - [x] Relancer le flux GitHub puis préparer les consignes de redéploiement Vercel après correctif
+- [ ] Diagnostiquer pourquoi le déploiement Vercel prêt renvoie encore une page 404 au lieu de l’application Techfield
+- [ ] Corriger le routage ou la sortie de build Vercel pour servir correctement l’application en production

@@ -12,7 +12,7 @@ describe("configuration Vercel", () => {
     };
 
     expect(config.buildCommand).toBe("pnpm build:vercel");
-    expect(config.outputDirectory).toBe("dist");
+    expect(config.outputDirectory).toBe("dist/public");
     expect(config.functions).toBeUndefined();
   });
 
