@@ -70,4 +70,8 @@
 - [x] Rendre la carte Google Maps optionnelle quand aucune clé valide n’est fournie, ou la brancher sur une vraie intégration Google Maps configurable
 - [x] Valider le nouveau flux d’authentification et le comportement des cartes par build et tests avant redéploiement Vercel
 - [x] Diagnostiquer pourquoi le déploiement Vercel du commit `d642577` affiche une page vide malgré un statut Ready, puis corriger la cause côté frontend ou configuration.
-- [ ] Remettre le bloc `functions["api/[...path].ts"]` dans `vercel.json` avec `maxDuration: 10` et sans propriété `runtime`, puis ajuster `server/vercel.config.test.ts` pour vérifier cette présence explicite.
+- [x] Remettre le bloc `functions["api/[...path].ts"]` dans `vercel.json` avec `maxDuration: 10` et sans propriété `runtime`, puis ajuster `server/vercel.config.test.ts` pour vérifier cette présence explicite.
+- [x] Vérifier si les derniers correctifs Vercel ont bien été synchronisés sur GitHub et préciser quel commit est réellement disponible pour déploiement.
+- [x] Pousser la dernière version locale Techfield sur le dépôt GitHub externe Oveon11/Techfield.
+- [x] Vérifier le commit réellement publié sur GitHub après synchronisation.
+- [x] Guider le redéploiement Vercel après synchronisation GitHub.
