@@ -1,4 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
+import type { IncomingMessage, ServerResponse } from "http";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { User } from "../../drizzle/schema";
 import { resolveUserFromSupabaseIdentity } from "../db";
 import { createSupabaseServerSsrClient } from "../integrations/supabase/auth-ssr";
@@ -8,7 +10,7 @@ export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
-  supabase: ReturnType<typeof createSupabaseServerSsrClient> | null;
+  supabase: SupabaseClient | null;
 };
 
 export async function createContext(
@@ -16,7 +18,10 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: User | null = null;
   const supabase = SUPABASE_ENV.isConfigured
-    ? createSupabaseServerSsrClient(opts.req, opts.res)
+    ? createSupabaseServerSsrClient(
+        opts.req as unknown as IncomingMessage,
+        opts.res as unknown as ServerResponse,
+      )
     : null;
 
   if (supabase) {

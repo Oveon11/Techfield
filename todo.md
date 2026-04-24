@@ -89,3 +89,8 @@
 - [x] Valider localement le bundling Vercel après correctifs avec `pnpm check:vercel`.
 - [x] Resynchroniser GitHub avec le correctif de bundling TypeScript Vercel.
 - [ ] Guider le redéploiement Vercel sans cache puis vérifier que `/api/trpc/auth.me` répond en JSON.
+- [x] Remplacer la dépendance `cookie` par une version compatible `^0.7.2` dans `package.json`, puis régénérer le lockfile.
+- [x] Corriger `server/_core/context.ts` pour caster explicitement `req` et `res` vers `IncomingMessage` et `ServerResponse` lors de la création du client Supabase SSR.
+- [x] Assouplir le type `supabase` du contexte tRPC avec `SupabaseClient | null` pour éviter la résolution incorrecte du type de retour générique.
+- [x] Valider localement les nouveaux correctifs par `pnpm install` puis `pnpm check:vercel`.
+- [ ] Resynchroniser GitHub avec ce correctif TypeScript si la compilation Vercel est propre.
