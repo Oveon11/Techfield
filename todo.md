@@ -112,5 +112,5 @@
 - [x] Corriger dans `server/_core/oauth.ts` le typage structurel résiduel de `req`/`res` pour supprimer les erreurs sur `query`, `get`, `status`, `cookie` et `redirect` en build Vercel.
 - [x] Corriger dans `server/_core/sdk.ts` l’accès à `req.headers` pour le rendre compatible avec le typage de build Vercel.
 - [x] Revalider localement `pnpm check:vercel`, `pnpm test` et l’endpoint API principal après ce correctif OAuth/SDK.
-- [ ] Resynchroniser GitHub avec le correctif OAuth/SDK si la compilation Vercel redevient propre.
+- [x] Resynchroniser GitHub avec le correctif OAuth/SDK si la compilation Vercel redevient propre.
 - [ ] Guider un nouveau redéploiement Vercel puis vérifier que `/api/trpc/auth.me` ne plante plus en `500 FUNCTION_INVOCATION_FAILED`.
