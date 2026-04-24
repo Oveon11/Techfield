@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("configuration Vercel", () => {
-  it("déclare une fonction API explicite et un fallback SPA statique compatibles avec Vercel", () => {
+  it("déclare une fonction API unique et des rewrites explicites compatibles avec un projet non-Next", () => {
     const raw = readFileSync(resolve(process.cwd(), "vercel.json"), "utf8");
     const config = JSON.parse(raw) as {
       buildCommand?: string;
@@ -12,7 +12,7 @@ describe("configuration Vercel", () => {
       outputDirectory?: string;
     };
 
-    const apiFunction = config.functions?.["api/[...path].ts"];
+    const apiFunction = config.functions?.["api/index.ts"];
 
     expect(config.buildCommand).toBe("pnpm build:vercel");
     expect(config.outputDirectory).toBe("dist/public");
@@ -22,7 +22,19 @@ describe("configuration Vercel", () => {
     expect(apiFunction?.runtime).toBeUndefined();
     expect(config.rewrites).toEqual([
       {
-        source: "/((?!api/).*)",
+        source: "/api/trpc/(.*)",
+        destination: "/api?route=api/trpc/$1",
+      },
+      {
+        source: "/api/oauth/callback",
+        destination: "/api?route=api/oauth/callback",
+      },
+      {
+        source: "/manus-storage/(.*)",
+        destination: "/api?route=manus-storage/$1",
+      },
+      {
+        source: "/((?!api/|manus-storage/).*)",
         destination: "/index.html",
       },
     ]);

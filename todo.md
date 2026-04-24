@@ -104,3 +104,8 @@
 - [x] Corriger dans `server/_core/storageProxy.ts` le typage actuellement incompatible avec les méthodes Express (`get`, `status`, `set`, `redirect`) et l’accès à `req.params`.
 - [x] Revalider localement le build Vercel et les tests après ce correctif résiduel des types Express.
 - [x] Resynchroniser GitHub avec ce dernier correctif de build Vercel si la compilation est propre.
+- [x] Diagnostiquer pourquoi l’application Techfield reste vide en production Vercel malgré un build désormais réussi.
+- [x] Corriger la cause frontend ou runtime responsable de l’écran vide en production.
+- [x] Revalider localement le comportement UI, le build et les tests après ce correctif d’affichage.
+- [ ] Resynchroniser GitHub avec le correctif de rendu vide si un nouveau commit est nécessaire.
+- [ ] Guider la vérification finale en production une fois l’affichage restauré.
