@@ -63,9 +63,11 @@
 - [x] Corriger le routage ou la sortie de build Vercel pour servir correctement l’application en production
 - [x] Corriger les erreurs TypeScript signalées par Vercel dans `server/routers.ts` et `server/_core/context.ts`
 - [x] Diagnostiquer puis corriger l’erreur d’exécution affichée par l’application déployée sur Vercel après chargement du front
-- [ ] Redéployer le commit `e05f484` sur Vercel et vérifier que l’URL de production ne montre plus `TypeError: Invalid URL`
-- [ ] Requalifier les lignes d’erreur TypeScript observées dans Vercel si elles réapparaissent après redéploiement, en corrigeant les fichiers réellement concernés
+- [ ] Pousser le correctif full-stack Vercel de la page vide sur GitHub puis redéployer Vercel pour valider le flux Supabase Auth en production
+- [x] Requalifier les lignes d’erreur TypeScript observées dans Vercel si elles réapparaissent après redéploiement, en corrigeant les fichiers réellement concernés
 - [x] Remplacer le flux d’authentification dépendant de Manus par un flux Supabase Auth compatible Vercel
 - [x] Adapter le frontend pour utiliser Supabase Auth sans dépendre de `VITE_OAUTH_PORTAL_URL`, `VITE_APP_ID` ni des variables `VITE_FRONTEND_FORGE_API_*`
 - [x] Rendre la carte Google Maps optionnelle quand aucune clé valide n’est fournie, ou la brancher sur une vraie intégration Google Maps configurable
 - [x] Valider le nouveau flux d’authentification et le comportement des cartes par build et tests avant redéploiement Vercel
+- [x] Diagnostiquer pourquoi le déploiement Vercel du commit `d642577` affiche une page vide malgré un statut Ready, puis corriger la cause côté frontend ou configuration.
+- [ ] Remettre le bloc `functions["api/[...path].ts"]` dans `vercel.json` avec `maxDuration: 10` et sans propriété `runtime`, puis ajuster `server/vercel.config.test.ts` pour vérifier cette présence explicite.

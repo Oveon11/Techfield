@@ -3,17 +3,29 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("configuration Vercel", () => {
-  it("déclare une build Vercel explicite sans runtime custom invalide", () => {
+  it("déclare une fonction full-stack explicite sans runtime custom invalide", () => {
     const raw = readFileSync(resolve(process.cwd(), "vercel.json"), "utf8");
     const config = JSON.parse(raw) as {
       buildCommand?: string;
+      functions?: Record<string, { includeFiles?: string; runtime?: string; maxDuration?: number }>;
+      rewrites?: Array<{ source: string; destination: string }>;
       outputDirectory?: string;
-      functions?: Record<string, { runtime?: string }>;
     };
 
+    const apiFunction = config.functions?.["api/[...path].ts"];
+
     expect(config.buildCommand).toBe("pnpm build:vercel");
-    expect(config.outputDirectory).toBe("dist/public");
-    expect(config.functions).toBeUndefined();
+    expect(config.outputDirectory).toBeUndefined();
+    expect(apiFunction).toBeDefined();
+    expect(apiFunction?.maxDuration).toBe(10);
+    expect(apiFunction?.includeFiles).toBe("dist/public/**");
+    expect(apiFunction?.runtime).toBeUndefined();
+    expect(config.rewrites).toEqual([
+      {
+        source: "/((?!api/).*)",
+        destination: "/api/$1",
+      },
+    ]);
   });
 
   it("documente DEPLOY_TARGET=vercel dans l’exemple d’environnement", () => {
