@@ -1,43 +1,46 @@
 # Project TODO
 
-- [x] Définir l’architecture fonctionnelle et technique de l’application Techfield pour les métiers du chantier, de la maintenance et des interventions.
-- [x] Concevoir le modèle de données complet pour les utilisateurs, rôles, clients, sites, chantiers, contrats d’entretien, interventions, disponibilités, documents et historiques.
-- [x] Mettre en place l’authentification sécurisée et la gestion des rôles admin, technicien et client.
-- [x] Créer les autorisations d’accès par rôle sur les données et les écrans.
-- [x] Implémenter la gestion des clients avec contacts, coordonnées et informations de suivi.
-- [x] Implémenter la gestion des sites avec adresses, rattachement aux clients et informations opérationnelles.
-- [x] Implémenter la gestion des chantiers avec création, statuts, suivi d’avancement, affectation d’équipes et techniciens.
-- [x] Implémenter la gestion des contrats d’entretien avec création, renouvellement, échéances et alertes d’expiration.
-- [x] Implémenter la gestion des interventions avec planification, assignation technicien, compte-rendu et historique lié aux chantiers ou contrats.
-- [x] Implémenter la gestion des techniciens et de leur disponibilité.
-- [x] Implémenter le tableau de bord avec indicateurs clés sur les chantiers, interventions et contrats.
-- [x] Implémenter un calendrier des interventions et maintenances planifiées.
-- [x] Implémenter l’upload et le stockage des documents et photos liés aux dossiers métiers.
-- [x] Concevoir une interface élégante, soignée et professionnelle cohérente sur l’ensemble de l’application.
-- [x] Rendre l’interface totalement responsive, avec une expérience mobile adaptée aux techniciens terrain.
-- [x] Écrire et exécuter des tests unitaires sur les composants critiques côté serveur et logique métier.
-- [x] Valider le fonctionnement global de l’application reconstruite avant livraison.
-- [x] Implémenter la gestion complète des contacts clients côté backend et UI avec création et rattachement au client.
-- [x] Persister et exposer les affectations de techniciens sur les chantiers via projectAssignments, avec consultation dans l’interface.
-- [x] Ajouter un vrai workflow de renouvellement des contrats et un mécanisme d’alertes d’expiration visible dans l’application.
-- [x] Ajouter l’UI de compte-rendu d’intervention et des vues d’historique par chantier et par contrat.
-- [x] Écrire des tests unitaires backend pour les routeurs métier critiques de gestion.
-- [x] Effectuer une validation fonctionnelle plus complète des parcours métiers majeurs avant livraison finale.
-- [x] Implémenter l’action de renouvellement des contrats avec mise à jour des dates, du statut et de l’échéance suivante.
-- [x] Afficher des alertes contractuelles visibles dans le tableau de bord et la liste des contrats pour les renouvellements proches.
-- [x] Ajouter la saisie de compte-rendu d’intervention dans l’interface avec mise à jour du statut et du résumé d’exécution.
-- [x] Ajouter des vues d’historique d’interventions filtrées par chantier et par contrat dans l’interface.
-- [x] Auditer les incompatibilités actuelles entre l’architecture Techfield reconstruite et un déploiement externe sur Vercel.
-- [x] Préparer la migration de la couche base de données actuelle vers Supabase.
-- [x] Évaluer l’impact de la migration sur l’authentification et les sessions utilisateur hors environnement Manus.
-- [x] Adapter la configuration applicative et le code serveur pour une cible de déploiement Vercel.
-- [x] Documenter la procédure de déploiement externe et les limites de compatibilité éventuelles.
-- [x] Définir une séparation d’architecture claire entre le code applicatif déployé sur Vercel et les services de données gérés par Supabase.
-- [x] Structurer la couche SQL Supabase séparément de la logique applicative pour faciliter les migrations et la maintenance.
-- [x] Structurer le stockage Supabase séparément des modules métier pour distinguer clairement fichiers, métadonnées et accès applicatifs.
-- [x] Adapter l’application Techfield à une cible Vercel en isolant les dépendances spécifiques à l’environnement actuel.
-- [x] Préparer une organisation de code qui distingue explicitement interface, logique métier, accès SQL Supabase et stockage Supabase.
-- [x] Convertir le schéma métier Techfield actuel en scripts SQL PostgreSQL compatibles avec Supabase.
-- [x] Découper les scripts Supabase en lots d’exécution sûrs pour SQL Editor avec ordre précis.
-- [x] Préparer les scripts de stockage Supabase et les structures de métadonnées associées.
-- [x] Rédiger un guide pas à pas pour l’exécution manuelle dans SQL Editor sans connexion directe.
+- [x] Confirmer que le nouveau projet Supabase est bien créé et vide.
+- [ ] Faire exécuter le bloc de fondation SQL dans Supabase SQL Editor.
+- [ ] Faire exécuter le script de stockage Supabase.
+- [ ] Faire exécuter le script de vérification Supabase.
+- [ ] Vérifier avec l’utilisateur que la base Supabase est correcte avant de passer à l’application.
+- [ ] Préparer ensuite la structuration du code applicatif Techfield en fonction de cette nouvelle base.
+- [ ] Diagnostiquer le timeout rencontré dans Supabase SQL Editor sur le script principal.
+- [ ] Découper le schéma principal en sous-lots SQL plus courts à exécuter séparément.
+- [ ] Vérifier avec l’utilisateur quelles parties du schéma sont déjà créées avant de relancer les lots suivants.
+- [ ] Vérifier précisément quelles tables du schéma principal existent déjà après le timeout SQL Editor.
+- [ ] Préparer un lot SQL de reprise après la table clients.
+- [ ] Faire exécuter à l’utilisateur le lot SQL de reprise en une étape séparée.
+- [ ] Retirer explicitement la table attentes_distributeur du schéma cible Supabase.
+- [ ] Préparer un correctif SQL simple pour supprimer attentes_distributeur si elle existe déjà.
+- [ ] Reprendre le schéma fonctionnel Techfield sans aucune partie liée au distributeur.
+- [ ] Préparer un lot SQL de données de test Techfield pour valider la base avec un admin, un client, un site, un technicien, un chantier, un contrat et une intervention.
+- [ ] Faire exécuter le lot de données de test dans Supabase SQL Editor puis vérifier le résultat.
+- [x] Préparer ensuite le bloc SQL de sécurité et de RLS.
+- [x] Corriger le script SQL RLS Supabase pour l’aligner sur les types réels du schéma, notamment les identifiants bigint au lieu de uuid.
+- [x] Faire exécuter le bloc RLS corrigé dans Supabase SQL Editor et valider qu’il passe sans erreur.
+- [x] Préparer le socle runtime Supabase côté serveur avec les variables d’environnement nécessaires au projet web.
+- [x] Vérifier et brancher les fichiers d’intégration Supabase existants avant la migration des routeurs métier.
+- [ ] Finaliser un script RLS versionné dans le dépôt correspondant au schéma réel bigint, afin que le bloc de sécurité préparé soit traçable et réutilisable.
+- [x] Brancher réellement le socle runtime Supabase côté serveur, au-delà du simple enregistrement des variables d’environnement et du test de secrets.
+- [ ] Finaliser un point d’entrée runtime serveur Supabase réellement branché au contexte/auth, au-delà des seuls helpers utilisateurs dans server/db.ts.
+- [ ] Brancher ou valider explicitement chaque fichier d’intégration Supabase existant (env, db/admin, storage/admin, auth-ssr) et documenter leur rôle runtime effectif avant la migration des routeurs métier.
+- [ ] Poursuivre la migration runtime des routeurs métier prioritaires vers Supabase, en commençant par les lectures de tableau de bord et les interventions.
+- [x] Raccorder le contexte tRPC serveur au client Supabase SSR pour préparer l’auth runtime côté Vercel.
+- [x] Ajouter un test Vitest couvrant la création du contexte serveur avec le client Supabase SSR.
+- [x] Migrer la lecture `management.dashboard.summary` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.interventions.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.interventions.history` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.contracts.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.calendar.events` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.documents.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.clients.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.sites.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.projects.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.clients.contacts.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.technicians.list` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Migrer la lecture `management.technicians.availability` vers Supabase avec fallback Drizzle et test Vitest dédié.
+- [x] Vérifier et finaliser la compatibilité Vercel du flux d’authentification serveur avec le client Supabase SSR.
+- [x] Valider le comportement du contexte auth/runtime lorsque le cookie de session est absent ou présent en environnement déployé.
+- [x] Préparer la couche de configuration applicative nécessaire au déploiement Vercel avec Supabase.

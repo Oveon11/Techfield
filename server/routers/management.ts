@@ -17,6 +17,8 @@ import {
 } from "../../drizzle/schema";
 import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getDb, getUserAccessProfile } from "../db";
+import { getSupabaseCalendarEvents, getSupabaseClientContactsList, getSupabaseClientsList, getSupabaseContractsList, getSupabaseDashboardSummary, getSupabaseDocumentsList, getSupabaseInterventionsHistory, getSupabaseInterventionsList, getSupabaseProjectsList, getSupabaseSitesList, getSupabaseTechnicianAvailability, getSupabaseTechniciansList } from "../integrations/supabase/db/management";
+import { SUPABASE_ENV } from "../integrations/supabase/env";
 import { storagePut } from "../storage";
 
 const baseAddressSchema = z.object({
@@ -188,9 +190,13 @@ async function logActivity(db: Awaited<ReturnType<typeof getDb>>, actorUserId: n
 export const managementRouter = router({
   dashboard: router({
     summary: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseDashboardSummary(scope);
+      }
+
+      const db = await requireDb();
       const clientFilter = scope.user.role === "client" && scope.clientContactProfile ? eq(projects.clientId, scope.clientContactProfile.clientId) : undefined;
       const interventionFilter = scope.user.role === "client" && scope.clientContactProfile
         ? eq(interventions.clientId, scope.clientContactProfile.clientId)
@@ -273,9 +279,13 @@ export const managementRouter = router({
 
   clients: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseClientsList(scope);
+      }
+
+      const db = await requireDb();
       const rows = await db
         .select()
         .from(clients)
@@ -286,9 +296,13 @@ export const managementRouter = router({
     }),
     contacts: router({
       list: protectedProcedure.query(async ({ ctx }) => {
-        const db = await requireDb();
         const scope = await getScope(ctx.user.openId);
 
+        if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+          return getSupabaseClientContactsList(scope);
+        }
+
+        const db = await requireDb();
         return db
           .select({
             id: clientContacts.id,
@@ -353,9 +367,13 @@ export const managementRouter = router({
 
   sites: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseSitesList(scope);
+      }
+
+      const db = await requireDb();
       const rows = await db
         .select({
           id: sites.id,
@@ -399,7 +417,11 @@ export const managementRouter = router({
   }),
 
   technicians: router({
-    list: adminProcedure.query(async () => {
+    list: adminProcedure.query(async ({ ctx }) => {
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseTechniciansList();
+      }
+
       const db = await requireDb();
       return db.select().from(technicians).orderBy(asc(technicians.lastName), asc(technicians.firstName));
     }),
@@ -423,9 +445,13 @@ export const managementRouter = router({
       return { success: true, id: createdId };
     }),
     availability: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseTechnicianAvailability(scope);
+      }
+
+      const db = await requireDb();
       if (scope.user.role === "technicien" && scope.technicianProfile) {
         return db
           .select()
@@ -467,9 +493,13 @@ export const managementRouter = router({
 
   projects: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseProjectsList(scope);
+      }
+
+      const db = await requireDb();
       if (scope.user.role === "technicien" && scope.technicianProfile) {
         const assignments = await db
           .select({ projectId: projectAssignments.projectId })
@@ -579,9 +609,13 @@ export const managementRouter = router({
 
   contracts: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseContractsList(scope);
+      }
+
+      const db = await requireDb();
       return db
         .select({
           id: maintenanceContracts.id,
@@ -653,9 +687,13 @@ export const managementRouter = router({
 
   interventions: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseInterventionsList(scope);
+      }
+
+      const db = await requireDb();
       return db
         .select({
           id: interventions.id,
@@ -749,9 +787,13 @@ export const managementRouter = router({
     history: protectedProcedure
       .input(z.object({ projectId: z.number().int().positive().optional(), contractId: z.number().int().positive().optional() }))
       .query(async ({ ctx, input }) => {
-        const db = await requireDb();
         const scope = await getScope(ctx.user.openId);
 
+        if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+          return getSupabaseInterventionsHistory(scope, input);
+        }
+
+        const db = await requireDb();
         return db
           .select({
             id: interventions.id,
@@ -779,9 +821,13 @@ export const managementRouter = router({
 
   calendar: router({
     events: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseCalendarEvents(scope);
+      }
+
+      const db = await requireDb();
       const interventionRows = await db
         .select({
           id: interventions.id,
@@ -820,9 +866,13 @@ export const managementRouter = router({
 
   documents: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        return getSupabaseDocumentsList(scope);
+      }
+
+      const db = await requireDb();
       return db
         .select({
           id: documents.id,
