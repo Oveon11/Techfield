@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("configuration Vercel", () => {
-  it("déclare une build Vercel explicite et la fonction API Node", () => {
+  it("déclare une build Vercel explicite sans runtime custom invalide", () => {
     const raw = readFileSync(resolve(process.cwd(), "vercel.json"), "utf8");
     const config = JSON.parse(raw) as {
       buildCommand?: string;
@@ -13,7 +13,7 @@ describe("configuration Vercel", () => {
 
     expect(config.buildCommand).toBe("pnpm build:vercel");
     expect(config.outputDirectory).toBe("dist");
-    expect(config.functions?.["api/[...path].ts"]?.runtime).toBe("nodejs22.x");
+    expect(config.functions).toBeUndefined();
   });
 
   it("documente DEPLOY_TARGET=vercel dans l’exemple d’environnement", () => {

@@ -53,6 +53,9 @@
 - [ ] Guider l’utilisateur dans la création du projet Vercel connecté au dépôt Techfield.
 - [ ] Guider l’utilisateur dans la saisie des variables d’environnement Vercel requises pour Supabase et l’API serveur.
 - [ ] Guider l’utilisateur dans le premier déploiement Vercel et les vérifications post-déploiement immédiates.
-- [ ] Mettre à jour le dépôt GitHub Techfield avec l’état final validé du projet avant reprise du déploiement Vercel.
-- [ ] Vérifier que le dépôt GitHub pointe bien sur le code Supabase/Vercel le plus récent.
+- [x] Mettre à jour le dépôt GitHub Techfield avec l’état final validé du projet avant reprise du déploiement Vercel.
+- [x] Vérifier que le dépôt GitHub pointe bien sur le code Supabase/Vercel le plus récent.
 - [ ] Reprendre ensuite le guidage de déploiement Vercel à partir du dépôt GitHub mis à jour.
+- [x] Corriger la configuration Vercel invalide qui provoque l’erreur de runtime au build
+- [x] Vérifier la compatibilité de api/[...path].ts avec le routage et le runtime Vercel actuels
+- [ ] Relancer le flux GitHub puis préparer les consignes de redéploiement Vercel après correctif
