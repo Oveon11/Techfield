@@ -94,3 +94,9 @@
 - [x] Assouplir le type `supabase` du contexte tRPC avec `SupabaseClient | null` pour éviter la résolution incorrecte du type de retour générique.
 - [x] Valider localement les nouveaux correctifs par `pnpm install` puis `pnpm check:vercel`.
 - [x] Resynchroniser GitHub avec ce correctif TypeScript si la compilation Vercel est propre.
+- [x] Corriger dans `server/routers.ts` l’usage de `clearCookie` afin qu’il reste compatible avec le typage Express utilisé en build Vercel.
+- [x] Corriger dans `server/_core/context.ts` l’appel Supabase pour éviter l’erreur de typage sur `auth.getUser` en production.
+- [x] Corriger dans `server/_core/storageProxy.ts` le typage de l’instance Express et des paramètres `req`/`res`.
+- [x] Corriger dans `server/_core/cookies.ts` les accès `protocol` et `headers`, le callback `proto`, ainsi que le typage `CookieOptions` incompatibles avec le build Vercel.
+- [x] Revalider localement le build Vercel et les tests après ce nouveau lot de correctifs TypeScript.
+- [ ] Resynchroniser GitHub avec ce correctif final de build Vercel si la compilation est propre.

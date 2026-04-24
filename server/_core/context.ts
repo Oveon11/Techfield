@@ -13,6 +13,13 @@ export type TrpcContext = {
   supabase: SupabaseClient | null;
 };
 
+type SupabaseAuthUser = {
+  id: string;
+  email?: string | null;
+  app_metadata?: Record<string, unknown> | null;
+  user_metadata?: Record<string, unknown> | null;
+};
+
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
@@ -26,9 +33,12 @@ export async function createContext(
 
   if (supabase) {
     try {
+      const authClient = supabase.auth as unknown as {
+        getUser: () => Promise<{ data: { user: SupabaseAuthUser | null } }>;
+      };
       const {
         data: { user: supabaseUser },
-      } = await supabase.auth.getUser();
+      } = await authClient.getUser();
 
       if (supabaseUser) {
         const appMetadata = (supabaseUser.app_metadata ?? {}) as Record<string, unknown>;

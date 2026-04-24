@@ -1,6 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
+import { createExpiredSessionCookie } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getUserAccessProfile } from "./db";
@@ -23,8 +22,7 @@ export const appRouter = router({
       return getUserAccessProfile(ctx.user.openId);
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.setHeader("Set-Cookie", createExpiredSessionCookie(ctx.req));
       return {
         success: true,
       } as const;
