@@ -93,4 +93,4 @@
 - [x] Corriger `server/_core/context.ts` pour caster explicitement `req` et `res` vers `IncomingMessage` et `ServerResponse` lors de la création du client Supabase SSR.
 - [x] Assouplir le type `supabase` du contexte tRPC avec `SupabaseClient | null` pour éviter la résolution incorrecte du type de retour générique.
 - [x] Valider localement les nouveaux correctifs par `pnpm install` puis `pnpm check:vercel`.
-- [ ] Resynchroniser GitHub avec ce correctif TypeScript si la compilation Vercel est propre.
+- [x] Resynchroniser GitHub avec ce correctif TypeScript si la compilation Vercel est propre.
