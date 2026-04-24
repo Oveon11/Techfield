@@ -1,9 +1,9 @@
 import { COOKIE_NAME } from "@shared/const";
 import { serialize as serializeCookie } from "cookie";
-import type { IncomingMessage } from "http";
 
-type RequestLike = IncomingMessage & {
+type RequestLike = {
   protocol?: string;
+  headers: Record<string, string | string[] | undefined>;
   hostname?: string;
 };
 

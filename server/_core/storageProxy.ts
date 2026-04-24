@@ -1,9 +1,23 @@
-import type { Application, Request, Response } from "express";
 import { ENV } from "./env";
 
-export function registerStorageProxy(app: Application) {
-  app.get("/manus-storage/*", async (req: Request, res: Response) => {
-    const rawKey = (req.params as Record<string, string | undefined>)["0"];
+type StorageProxyRequest = {
+  params?: Record<string, string | undefined>;
+};
+
+type StorageProxyResponse = {
+  status: (code: number) => StorageProxyResponse;
+  send: (body: string) => unknown;
+  set: (name: string, value: string) => unknown;
+  redirect: (status: number, url: string) => unknown;
+};
+
+type StorageProxyApp = {
+  get: (path: string, handler: (req: StorageProxyRequest, res: StorageProxyResponse) => Promise<void> | void) => unknown;
+};
+
+export function registerStorageProxy(app: StorageProxyApp) {
+  app.get("/manus-storage/*", async (req: StorageProxyRequest, res: StorageProxyResponse) => {
+    const rawKey = req.params?.["0"];
     const key = typeof rawKey === "string" ? rawKey : undefined;
     if (!key) {
       res.status(400).send("Missing storage key");

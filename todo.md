@@ -100,3 +100,7 @@
 - [x] Corriger dans `server/_core/cookies.ts` les accès `protocol` et `headers`, le callback `proto`, ainsi que le typage `CookieOptions` incompatibles avec le build Vercel.
 - [x] Revalider localement le build Vercel et les tests après ce nouveau lot de correctifs TypeScript.
 - [x] Resynchroniser GitHub avec ce correctif final de build Vercel si la compilation est propre.
+- [x] Corriger dans `server/routers.ts` le remplacement de `clearCookie` afin d’éviter l’erreur de typage sur `setHeader` et l’incompatibilité entre `Request` Express et `RequestLike`.
+- [x] Corriger dans `server/_core/storageProxy.ts` le typage actuellement incompatible avec les méthodes Express (`get`, `status`, `set`, `redirect`) et l’accès à `req.params`.
+- [x] Revalider localement le build Vercel et les tests après ce correctif résiduel des types Express.
+- [ ] Resynchroniser GitHub avec ce dernier correctif de build Vercel si la compilation est propre.

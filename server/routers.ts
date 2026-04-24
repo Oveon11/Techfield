@@ -5,6 +5,16 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { getUserAccessProfile } from "./db";
 import { managementRouter } from "./routers/management";
 
+type CookieWritableResponse = {
+  setHeader: (name: string, value: string) => unknown;
+};
+
+type CookieReadableRequest = {
+  protocol?: string;
+  headers: Record<string, string | string[] | undefined>;
+  hostname?: string;
+};
+
 function assertAllowedRole(role: string, allowedRoles: string[]) {
   if (!allowedRoles.includes(role)) {
     throw new TRPCError({
@@ -22,7 +32,9 @@ export const appRouter = router({
       return getUserAccessProfile(ctx.user.openId);
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
-      ctx.res.setHeader("Set-Cookie", createExpiredSessionCookie(ctx.req));
+      const response = ctx.res as unknown as CookieWritableResponse;
+      const request = ctx.req as unknown as CookieReadableRequest;
+      response.setHeader("Set-Cookie", createExpiredSessionCookie(request));
       return {
         success: true,
       } as const;
