@@ -78,7 +78,7 @@
 - [x] Diagnostiquer l’erreur TypeScript Vercel `Property 'use' does not exist on type 'Express'` dans `server/_core/app.ts`.
 - [x] Corriger `server/_core/app.ts` pour restaurer un build TypeScript compatible Vercel.
 - [x] Valider localement le correctif par tests et vérification de build avant nouveau redéploiement.
-- [ ] Resynchroniser GitHub avec le correctif de build Vercel si un nouveau commit est nécessaire.
+- [x] Resynchroniser GitHub avec le correctif de build Vercel si un nouveau commit est nécessaire.
 - [x] Remplacer dans `vercel.json` le rewrite catch-all vers `/api/$1` par une configuration hybride Vercel avec `outputDirectory: "dist/public"`, fonction API explicite et fallback SPA vers `/index.html`.
 - [x] Supprimer de `server/_core/app.ts` la logique `registerVercelStatic` devenue obsolète avec le routage hybride Vercel.
 - [x] Mettre à jour `server/vercel.config.test.ts` pour vérifier l’absence de rewrite vers `/api/$1`, l’absence de `runtime` et `includeFiles`, ainsi que la présence du fallback SPA vers `/index.html`.
