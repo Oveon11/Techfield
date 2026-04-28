@@ -58,7 +58,8 @@ export async function createContext(
         user = resolved ?? null;
       }
     } catch (error) {
-      console.warn("[Auth] Supabase SSR lookup failed", String(error));
+      // Silently ignore auth errors - user will be null
+      // This is expected when no valid session exists
     }
   }
 
