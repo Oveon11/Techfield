@@ -1,20 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockEnv = {
-  forgeApiUrl: "https://forge.example.test",
-  forgeApiKey: "forge-key",
-};
-
 const mockSupabaseEnv = {
   isConfigured: false,
 };
 
 const mockUploadTechfieldDocument = vi.fn();
 const mockCreateTechfieldSignedUrl = vi.fn();
-
-vi.mock("./_core/env", () => ({
-  ENV: mockEnv,
-}));
 
 vi.mock("./integrations/supabase/env", () => ({
   SUPABASE_ENV: mockSupabaseEnv,
@@ -26,7 +17,7 @@ vi.mock("./integrations/supabase/storage/admin", () => ({
   createTechfieldSignedUrl: mockCreateTechfieldSignedUrl,
 }));
 
-describe("storage provider selection", () => {
+describe("storage (Supabase-only)", () => {
   beforeEach(() => {
     mockSupabaseEnv.isConfigured = false;
     mockUploadTechfieldDocument.mockReset();
@@ -34,12 +25,16 @@ describe("storage provider selection", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses Supabase Storage when the dedicated environment is configured", async () => {
+  it("uploads via Supabase when configured", async () => {
     mockSupabaseEnv.isConfigured = true;
     mockUploadTechfieldDocument.mockResolvedValue({ path: "techfield/file.pdf" });
 
     const { storagePut } = await import("./storage");
-    const result = await storagePut("techfield/file.pdf", Buffer.from("demo"), "application/pdf");
+    const result = await storagePut(
+      "techfield/file.pdf",
+      Buffer.from("demo"),
+      "application/pdf",
+    );
 
     expect(mockUploadTechfieldDocument).toHaveBeenCalledWith({
       path: expect.stringMatching(/^techfield\/file_[a-f0-9]{8}\.pdf$/),
@@ -52,24 +47,13 @@ describe("storage provider selection", () => {
     });
   });
 
-  it("falls back to Forge storage when Supabase is not configured", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ url: "https://signed-upload.example.test" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-      });
-
-    vi.stubGlobal("fetch", fetchMock);
+  it("throws when Supabase is not configured", async () => {
+    mockSupabaseEnv.isConfigured = false;
 
     const { storagePut } = await import("./storage");
-    const result = await storagePut("reports/photo.png", Buffer.from("demo"), "image/png");
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(result.key).toMatch(/^reports\/photo_[a-f0-9]{8}\.png$/);
-    expect(result.url).toMatch(/^\/manus-storage\//);
+    await expect(
+      storagePut("reports/photo.png", Buffer.from("demo"), "image/png"),
+    ).rejects.toThrow(/SUPABASE_URL/);
   });
 
   it("returns a signed Supabase URL when storageGet runs with Supabase configured", async () => {

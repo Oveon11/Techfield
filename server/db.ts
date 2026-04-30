@@ -219,7 +219,14 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       email: user.email ?? null,
       phone: user.phone ?? null,
       login_method: user.loginMethod ?? null,
-      role: user.role ?? (existing?.role ?? (user.openId === ENV.ownerOpenId ? "admin" : "client")),
+      role:
+        user.role ??
+        (existing?.role ??
+          (ENV.ownerEmail &&
+          user.email &&
+          user.email.toLowerCase() === ENV.ownerEmail.toLowerCase()
+            ? "admin"
+            : "client")),
       account_status: user.accountStatus ?? existing?.accountStatus ?? "active",
       avatar_url: user.avatarUrl ?? existing?.avatarUrl ?? null,
       last_signed_in: (user.lastSignedIn ?? new Date()).toISOString(),
@@ -275,7 +282,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else if (
+      ENV.ownerEmail &&
+      user.email &&
+      user.email.toLowerCase() === ENV.ownerEmail.toLowerCase()
+    ) {
       values.role = "admin";
       updateSet.role = "admin";
     }
