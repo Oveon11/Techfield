@@ -1,4 +1,15 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,9 +40,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
+  ArrowLeft,
   CalendarClock,
   BriefcaseBusiness,
   Building2,
@@ -39,12 +52,16 @@ import {
   FileText,
   LayoutDashboard,
   MapPinned,
+  Pencil,
+  Search,
   ShieldCheck,
+  Trash2,
   Users,
   Wrench,
 } from "lucide-react";
 import { ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Link, useRoute } from "wouter";
 
 function AppShell({ children }: { children: ReactNode }) {
   return <DashboardLayout>{children}</DashboardLayout>;
@@ -648,6 +665,168 @@ export function SitesPage() {
   );
 }
 
+type ProjectServiceType = "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
+type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule";
+
+type ProjectFormState = {
+  clientId: string;
+  siteId: string;
+  title: string;
+  serviceType: ProjectServiceType;
+  description: string;
+  status: ProjectStatus;
+  progressPercent: number;
+  estimatedHours: string;
+  actualHours: string;
+  budgetAmount: string;
+  startDate: string;
+  plannedEndDate: string;
+  technicianIds: number[];
+};
+
+const INITIAL_PROJECT_FORM: ProjectFormState = {
+  clientId: "",
+  siteId: "",
+  title: "",
+  serviceType: "autre",
+  description: "",
+  status: "planifie",
+  progressPercent: 0,
+  estimatedHours: "0.00",
+  actualHours: "0.00",
+  budgetAmount: "0.00",
+  startDate: "",
+  plannedEndDate: "",
+  technicianIds: [],
+};
+
+const SERVICE_TYPE_OPTIONS: { value: ProjectServiceType; label: string }[] = [
+  { value: "clim", label: "CLIM" },
+  { value: "pac", label: "PAC" },
+  { value: "chauffe_eau", label: "Chauffe-eau" },
+  { value: "pv", label: "PV" },
+  { value: "vmc", label: "VMC" },
+  { value: "autre", label: "Autre" },
+];
+
+const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
+  { value: "brouillon", label: "Brouillon" },
+  { value: "planifie", label: "Planifié" },
+  { value: "en_cours", label: "En cours" },
+  { value: "bloque", label: "Bloqué" },
+  { value: "termine", label: "Terminé" },
+  { value: "annule", label: "Annulé" },
+];
+
+function ProjectFormFields({
+  form,
+  setForm,
+  clients,
+  sites,
+  technicians,
+}: {
+  form: ProjectFormState;
+  setForm: (updater: (prev: ProjectFormState) => ProjectFormState) => void;
+  clients: Array<{ id: number; companyName: string }>;
+  sites: Array<{ id: number; siteName: string }>;
+  technicians: Array<{ id: number; firstName: string; lastName: string }>;
+}) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-2">
+        <Label>Client</Label>
+        <Select value={form.clientId} onValueChange={value => setForm(prev => ({ ...prev, clientId: value }))}>
+          <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+          <SelectContent>
+            {clients.map(client => <SelectItem key={client.id} value={String(client.id)}>{client.companyName}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Site</Label>
+        <Select value={form.siteId || "none"} onValueChange={value => setForm(prev => ({ ...prev, siteId: value === "none" ? "" : value }))}>
+          <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Aucun site</SelectItem>
+            {sites.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.siteName}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2 md:col-span-2">
+        <Label>Intitulé</Label>
+        <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
+      </div>
+      <div className="space-y-2">
+        <Label>Type de service</Label>
+        <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value as ProjectServiceType }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {SERVICE_TYPE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Statut</Label>
+        <Select value={form.status} onValueChange={value => setForm(prev => ({ ...prev, status: value as ProjectStatus }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {PROJECT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Début</Label>
+        <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
+      </div>
+      <div className="space-y-2">
+        <Label>Fin prévue</Label>
+        <Input type="date" value={form.plannedEndDate} onChange={e => setForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
+      </div>
+      <div className="space-y-2">
+        <Label>Budget</Label>
+        <Input value={form.budgetAmount} onChange={e => setForm(prev => ({ ...prev, budgetAmount: e.target.value }))} />
+      </div>
+      <div className="space-y-2">
+        <Label>Avancement (%)</Label>
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          value={form.progressPercent}
+          onChange={e => setForm(prev => ({ ...prev, progressPercent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))}
+        />
+      </div>
+      <div className="space-y-2 md:col-span-2">
+        <Label>Description</Label>
+        <Textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} />
+      </div>
+      {technicians.length ? (
+        <div className="space-y-2 md:col-span-2">
+          <Label>Techniciens à affecter</Label>
+          <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 p-3">
+            {technicians.map(tech => {
+              const checked = form.technicianIds.includes(tech.id);
+              return (
+                <button
+                  key={tech.id}
+                  type="button"
+                  className={`rounded-full border px-3 py-1 text-sm ${checked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+                  onClick={() => setForm(prev => ({
+                    ...prev,
+                    technicianIds: checked ? prev.technicianIds.filter(id => id !== tech.id) : [...prev.technicianIds, tech.id],
+                  }))}
+                >
+                  {tech.firstName} {tech.lastName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ProjectsPage() {
   const { permissions } = useRoleMatrix();
   const invalidateAll = useInvalidateAfterSuccess();
@@ -655,43 +834,85 @@ export function ProjectsPage() {
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
+
   const createProject = trpc.management.projects.create.useMutation({
     onSuccess: async () => {
       toast.success("Chantier créé avec succès.");
+      setCreateOpen(false);
+      setForm(INITIAL_PROJECT_FORM);
+      await invalidateAll();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateProject = trpc.management.projects.update.useMutation({
+    onSuccess: async () => {
+      toast.success("Chantier mis à jour.");
+      setEditingId(null);
+      await invalidateAll();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const deleteProject = trpc.management.projects.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("Chantier supprimé.");
       await invalidateAll();
     },
     onError: error => toast.error(error.message),
   });
 
-  const [form, setForm] = useState<{
-    clientId: string;
-    siteId: string;
-    title: string;
-    serviceType: "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
-    description: string;
-    status: "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule";
-    progressPercent: number;
-    estimatedHours: string;
-    actualHours: string;
-    budgetAmount: string;
-    startDate: string;
-    plannedEndDate: string;
-    technicianIds: number[];
-  }>({
-    clientId: "",
-    siteId: "",
-    title: "",
-    serviceType: "autre",
-    description: "",
-    status: "planifie",
-    progressPercent: 0,
-    estimatedHours: "0.00",
-    actualHours: "0.00",
-    budgetAmount: "0.00",
-    startDate: "",
-    plannedEndDate: "",
-    technicianIds: [],
-  });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
+  const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
+  const [serviceFilter, setServiceFilter] = useState<"all" | ProjectServiceType>("all");
+
+  const projectDetailQuery = trpc.management.projects.getById.useQuery(
+    { projectId: editingId ?? 0 },
+    { enabled: editingId !== null },
+  );
+
+  // Hydrate edit form when detail query lands
+  useMemo(() => {
+    const detail = projectDetailQuery.data;
+    if (!detail || editingId === null) return;
+    setEditForm({
+      clientId: String(detail.clientId ?? ""),
+      siteId: detail.siteId ? String(detail.siteId) : "",
+      title: detail.title ?? "",
+      serviceType: (detail.serviceType ?? "autre") as ProjectServiceType,
+      description: detail.description ?? "",
+      status: (detail.status ?? "planifie") as ProjectStatus,
+      progressPercent: Number(detail.progressPercent ?? 0),
+      estimatedHours: String(detail.estimatedHours ?? "0.00"),
+      actualHours: String(detail.actualHours ?? "0.00"),
+      budgetAmount: String(detail.budgetAmount ?? "0.00"),
+      startDate: detail.startDate ? new Date(detail.startDate).toISOString().slice(0, 10) : "",
+      plannedEndDate: detail.plannedEndDate ? new Date(detail.plannedEndDate).toISOString().slice(0, 10) : "",
+      technicianIds: detail.technicianIds ?? [],
+    });
+  }, [projectDetailQuery.data, editingId]);
+
+  const filteredProjects = useMemo(() => {
+    const list = projectsQuery.data ?? [];
+    const needle = search.trim().toLowerCase();
+    return list.filter(project => {
+      if (statusFilter !== "all" && project.status !== statusFilter) return false;
+      if (serviceFilter !== "all" && project.serviceType !== serviceFilter) return false;
+      if (!needle) return true;
+      const haystack = [project.title, project.reference, project.clientName, project.siteName]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [projectsQuery.data, search, statusFilter, serviceFilter]);
+
+  const clients = clientsQuery.data ?? [];
+  const sites = sitesQuery.data ?? [];
+  const technicians = techniciansQuery.data ?? [];
+  const canManage = !!permissions?.manageProjects;
 
   return (
     <AppShell>
@@ -700,8 +921,8 @@ export function ProjectsPage() {
           title="Chantiers"
           description="Création, suivi d’avancement, pilotage opérationnel et affectation des techniciens sur les dossiers terrain."
           action={
-            permissions?.manageProjects ? (
-              <Dialog>
+            canManage ? (
+              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogTrigger asChild>
                   <Button>Nouveau chantier</Button>
                 </DialogTrigger>
@@ -710,102 +931,7 @@ export function ProjectsPage() {
                     <DialogTitle>Nouveau chantier</DialogTitle>
                     <DialogDescription>Créez un chantier et préparez immédiatement son affectation opérationnelle.</DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Client</Label>
-                      <Select value={form.clientId} onValueChange={value => setForm(prev => ({ ...prev, clientId: value }))}>
-                        <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                        <SelectContent>
-                          {clientsQuery.data?.map(client => <SelectItem key={client.id} value={String(client.id)}>{client.companyName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Site</Label>
-                      <Select value={form.siteId || "none"} onValueChange={value => setForm(prev => ({ ...prev, siteId: value === "none" ? "" : value }))}>
-                        <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Aucun site</SelectItem>
-                          {sitesQuery.data?.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.siteName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Intitulé</Label>
-                      <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Type de service</Label>
-                      <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value as typeof form.serviceType }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="clim">CLIM</SelectItem>
-                          <SelectItem value="pac">PAC</SelectItem>
-                          <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
-                          <SelectItem value="pv">PV</SelectItem>
-                          <SelectItem value="vmc">VMC</SelectItem>
-                          <SelectItem value="autre">Autre</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Statut</Label>
-                      <Select value={form.status} onValueChange={value => setForm(prev => ({ ...prev, status: value as typeof form.status }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="brouillon">Brouillon</SelectItem>
-                          <SelectItem value="planifie">Planifié</SelectItem>
-                          <SelectItem value="en_cours">En cours</SelectItem>
-                          <SelectItem value="bloque">Bloqué</SelectItem>
-                          <SelectItem value="termine">Terminé</SelectItem>
-                          <SelectItem value="annule">Annulé</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Début</Label>
-                      <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Fin prévue</Label>
-                      <Input type="date" value={form.plannedEndDate} onChange={e => setForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Heures estimées</Label>
-                      <Input value={form.estimatedHours} onChange={e => setForm(prev => ({ ...prev, estimatedHours: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Budget</Label>
-                      <Input value={form.budgetAmount} onChange={e => setForm(prev => ({ ...prev, budgetAmount: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Description</Label>
-                      <Textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} />
-                    </div>
-                    {techniciansQuery.data?.length ? (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Techniciens à affecter</Label>
-                        <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 p-3">
-                          {techniciansQuery.data.map(tech => {
-                            const checked = form.technicianIds.includes(tech.id);
-                            return (
-                              <button
-                                key={tech.id}
-                                type="button"
-                                className={`rounded-full border px-3 py-1 text-sm ${checked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
-                                onClick={() => setForm(prev => ({
-                                  ...prev,
-                                  technicianIds: checked ? prev.technicianIds.filter(id => id !== tech.id) : [...prev.technicianIds, tech.id],
-                                }))}
-                              >
-                                {tech.firstName} {tech.lastName}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
+                  <ProjectFormFields form={form} setForm={setForm} clients={clients} sites={sites} technicians={technicians} />
                   <DialogFooter>
                     <Button
                       onClick={() => createProject.mutate({
@@ -824,14 +950,44 @@ export function ProjectsPage() {
           }
         />
 
+        <SurfaceCard>
+          <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Rechercher par intitulé, référence, client ou site…"
+                className="pl-9"
+              />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Select value={statusFilter} onValueChange={value => setStatusFilter(value as "all" | ProjectStatus)}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  {PROJECT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={serviceFilter} onValueChange={value => setServiceFilter(value as "all" | ProjectServiceType)}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les services</SelectItem>
+                  {SERVICE_TYPE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </SurfaceCard>
+
         <div className="grid gap-4 xl:grid-cols-2">
-          {projectsQuery.data?.length ? (
-            projectsQuery.data.map(project => (
+          {filteredProjects.length ? (
+            filteredProjects.map(project => (
               <SurfaceCard key={project.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle>{project.title}</CardTitle>
+                    <div className="min-w-0">
+                      <CardTitle className="truncate">{project.title}</CardTitle>
                       <CardDescription>{project.reference} · {project.clientName}</CardDescription>
                     </div>
                     <StatusBadge value={project.status} />
@@ -850,15 +1006,434 @@ export function ProjectsPage() {
                     <span>Site: {project.siteName || "—"}</span>
                     <span>Techniciens: {project.assignedTechnicians || "Non affectés"}</span>
                   </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-3">
+                    <Link href={`/chantiers/${project.id}`}>
+                      <Button variant="outline" size="sm">Voir le détail</Button>
+                    </Link>
+                    {canManage ? (
+                      <>
+                        <Dialog open={editingId === project.id} onOpenChange={open => setEditingId(open ? project.id : null)}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Pencil className="h-3.5 w-3.5" />
+                              Éditer
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-3xl">
+                            <DialogHeader>
+                              <DialogTitle>Modifier le chantier</DialogTitle>
+                              <DialogDescription>{project.reference} · {project.clientName}</DialogDescription>
+                            </DialogHeader>
+                            {projectDetailQuery.isLoading && editingId === project.id ? (
+                              <p className="py-6 text-sm text-muted-foreground">Chargement…</p>
+                            ) : (
+                              <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} />
+                            )}
+                            <DialogFooter>
+                              <Button
+                                onClick={() => updateProject.mutate({
+                                  ...editForm,
+                                  projectId: project.id,
+                                  clientId: Number(editForm.clientId),
+                                  siteId: editForm.siteId ? Number(editForm.siteId) : null,
+                                })}
+                                disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
+                              >
+                                Enregistrer les modifications
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="text-rose-700 hover:bg-rose-50">
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Supprimer
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Supprimer ce chantier ?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Le chantier « {project.title} » sera supprimé définitivement. Ses affectations seront retirées et les interventions associées seront détachées. Cette action est irréversible.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteProject.mutate({ projectId: project.id })}
+                                className="bg-rose-600 text-white hover:bg-rose-700"
+                              >
+                                Supprimer
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    ) : null}
+                  </div>
                 </CardContent>
               </SurfaceCard>
             ))
           ) : (
             <div className="xl:col-span-2">
-              <EmptyState title="Aucun chantier enregistré" description="Les chantiers créés ici alimenteront le suivi d’avancement, l’affectation d’équipe et l’historique opérationnel." />
+              <EmptyState
+                title={projectsQuery.data?.length ? "Aucun chantier ne correspond aux filtres" : "Aucun chantier enregistré"}
+                description={projectsQuery.data?.length
+                  ? "Ajustez la recherche, le statut ou le type de service pour afficher davantage de chantiers."
+                  : "Les chantiers créés ici alimenteront le suivi d’avancement, l’affectation d’équipe et l’historique opérationnel."}
+              />
             </div>
           )}
         </div>
+      </div>
+    </AppShell>
+  );
+}
+
+export function ProjectDetailPage() {
+  const { permissions } = useRoleMatrix();
+  const invalidateAll = useInvalidateAfterSuccess();
+  const [, params] = useRoute<{ id: string }>("/chantiers/:id");
+  const projectId = params?.id ? Number(params.id) : NaN;
+  const validId = Number.isFinite(projectId) && projectId > 0;
+
+  const projectQuery = trpc.management.projects.getById.useQuery(
+    { projectId },
+    { enabled: validId },
+  );
+  const interventionsQuery = trpc.management.interventions.list.useQuery();
+  const clientsQuery = trpc.management.clients.list.useQuery();
+  const sitesQuery = trpc.management.sites.list.useQuery();
+  const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
+
+  const updateProject = trpc.management.projects.update.useMutation({
+    onSuccess: async () => {
+      toast.success("Chantier mis à jour.");
+      setEditOpen(false);
+      await invalidateAll();
+      await projectQuery.refetch();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const deleteProject = trpc.management.projects.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("Chantier supprimé.");
+      await invalidateAll();
+      window.history.back();
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
+
+  useMemo(() => {
+    const detail = projectQuery.data;
+    if (!detail) return;
+    setEditForm({
+      clientId: String(detail.clientId ?? ""),
+      siteId: detail.siteId ? String(detail.siteId) : "",
+      title: detail.title ?? "",
+      serviceType: (detail.serviceType ?? "autre") as ProjectServiceType,
+      description: detail.description ?? "",
+      status: (detail.status ?? "planifie") as ProjectStatus,
+      progressPercent: Number(detail.progressPercent ?? 0),
+      estimatedHours: String(detail.estimatedHours ?? "0.00"),
+      actualHours: String(detail.actualHours ?? "0.00"),
+      budgetAmount: String(detail.budgetAmount ?? "0.00"),
+      startDate: detail.startDate ? new Date(detail.startDate).toISOString().slice(0, 10) : "",
+      plannedEndDate: detail.plannedEndDate ? new Date(detail.plannedEndDate).toISOString().slice(0, 10) : "",
+      technicianIds: detail.technicianIds ?? [],
+    });
+  }, [projectQuery.data]);
+
+  const linkedInterventions = useMemo(() => {
+    if (!validId) return [];
+    return (interventionsQuery.data ?? []).filter(item => item.projectId === projectId);
+  }, [interventionsQuery.data, projectId, validId]);
+
+  if (!validId) {
+    return (
+      <AppShell>
+        <EmptyState title="Chantier introuvable" description="L'identifiant fourni dans l'URL n'est pas valide." />
+      </AppShell>
+    );
+  }
+
+  if (projectQuery.isLoading) {
+    return (
+      <AppShell>
+        <p className="py-12 text-center text-sm text-muted-foreground">Chargement du chantier…</p>
+      </AppShell>
+    );
+  }
+
+  const project = projectQuery.data;
+  if (!project) {
+    return (
+      <AppShell>
+        <EmptyState title="Chantier introuvable" description="Ce chantier n'existe pas ou vous n'y avez pas accès." />
+      </AppShell>
+    );
+  }
+
+  const canManage = !!permissions?.manageProjects;
+  const serviceLabel = SERVICE_TYPE_OPTIONS.find(opt => opt.value === project.serviceType)?.label ?? project.serviceType;
+  const statusLabel = PROJECT_STATUS_OPTIONS.find(opt => opt.value === project.status)?.label ?? project.status;
+
+  return (
+    <AppShell>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 border-b border-border/60 pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-2">
+            <Link href="/chantiers">
+              <button className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+                Retour aux chantiers
+              </button>
+            </Link>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">{project.title}</h1>
+              <StatusBadge value={project.status} />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {project.reference} · {project.clientName}{project.siteName ? ` · ${project.siteName}` : ""}
+            </p>
+          </div>
+          {canManage ? (
+            <div className="flex flex-wrap gap-2">
+              <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Pencil className="h-4 w-4" />
+                    Éditer
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Modifier le chantier</DialogTitle>
+                    <DialogDescription>{project.reference}</DialogDescription>
+                  </DialogHeader>
+                  <ProjectFormFields
+                    form={editForm}
+                    setForm={setEditForm}
+                    clients={clientsQuery.data ?? []}
+                    sites={sitesQuery.data ?? []}
+                    technicians={techniciansQuery.data ?? []}
+                  />
+                  <DialogFooter>
+                    <Button
+                      onClick={() => updateProject.mutate({
+                        ...editForm,
+                        projectId: project.id,
+                        clientId: Number(editForm.clientId),
+                        siteId: editForm.siteId ? Number(editForm.siteId) : null,
+                      })}
+                      disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
+                    >
+                      Enregistrer
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="text-rose-700 hover:bg-rose-50">
+                    <Trash2 className="h-4 w-4" />
+                    Supprimer
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Supprimer ce chantier ?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      « {project.title} » sera supprimé définitivement. Ses affectations seront retirées et les interventions associées seront détachées. Cette action est irréversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteProject.mutate({ projectId: project.id })}
+                      className="bg-rose-600 text-white hover:bg-rose-700"
+                    >
+                      Supprimer
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          ) : null}
+        </div>
+
+        <SectionGrid>
+          <MetricCard
+            title="Avancement"
+            value={`${project.progressPercent ?? 0}%`}
+            hint={`Statut actuel : ${statusLabel}.`}
+            icon={<BriefcaseBusiness className="h-5 w-5" />}
+          />
+          <MetricCard
+            title="Type de service"
+            value={serviceLabel}
+            hint="Catégorie technique du chantier pour l'organisation des interventions."
+            icon={<Wrench className="h-5 w-5" />}
+          />
+          <MetricCard
+            title="Interventions liées"
+            value={linkedInterventions.length}
+            hint="Nombre d'interventions terrain rattachées à ce chantier."
+            icon={<ClipboardCheck className="h-5 w-5" />}
+          />
+        </SectionGrid>
+
+        <Tabs defaultValue="infos">
+          <TabsList>
+            <TabsTrigger value="infos">Infos</TabsTrigger>
+            <TabsTrigger value="interventions">Interventions</TabsTrigger>
+            <TabsTrigger value="journal">Journal</TabsTrigger>
+            <TabsTrigger value="medias">Médias</TabsTrigger>
+            <TabsTrigger value="memos">Mémos</TabsTrigger>
+            <TabsTrigger value="documents">Documents</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="infos" className="mt-6 space-y-4">
+            <SectionGrid>
+              <SurfaceCard className="xl:col-span-6">
+                <CardHeader>
+                  <CardTitle>Informations générales</CardTitle>
+                  <CardDescription>Données administratives et contractuelles du chantier.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Référence</p>
+                    <p className="font-medium text-foreground">{project.reference}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Statut</p>
+                    <StatusBadge value={project.status} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Client</p>
+                    <p className="font-medium text-foreground">{project.clientName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Site</p>
+                    <p className="font-medium text-foreground">{project.siteName || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Type de service</p>
+                    <p className="font-medium text-foreground">{serviceLabel}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Budget</p>
+                    <p className="font-medium text-foreground">{project.budgetAmount ?? "—"} €</p>
+                  </div>
+                </CardContent>
+              </SurfaceCard>
+
+              <SurfaceCard className="xl:col-span-6">
+                <CardHeader>
+                  <CardTitle>Planification</CardTitle>
+                  <CardDescription>Échéances et progression du chantier.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Date de début</p>
+                      <p className="font-medium text-foreground">
+                        {project.startDate ? new Date(project.startDate).toLocaleDateString() : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Fin prévue</p>
+                      <p className="font-medium text-foreground">
+                        {project.plannedEndDate ? new Date(project.plannedEndDate).toLocaleDateString() : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Avancement global</span>
+                      <span className="font-medium text-foreground">{project.progressPercent ?? 0}%</span>
+                    </div>
+                    <Progress value={project.progressPercent ?? 0} />
+                  </div>
+                </CardContent>
+              </SurfaceCard>
+
+              <SurfaceCard className="xl:col-span-12">
+                <CardHeader>
+                  <CardTitle>Description et notes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {project.description ? (
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{project.description}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Aucune description renseignée pour ce chantier.</p>
+                  )}
+                </CardContent>
+              </SurfaceCard>
+            </SectionGrid>
+          </TabsContent>
+
+          <TabsContent value="interventions" className="mt-6">
+            <SurfaceCard>
+              <CardHeader>
+                <CardTitle>Interventions rattachées</CardTitle>
+                <CardDescription>Liste des opérations terrain associées à ce chantier.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {interventionsQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">Chargement…</p>
+                ) : linkedInterventions.length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Référence</TableHead>
+                        <TableHead>Intitulé</TableHead>
+                        <TableHead>Statut</TableHead>
+                        <TableHead>Date planifiée</TableHead>
+                        <TableHead>Technicien</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {linkedInterventions.map(item => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-mono text-xs">{item.reference}</TableCell>
+                          <TableCell>{item.title}</TableCell>
+                          <TableCell><StatusBadge value={item.status} /></TableCell>
+                          <TableCell>
+                            {item.scheduledStartAt ? new Date(item.scheduledStartAt).toLocaleString() : "—"}
+                          </TableCell>
+                          <TableCell>{item.technicianName || "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <EmptyState
+                    title="Aucune intervention liée"
+                    description="Créez une intervention depuis l'onglet Interventions en la rattachant à ce chantier."
+                  />
+                )}
+              </CardContent>
+            </SurfaceCard>
+          </TabsContent>
+
+          <TabsContent value="journal" className="mt-6">
+            <EmptyState title="Journal des étapes — bientôt" description="Cet onglet permettra d'horodater les étapes du chantier (Sprint 2)." />
+          </TabsContent>
+          <TabsContent value="medias" className="mt-6">
+            <EmptyState title="Médias — bientôt" description="Photos avant/après et galerie du chantier seront disponibles ici (Sprint 2)." />
+          </TabsContent>
+          <TabsContent value="memos" className="mt-6">
+            <EmptyState title="Mémos — bientôt" description="Notes internes et rappels pour l'équipe seront ajoutés dans le Sprint 2." />
+          </TabsContent>
+          <TabsContent value="documents" className="mt-6">
+            <EmptyState title="Documents — bientôt" description="Devis, bons de commande et fiches techniques rattachés au chantier (Sprint 2)." />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );

@@ -17,7 +17,25 @@ import {
 } from "../../drizzle/schema";
 import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getDb, getUserAccessProfile } from "../db";
-import { getSupabaseCalendarEvents, getSupabaseClientContactsList, getSupabaseClientsList, getSupabaseContractsList, getSupabaseDashboardSummary, getSupabaseDocumentsList, getSupabaseInterventionsHistory, getSupabaseInterventionsList, getSupabaseProjectsList, getSupabaseSitesList, getSupabaseTechnicianAvailability, getSupabaseTechniciansList } from "../integrations/supabase/db/management";
+import {
+  createSupabaseProject,
+  deleteSupabaseProject,
+  getSupabaseCalendarEvents,
+  getSupabaseClientContactsList,
+  getSupabaseClientsList,
+  getSupabaseContractsList,
+  getSupabaseDashboardSummary,
+  getSupabaseDocumentsList,
+  getSupabaseInterventionsHistory,
+  getSupabaseInterventionsList,
+  getSupabaseProjectById,
+  getSupabaseProjectsList,
+  getSupabaseSitesList,
+  getSupabaseTechnicianAvailability,
+  getSupabaseTechniciansList,
+  updateSupabaseProject,
+  updateSupabaseProjectStatus,
+} from "../integrations/supabase/db/management";
 import { SUPABASE_ENV } from "../integrations/supabase/env";
 import { storagePut } from "../storage";
 
@@ -92,6 +110,10 @@ const createProjectSchema = z.object({
   startDate: z.string().optional().nullable(),
   plannedEndDate: z.string().optional().nullable(),
   technicianIds: z.array(z.number().int().positive()).default([]),
+});
+
+const updateProjectSchema = createProjectSchema.extend({
+  projectId: z.number().int().positive(),
 });
 
 const createContractSchema = z.object({
@@ -516,6 +538,7 @@ export const managementRouter = router({
             title: projects.title,
             status: projects.status,
             progressPercent: projects.progressPercent,
+            serviceType: projects.serviceType,
             clientName: clients.companyName,
             siteName: sites.siteName,
             assignedTechnicians: sql<string>`(
@@ -539,6 +562,7 @@ export const managementRouter = router({
           title: projects.title,
           status: projects.status,
           progressPercent: projects.progressPercent,
+          serviceType: projects.serviceType,
           clientName: clients.companyName,
           siteName: sites.siteName,
           assignedTechnicians: sql<string>`(
@@ -554,9 +578,107 @@ export const managementRouter = router({
         .where(scope.user.role === "client" && scope.clientContactProfile ? eq(projects.clientId, scope.clientContactProfile.clientId) : undefined)
         .orderBy(desc(projects.createdAt));
     }),
+    getById: protectedProcedure
+      .input(z.object({ projectId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+
+        if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+          const detail = await getSupabaseProjectById(scope, input.projectId);
+          if (!detail) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Chantier introuvable." });
+          }
+          return detail;
+        }
+
+        const db = await requireDb();
+
+        if (scope.user.role === "technicien" && scope.technicianProfile) {
+          const assigned = await db
+            .select({ id: projectAssignments.id })
+            .from(projectAssignments)
+            .where(and(
+              eq(projectAssignments.projectId, input.projectId),
+              eq(projectAssignments.technicianId, scope.technicianProfile.id),
+            ))
+            .limit(1);
+
+          if (assigned.length === 0) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Chantier non assigné à ce technicien." });
+          }
+        }
+
+        const rows = await db
+          .select({
+            id: projects.id,
+            reference: projects.reference,
+            clientId: projects.clientId,
+            siteId: projects.siteId,
+            title: projects.title,
+            serviceType: projects.serviceType,
+            description: projects.description,
+            status: projects.status,
+            progressPercent: projects.progressPercent,
+            estimatedHours: projects.estimatedHours,
+            actualHours: projects.actualHours,
+            budgetAmount: projects.budgetAmount,
+            startDate: projects.startDate,
+            plannedEndDate: projects.plannedEndDate,
+            actualEndDate: projects.actualEndDate,
+            createdAt: projects.createdAt,
+            updatedAt: projects.updatedAt,
+            clientName: clients.companyName,
+            siteName: sites.siteName,
+          })
+          .from(projects)
+          .innerJoin(clients, eq(projects.clientId, clients.id))
+          .leftJoin(sites, eq(projects.siteId, sites.id))
+          .where(and(
+            eq(projects.id, input.projectId),
+            scope.user.role === "client" && scope.clientContactProfile ? eq(projects.clientId, scope.clientContactProfile.clientId) : undefined,
+          ))
+          .limit(1);
+
+        const project = rows[0];
+        if (!project) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Chantier introuvable." });
+        }
+
+        const assignmentRows = await db
+          .select({ technicianId: projectAssignments.technicianId })
+          .from(projectAssignments)
+          .where(eq(projectAssignments.projectId, input.projectId));
+
+        return {
+          ...project,
+          technicianIds: assignmentRows.map(item => item.technicianId),
+        };
+      }),
     create: adminProcedure.input(createProjectSchema).mutation(async ({ ctx, input }) => {
-      const db = await requireDb();
       const reference = makeReference("CH");
+
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        const result = await createSupabaseProject({
+          reference,
+          clientId: input.clientId,
+          siteId: input.siteId ?? null,
+          title: input.title,
+          serviceType: input.serviceType,
+          description: input.description ?? null,
+          status: input.status,
+          progressPercent: input.progressPercent,
+          estimatedHours: input.estimatedHours,
+          actualHours: input.actualHours,
+          budgetAmount: input.budgetAmount,
+          startDate: input.startDate ?? null,
+          plannedEndDate: input.plannedEndDate ?? null,
+          technicianIds: input.technicianIds,
+          createdByUserId: ctx.user.id,
+        });
+        return { success: true, id: result.id, reference };
+      }
+
+      const db = await requireDb();
       const [created] = await db
         .insert(projects)
         .values({
@@ -593,9 +715,87 @@ export const managementRouter = router({
       await logActivity(db, ctx.user.id, "project", createdId, "project.created", `Chantier créé: ${reference}`);
       return { success: true, id: createdId, reference };
     }),
+    update: adminProcedure.input(updateProjectSchema).mutation(async ({ ctx, input }) => {
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        await updateSupabaseProject({
+          projectId: input.projectId,
+          clientId: input.clientId,
+          siteId: input.siteId ?? null,
+          title: input.title,
+          serviceType: input.serviceType,
+          description: input.description ?? null,
+          status: input.status,
+          progressPercent: input.progressPercent,
+          estimatedHours: input.estimatedHours,
+          actualHours: input.actualHours,
+          budgetAmount: input.budgetAmount,
+          startDate: input.startDate ?? null,
+          plannedEndDate: input.plannedEndDate ?? null,
+          technicianIds: input.technicianIds,
+          updatedByUserId: ctx.user.id,
+        });
+        return { success: true };
+      }
+
+      const db = await requireDb();
+      await db
+        .update(projects)
+        .set({
+          clientId: input.clientId,
+          siteId: input.siteId ?? null,
+          title: input.title,
+          serviceType: input.serviceType,
+          description: input.description ?? null,
+          status: input.status,
+          progressPercent: input.progressPercent,
+          estimatedHours: input.estimatedHours,
+          actualHours: input.actualHours,
+          budgetAmount: input.budgetAmount,
+          startDate: input.startDate ?? null,
+          plannedEndDate: input.plannedEndDate ?? null,
+        } as any)
+        .where(eq(projects.id, input.projectId));
+
+      // Synchroniser les affectations: supprimer puis ré-insérer.
+      await db.delete(projectAssignments).where(eq(projectAssignments.projectId, input.projectId));
+
+      if (input.technicianIds.length > 0) {
+        await db.insert(projectAssignments).values(
+          input.technicianIds.map(technicianId => ({
+            projectId: input.projectId,
+            technicianId,
+            assignmentRole: "technicien" as const,
+            assignedByUserId: ctx.user.id,
+          })),
+        );
+      }
+
+      await logActivity(db, ctx.user.id, "project", input.projectId, "project.updated", `Chantier modifié`);
+      return { success: true };
+    }),
+    delete: adminProcedure
+      .input(z.object({ projectId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+          await deleteSupabaseProject(input.projectId);
+          return { success: true };
+        }
+
+        const db = await requireDb();
+        // project_assignments ON DELETE CASCADE; interventions/documents ON DELETE SET NULL.
+        await db.delete(projects).where(eq(projects.id, input.projectId));
+
+        await logActivity(db, ctx.user.id, "project", input.projectId, "project.deleted", `Chantier supprimé #${input.projectId}`);
+        return { success: true };
+      }),
     updateStatus: adminProcedure
       .input(z.object({ projectId: z.number().int().positive(), status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]), progressPercent: z.number().int().min(0).max(100) }))
       .mutation(async ({ ctx, input }) => {
+        if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+          await updateSupabaseProjectStatus(input.projectId, input.status, input.progressPercent);
+          return { success: true };
+        }
+
         const db = await requireDb();
         await db
           .update(projects)

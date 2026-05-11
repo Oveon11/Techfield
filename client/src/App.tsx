@@ -11,6 +11,7 @@ import {
   DashboardPage,
   DocumentsPage,
   InterventionsPage,
+  ProjectDetailPage,
   ProjectsPage,
   SitesPage,
   TeamPage,
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/clients" component={ClientsPage} />
       <Route path="/sites" component={SitesPage} />
       <Route path="/chantiers" component={ProjectsPage} />
+      <Route path="/chantiers/:id" component={ProjectDetailPage} />
       <Route path="/contrats" component={ContractsPage} />
       <Route path="/interventions" component={InterventionsPage} />
       <Route path="/equipe" component={TeamPage} />

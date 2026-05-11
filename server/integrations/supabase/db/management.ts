@@ -334,7 +334,7 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
 
   let query = supabase
     .from("projects")
-    .select("id, reference, title, status, progress_percent, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
+    .select("id, reference, title, status, progress_percent, service_type, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
     .order("created_at", { ascending: false });
 
   if (projectIds) {
@@ -348,7 +348,254 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
     throw error;
   }
 
-  return (data ?? []).map((row: unknown) => mapProjectRow(row as Record<string, unknown>));
+  return (data ?? []).map((row: unknown) => {
+    const item = row as Record<string, unknown>;
+    return {
+      ...mapProjectRow(item),
+      serviceType: ((item.service_type as ProjectServiceType | undefined) ?? "autre") as ProjectServiceType,
+    };
+  });
+}
+
+type ProjectServiceType = "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
+
+function mapProjectDetailRow(row: Record<string, unknown>) {
+  const client = getSingleRelation(row, "clients");
+  const site = getSingleRelation(row, "sites");
+  const assignments = (row.project_assignments as Array<Record<string, unknown>> | undefined) ?? [];
+  const technicianIds = assignments
+    .map((assignment) => Number(assignment.technician_id ?? 0))
+    .filter((id) => id > 0);
+
+  return {
+    id: Number(row.id),
+    reference: String(row.reference ?? ""),
+    clientId: Number(row.client_id ?? 0),
+    siteId: row.site_id == null ? null : Number(row.site_id),
+    title: String(row.title ?? ""),
+    serviceType: ((row.service_type as ProjectServiceType | undefined) ?? "autre") as ProjectServiceType,
+    description: (row.description as string | null | undefined) ?? null,
+    status: ((row.status as ProjectStatus | undefined) ?? "planifie") as ProjectStatus,
+    progressPercent: Number(row.progress_percent ?? 0),
+    estimatedHours: row.estimated_hours == null ? "0.00" : String(row.estimated_hours),
+    actualHours: row.actual_hours == null ? "0.00" : String(row.actual_hours),
+    budgetAmount: row.budget_amount == null ? "0.00" : String(row.budget_amount),
+    startDate: (row.start_date as string | null | undefined) ?? null,
+    plannedEndDate: (row.planned_end_date as string | null | undefined) ?? null,
+    actualEndDate: (row.actual_end_date as string | null | undefined) ?? null,
+    createdAt: row.created_at ? new Date(String(row.created_at)) : new Date(0),
+    updatedAt: row.updated_at ? new Date(String(row.updated_at)) : new Date(0),
+    clientName: String(client?.company_name ?? ""),
+    siteName: (site?.site_name as string | undefined) ?? null,
+    technicianIds,
+  };
+}
+
+export async function getSupabaseProjectById(scope: AccessScope, projectId: number) {
+  const supabase = createSupabaseAdminClient();
+
+  if (scope.user.role === "technicien" && scope.technicianProfile) {
+    const { data: assignmentRow, error: assignmentError } = await supabase
+      .from("project_assignments")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("technician_id", scope.technicianProfile.id)
+      .maybeSingle();
+
+    if (assignmentError) {
+      throw assignmentError;
+    }
+
+    if (!assignmentRow) {
+      return null;
+    }
+  }
+
+  let query = supabase
+    .from("projects")
+    .select("id, reference, client_id, site_id, title, service_type, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, created_at, updated_at, clients(company_name), sites(site_name), project_assignments(technician_id)")
+    .eq("id", projectId);
+
+  if (scope.user.role === "client" && scope.clientContactProfile) {
+    query = query.eq("client_id", scope.clientContactProfile.clientId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return mapProjectDetailRow(data as Record<string, unknown>);
+}
+
+type CreateProjectInput = {
+  reference: string;
+  clientId: number;
+  siteId: number | null;
+  title: string;
+  serviceType: ProjectServiceType;
+  description: string | null;
+  status: ProjectStatus;
+  progressPercent: number;
+  estimatedHours: string;
+  actualHours: string;
+  budgetAmount: string;
+  startDate: string | null;
+  plannedEndDate: string | null;
+  technicianIds: number[];
+  createdByUserId: number;
+};
+
+export async function createSupabaseProject(input: CreateProjectInput) {
+  const supabase = createSupabaseAdminClient();
+
+  const { data: created, error: createError } = await supabase
+    .from("projects")
+    .insert({
+      reference: input.reference,
+      client_id: input.clientId,
+      site_id: input.siteId,
+      title: input.title,
+      service_type: input.serviceType,
+      description: input.description,
+      status: input.status,
+      progress_percent: input.progressPercent,
+      estimated_hours: input.estimatedHours,
+      actual_hours: input.actualHours,
+      budget_amount: input.budgetAmount,
+      start_date: input.startDate,
+      planned_end_date: input.plannedEndDate,
+      created_by_user_id: input.createdByUserId,
+    })
+    .select("id")
+    .single();
+
+  if (createError) {
+    throw createError;
+  }
+
+  const createdId = Number((created as Record<string, unknown>)?.id ?? 0);
+
+  if (input.technicianIds.length > 0) {
+    const { error: assignError } = await supabase.from("project_assignments").insert(
+      input.technicianIds.map((technicianId) => ({
+        project_id: createdId,
+        technician_id: technicianId,
+        assignment_role: "technicien",
+        assigned_by_user_id: input.createdByUserId,
+      }))
+    );
+
+    if (assignError) {
+      throw assignError;
+    }
+  }
+
+  return { id: createdId };
+}
+
+type UpdateProjectInput = {
+  projectId: number;
+  clientId: number;
+  siteId: number | null;
+  title: string;
+  serviceType: ProjectServiceType;
+  description: string | null;
+  status: ProjectStatus;
+  progressPercent: number;
+  estimatedHours: string;
+  actualHours: string;
+  budgetAmount: string;
+  startDate: string | null;
+  plannedEndDate: string | null;
+  technicianIds: number[];
+  updatedByUserId: number;
+};
+
+export async function updateSupabaseProject(input: UpdateProjectInput) {
+  const supabase = createSupabaseAdminClient();
+
+  const { error: updateError } = await supabase
+    .from("projects")
+    .update({
+      client_id: input.clientId,
+      site_id: input.siteId,
+      title: input.title,
+      service_type: input.serviceType,
+      description: input.description,
+      status: input.status,
+      progress_percent: input.progressPercent,
+      estimated_hours: input.estimatedHours,
+      actual_hours: input.actualHours,
+      budget_amount: input.budgetAmount,
+      start_date: input.startDate,
+      planned_end_date: input.plannedEndDate,
+    })
+    .eq("id", input.projectId);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  // Sync project_assignments: delete then re-insert.
+  const { error: deleteAssignmentsError } = await supabase
+    .from("project_assignments")
+    .delete()
+    .eq("project_id", input.projectId);
+
+  if (deleteAssignmentsError) {
+    throw deleteAssignmentsError;
+  }
+
+  if (input.technicianIds.length > 0) {
+    const { error: insertAssignmentsError } = await supabase.from("project_assignments").insert(
+      input.technicianIds.map((technicianId) => ({
+        project_id: input.projectId,
+        technician_id: technicianId,
+        assignment_role: "technicien",
+        assigned_by_user_id: input.updatedByUserId,
+      }))
+    );
+
+    if (insertAssignmentsError) {
+      throw insertAssignmentsError;
+    }
+  }
+
+  return { success: true };
+}
+
+export async function updateSupabaseProjectStatus(projectId: number, status: ProjectStatus, progressPercent: number) {
+  const supabase = createSupabaseAdminClient();
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ status, progress_percent: progressPercent })
+    .eq("id", projectId);
+
+  if (error) {
+    throw error;
+  }
+
+  return { success: true };
+}
+
+export async function deleteSupabaseProject(projectId: number) {
+  const supabase = createSupabaseAdminClient();
+
+  // project_assignments cascade automatically thanks to FK. interventions/documents are set null.
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+
+  if (error) {
+    throw error;
+  }
+
+  return { success: true };
 }
 
 export async function getSupabaseDashboardSummary(scope: AccessScope) {
