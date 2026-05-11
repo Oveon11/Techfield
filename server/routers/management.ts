@@ -36,6 +36,26 @@ import {
   updateSupabaseProject,
   updateSupabaseProjectStatus,
 } from "../integrations/supabase/db/management";
+import {
+  createProjectDocumentUploadUrl,
+  createProjectJournalEntry,
+  createProjectMediaUploadUrl,
+  createProjectMemo,
+  deleteProjectDocument,
+  deleteProjectJournalEntry,
+  deleteProjectMedia,
+  deleteProjectMemo,
+  getProjectDocumentSignedUrl,
+  getProjectMediaSignedUrl,
+  listProjectDocuments,
+  listProjectJournalEntries,
+  listProjectMedia,
+  listProjectMemos,
+  registerProjectDocument,
+  registerProjectMedia,
+  updateProjectJournalEntry,
+  updateProjectMemo,
+} from "../integrations/supabase/db/chantier-features";
 import { SUPABASE_ENV } from "../integrations/supabase/env";
 import { storagePut } from "../storage";
 
@@ -175,6 +195,78 @@ const uploadDocumentSchema = z.object({
   base64Content: z.string().min(10),
   documentType: z.enum(["rapport", "photo", "contrat", "bon_intervention", "plan", "autre"]).default("autre"),
   visibility: z.enum(["interne", "client", "restreint"]).default("interne"),
+});
+
+// ============================================================
+// Sprint 2 - Chantier features schemas
+// ============================================================
+
+const journalEntryTypeSchema = z.enum(["etape", "blocage", "livraison", "contact_client", "note"]);
+const mediaTypeSchema = z.enum(["photo", "video"]);
+const documentCategorySchema = z.enum(["rapport", "photo", "contrat", "bon_intervention", "plan", "autre"]);
+const documentVisibilitySchema = z.enum(["interne", "client", "restreint"]);
+
+const projectIdSchema = z.object({ projectId: z.number().int().positive() });
+
+const createJournalSchema = z.object({
+  projectId: z.number().int().positive(),
+  entryType: journalEntryTypeSchema,
+  title: z.string().max(200).optional().nullable(),
+  content: z.string().min(1),
+  occurredAt: z.string().datetime().optional().nullable(),
+});
+
+const updateJournalSchema = z.object({
+  id: z.number().int().positive(),
+  entryType: journalEntryTypeSchema,
+  title: z.string().max(200).optional().nullable(),
+  content: z.string().min(1),
+  occurredAt: z.string().datetime().optional().nullable(),
+});
+
+const createMemoSchema = z.object({
+  projectId: z.number().int().positive(),
+  title: z.string().max(200).optional().nullable(),
+  content: z.string().min(1),
+});
+
+const updateMemoSchema = z.object({
+  id: z.number().int().positive(),
+  title: z.string().max(200).optional().nullable(),
+  content: z.string().min(1),
+});
+
+const createMediaUploadSchema = z.object({
+  projectId: z.number().int().positive(),
+  fileName: z.string().min(1).max(255),
+  mimeType: z.string().min(3).max(120),
+  mediaType: mediaTypeSchema,
+});
+
+const registerMediaSchema = z.object({
+  projectId: z.number().int().positive(),
+  mediaType: mediaTypeSchema,
+  caption: z.string().max(500).optional().nullable(),
+  fileName: z.string().min(1).max(255),
+  fileKey: z.string().min(1).max(500),
+  mimeType: z.string().min(3).max(120),
+  sizeBytes: z.number().int().nonnegative().optional().nullable(),
+});
+
+const createDocumentUploadSchema = z.object({
+  projectId: z.number().int().positive(),
+  fileName: z.string().min(1).max(255),
+  mimeType: z.string().min(3).max(120),
+});
+
+const registerDocumentSchema = z.object({
+  projectId: z.number().int().positive(),
+  title: z.string().min(2).max(200),
+  documentType: documentCategorySchema,
+  visibility: documentVisibilitySchema,
+  fileName: z.string().min(1).max(255),
+  fileKey: z.string().min(1).max(500),
+  mimeType: z.string().min(3).max(120),
 });
 
 async function requireDb() {
@@ -1127,6 +1219,218 @@ export const managementRouter = router({
       const createdId = Number(created?.id ?? 0);
       await logActivity(db, ctx.user.id, "document", createdId, "document.uploaded", `Document ajouté: ${input.title}`);
       return { success: true, id: createdId, url: stored.url };
+    }),
+  }),
+
+  // ==========================================================
+  // Sprint 2 - Chantier features (journal, mémos, médias, documents par chantier)
+  // ==========================================================
+
+  projectJournal: router({
+    list: protectedProcedure.input(projectIdSchema).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listProjectJournalEntries(scope, input.projectId);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur journal." });
+      }
+    }),
+    create: protectedProcedure.input(createJournalSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        const created = await createProjectJournalEntry(scope, {
+          projectId: input.projectId,
+          entryType: input.entryType,
+          title: input.title ?? null,
+          content: input.content,
+          occurredAt: input.occurredAt ?? null,
+        });
+        const db = await getDb();
+        if (db) {
+          await logActivity(db, ctx.user.id, "project", input.projectId, "journal.created", `Entrée journal: ${input.entryType}`);
+        }
+        return created;
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur création journal." });
+      }
+    }),
+    update: protectedProcedure.input(updateJournalSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await updateProjectJournalEntry(scope, {
+          id: input.id,
+          entryType: input.entryType,
+          title: input.title ?? null,
+          content: input.content,
+          occurredAt: input.occurredAt ?? null,
+        });
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur mise à jour journal." });
+      }
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await deleteProjectJournalEntry(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression journal." });
+      }
+    }),
+  }),
+
+  projectMemos: router({
+    list: protectedProcedure.input(projectIdSchema).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listProjectMemos(scope, input.projectId);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur mémos." });
+      }
+    }),
+    create: protectedProcedure.input(createMemoSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      if (scope.user.role === "client") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Mémos réservés à l'équipe interne." });
+      }
+      try {
+        return await createProjectMemo(scope, {
+          projectId: input.projectId,
+          title: input.title ?? null,
+          content: input.content,
+        });
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur création mémo." });
+      }
+    }),
+    update: protectedProcedure.input(updateMemoSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      if (scope.user.role === "client") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Mémos réservés à l'équipe interne." });
+      }
+      try {
+        return await updateProjectMemo(scope, {
+          id: input.id,
+          title: input.title ?? null,
+          content: input.content,
+        });
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur mise à jour mémo." });
+      }
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      if (scope.user.role === "client") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Mémos réservés à l'équipe interne." });
+      }
+      try {
+        return await deleteProjectMemo(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression mémo." });
+      }
+    }),
+  }),
+
+  projectMedia: router({
+    list: protectedProcedure.input(projectIdSchema).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listProjectMedia(scope, input.projectId);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur médias." });
+      }
+    }),
+    createUploadUrl: protectedProcedure.input(createMediaUploadSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await createProjectMediaUploadUrl(scope, input);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur URL upload média." });
+      }
+    }),
+    register: protectedProcedure.input(registerMediaSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        const created = await registerProjectMedia(scope, {
+          projectId: input.projectId,
+          mediaType: input.mediaType,
+          caption: input.caption ?? null,
+          fileName: input.fileName,
+          fileKey: input.fileKey,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes ?? null,
+        });
+        const db = await getDb();
+        if (db) {
+          await logActivity(db, ctx.user.id, "project", input.projectId, "media.uploaded", `Média ajouté: ${input.fileName}`);
+        }
+        return created;
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur enregistrement média." });
+      }
+    }),
+    getSignedUrl: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await getProjectMediaSignedUrl(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur lien média." });
+      }
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await deleteProjectMedia(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression média." });
+      }
+    }),
+  }),
+
+  projectDocuments: router({
+    list: protectedProcedure.input(projectIdSchema).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listProjectDocuments(scope, input.projectId);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur documents." });
+      }
+    }),
+    createUploadUrl: protectedProcedure.input(createDocumentUploadSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await createProjectDocumentUploadUrl(scope, input);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur URL upload document." });
+      }
+    }),
+    register: protectedProcedure.input(registerDocumentSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        const created = await registerProjectDocument(scope, input);
+        const db = await getDb();
+        if (db) {
+          await logActivity(db, ctx.user.id, "project", input.projectId, "document.uploaded", `Document ajouté: ${input.title}`);
+        }
+        return created;
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur enregistrement document." });
+      }
+    }),
+    getSignedUrl: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await getProjectDocumentSignedUrl(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur lien document." });
+      }
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await deleteProjectDocument(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression document." });
+      }
     }),
   }),
 });
