@@ -62,6 +62,12 @@ import {
 import { ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
+import {
+  ProjectJournalPanel,
+  ProjectMediaPanel,
+  ProjectMemosPanel,
+  ProjectDocumentsPanel,
+} from "./ProjectDetailTabs";
 
 function AppShell({ children }: { children: ReactNode }) {
   return <DashboardLayout>{children}</DashboardLayout>;
@@ -1422,16 +1428,16 @@ export function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="journal" className="mt-6">
-            <EmptyState title="Journal des étapes — bientôt" description="Cet onglet permettra d'horodater les étapes du chantier (Sprint 2)." />
+            <ProjectJournalPanel projectId={project.id} canManage={canManage} />
           </TabsContent>
           <TabsContent value="medias" className="mt-6">
-            <EmptyState title="Médias — bientôt" description="Photos avant/après et galerie du chantier seront disponibles ici (Sprint 2)." />
+            <ProjectMediaPanel projectId={project.id} canManage={canManage} />
           </TabsContent>
           <TabsContent value="memos" className="mt-6">
-            <EmptyState title="Mémos — bientôt" description="Notes internes et rappels pour l'équipe seront ajoutés dans le Sprint 2." />
+            <ProjectMemosPanel projectId={project.id} canManage={canManage} />
           </TabsContent>
           <TabsContent value="documents" className="mt-6">
-            <EmptyState title="Documents — bientôt" description="Devis, bons de commande et fiches techniques rattachés au chantier (Sprint 2)." />
+            <ProjectDocumentsPanel projectId={project.id} canManage={canManage} />
           </TabsContent>
         </Tabs>
       </div>
