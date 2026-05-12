@@ -334,14 +334,17 @@ function makeReference(prefix: string) {
 
 async function logActivity(db: Awaited<ReturnType<typeof getDb>>, actorUserId: number, entityType: "client" | "site" | "project" | "contract" | "intervention" | "technician" | "document", entityId: number, action: string, message: string) {
   if (!db) return;
-
-  await db.insert(activityLogs).values({
-    actorUserId,
-    entityType,
-    entityId,
-    action,
-    message,
-  });
+  try {
+    await db.insert(activityLogs).values({
+      actorUserId,
+      entityType,
+      entityId,
+      action,
+      message,
+    });
+  } catch {
+    // Silently ignore: db driver may be incompatible (MySQL2 against PostgreSQL)
+  }
 }
 
 export const managementRouter = router({
