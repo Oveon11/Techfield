@@ -35,6 +35,7 @@ import { trpc } from "@/lib/trpc";
 import {
   BookOpen,
   Camera,
+  ClipboardList,
   Download,
   FolderOpen,
   Pencil,
@@ -42,6 +43,7 @@ import {
   StickyNote,
   Trash2,
   Upload,
+  Wrench,
 } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -49,6 +51,66 @@ import { toast } from "sonner";
 // ============================================================
 // Types & constantes
 // ============================================================
+
+type InterventionType = "installation" | "maintenance" | "depannage" | "inspection" | "urgence" | "autre";
+type InterventionPriority = "basse" | "normale" | "haute" | "urgente";
+type InterventionStatus = "planifiee" | "en_cours" | "terminee" | "annulee";
+
+type InterventionItem = {
+  id: number;
+  reference: string;
+  title: string;
+  interventionType: string;
+  priority: string;
+  status: string;
+  technicianId: number | null;
+  technicianName: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  completedAt: string | null;
+  description: string | null;
+  report: string | null;
+  internalNotes: string | null;
+};
+
+const INTERVENTION_TYPE_OPTIONS: { value: InterventionType; label: string }[] = [
+  { value: "installation", label: "Installation" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "depannage", label: "Dépannage" },
+  { value: "inspection", label: "Inspection" },
+  { value: "urgence", label: "Urgence" },
+  { value: "autre", label: "Autre" },
+];
+
+const INTERVENTION_PRIORITY_OPTIONS: { value: InterventionPriority; label: string; tone: string }[] = [
+  { value: "basse", label: "Basse", tone: "bg-slate-500/10 text-slate-600 border-slate-200" },
+  { value: "normale", label: "Normale", tone: "bg-blue-500/10 text-blue-700 border-blue-200" },
+  { value: "haute", label: "Haute", tone: "bg-orange-500/10 text-orange-700 border-orange-200" },
+  { value: "urgente", label: "Urgente", tone: "bg-rose-500/10 text-rose-700 border-rose-200" },
+];
+
+const INTERVENTION_STATUS_OPTIONS: { value: InterventionStatus; label: string; tone: string }[] = [
+  { value: "planifiee", label: "Planifiée", tone: "bg-blue-500/10 text-blue-700 border-blue-200" },
+  { value: "en_cours", label: "En cours", tone: "bg-amber-500/10 text-amber-700 border-amber-200" },
+  { value: "terminee", label: "Terminée", tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200" },
+  { value: "annulee", label: "Annulée", tone: "bg-slate-500/10 text-slate-500 border-slate-200" },
+];
+
+function intervenStatusTone(status: string): string {
+  return INTERVENTION_STATUS_OPTIONS.find(o => o.value === status)?.tone ?? "bg-slate-500/10 text-slate-500 border-slate-200";
+}
+function priorityTone(priority: string): string {
+  return INTERVENTION_PRIORITY_OPTIONS.find(o => o.value === priority)?.tone ?? "bg-slate-500/10 text-slate-500 border-slate-200";
+}
+function typeLabel(type: string): string {
+  return INTERVENTION_TYPE_OPTIONS.find(o => o.value === type)?.label ?? type;
+}
+function statusLabel(status: string): string {
+  return INTERVENTION_STATUS_OPTIONS.find(o => o.value === status)?.label ?? status;
+}
+function priorityLabel(priority: string): string {
+  return INTERVENTION_PRIORITY_OPTIONS.find(o => o.value === priority)?.label ?? priority;
+}
 
 type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note";
 type MediaType = "photo" | "video";
@@ -999,6 +1061,523 @@ export function ProjectDocumentsPanel({ projectId, canManage }: { projectId: num
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// Interventions
+// ============================================================
+
+type InterventionCreateForm = {
+  title: string;
+  interventionType: InterventionType;
+  priority: InterventionPriority;
+  technicianId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  description: string;
+};
+
+const INITIAL_INT_FORM: InterventionCreateForm = {
+  title: "",
+  interventionType: "maintenance",
+  priority: "normale",
+  technicianId: "",
+  scheduledStartAt: "",
+  scheduledEndAt: "",
+  description: "",
+};
+
+export function ProjectInterventionsPanel({
+  projectId,
+  clientId,
+  siteId,
+  canManage,
+}: {
+  projectId: number;
+  clientId: number;
+  siteId: number | null;
+  canManage: boolean;
+}) {
+  const utils = trpc.useUtils();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<InterventionCreateForm>(INITIAL_INT_FORM);
+  const [selected, setSelected] = useState<InterventionItem | null>(null);
+  const [reportForm, setReportForm] = useState({ report: "", internalNotes: "" });
+  const [editStatusValue, setEditStatusValue] = useState<string>("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const listQuery = trpc.management.interventions.listByProject.useQuery({ projectId });
+  const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: canManage });
+  const mediaQuery = trpc.management.interventions.listMedia.useQuery(
+    { interventionId: selected?.id ?? 0 },
+    { enabled: !!selected }
+  );
+
+  const invalidate = async () => {
+    await utils.management.interventions.listByProject.invalidate({ projectId });
+  };
+
+  const createMutation = trpc.management.interventions.create.useMutation({
+    onSuccess: async () => {
+      toast.success("Intervention créée.");
+      setCreateOpen(false);
+      setCreateForm(INITIAL_INT_FORM);
+      await invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateStatusMutation = trpc.management.interventions.updateStatus.useMutation({
+    onSuccess: async () => {
+      toast.success("Statut mis à jour.");
+      setSelected((prev) => (prev ? { ...prev, status: editStatusValue } : null));
+      await invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateReportMutation = trpc.management.interventions.updateReport.useMutation({
+    onSuccess: async () => {
+      toast.success("Compte-rendu sauvegardé.");
+      await invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const createUploadUrl = trpc.management.interventions.createMediaUploadUrl.useMutation();
+  const registerMedia = trpc.management.interventions.registerMedia.useMutation({
+    onSuccess: async () => {
+      await utils.management.interventions.listMedia.invalidate({ interventionId: selected?.id });
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const deleteMedia = trpc.management.interventions.deleteMedia.useMutation({
+    onSuccess: async () => {
+      toast.success("Photo supprimée.");
+      await utils.management.interventions.listMedia.invalidate({ interventionId: selected?.id });
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  function openDetail(item: InterventionItem) {
+    setSelected(item);
+    setReportForm({ report: item.report ?? "", internalNotes: item.internalNotes ?? "" });
+    setEditStatusValue(item.status);
+  }
+
+  async function handlePhotoUpload(file: File) {
+    if (!selected) return;
+    setUploadingPhoto(true);
+    try {
+      const upload = await createUploadUrl.mutateAsync({
+        interventionId: selected.id,
+        fileName: file.name,
+        mimeType: file.type,
+      });
+      const res = await fetch(upload.signedUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!res.ok) throw new Error("Échec de l'upload.");
+      await registerMedia.mutateAsync({
+        interventionId: selected.id,
+        fileName: file.name,
+        fileKey: upload.fileKey,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        caption: null,
+      });
+      toast.success("Photo ajoutée.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur upload.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  const interventionsList = listQuery.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-5 w-5 text-muted-foreground" />
+          <h3 className="font-semibold text-foreground">
+            Interventions{interventionsList.length > 0 ? ` (${interventionsList.length})` : ""}
+          </h3>
+        </div>
+        {canManage && (
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Nouvelle intervention
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Nouvelle intervention</DialogTitle>
+                <DialogDescription>Planifiez une intervention sur ce chantier.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label>Intitulé *</Label>
+                  <Input
+                    placeholder="Ex. : Maintenance climatisation"
+                    value={createForm.title}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, title: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Type</Label>
+                    <Select
+                      value={createForm.interventionType}
+                      onValueChange={(v) => setCreateForm((p) => ({ ...p, interventionType: v as InterventionType }))}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {INTERVENTION_TYPE_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Priorité</Label>
+                    <Select
+                      value={createForm.priority}
+                      onValueChange={(v) => setCreateForm((p) => ({ ...p, priority: v as InterventionPriority }))}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {INTERVENTION_PRIORITY_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Technicien</Label>
+                  <Select
+                    value={createForm.technicianId || "none"}
+                    onValueChange={(v) => setCreateForm((p) => ({ ...p, technicianId: v === "none" ? "" : v }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Non assigné" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Non assigné</SelectItem>
+                      {(techniciansQuery.data ?? []).map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>
+                          {t.firstName} {t.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Date de début</Label>
+                    <Input
+                      type="datetime-local"
+                      value={createForm.scheduledStartAt}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, scheduledStartAt: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Date de fin</Label>
+                    <Input
+                      type="datetime-local"
+                      value={createForm.scheduledEndAt}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, scheduledEndAt: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Description</Label>
+                  <Textarea
+                    placeholder="Contexte, consignes…"
+                    rows={3}
+                    value={createForm.description}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button>
+                <Button
+                  disabled={!createForm.title.trim() || createMutation.isPending}
+                  onClick={() =>
+                    createMutation.mutate({
+                      clientId,
+                      siteId: siteId ?? undefined,
+                      projectId,
+                      title: createForm.title.trim(),
+                      interventionType: createForm.interventionType,
+                      priority: createForm.priority,
+                      technicianId: createForm.technicianId ? Number(createForm.technicianId) : null,
+                      scheduledStartAt: createForm.scheduledStartAt || null,
+                      scheduledEndAt: createForm.scheduledEndAt || null,
+                      description: createForm.description || null,
+                    })
+                  }
+                >
+                  {createMutation.isPending ? "Création…" : "Créer"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+
+      {/* Liste */}
+      {listQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground py-4">Chargement…</p>
+      ) : interventionsList.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+            <Wrench className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-muted-foreground">Aucune intervention</p>
+            <p className="text-xs text-muted-foreground">
+              {canManage ? "Créez la première via le bouton ci-dessus." : "Aucune intervention planifiée pour ce chantier."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {interventionsList.map((item) => (
+            <Card
+              key={item.id}
+              className="cursor-pointer hover:border-primary/40 transition-colors"
+              onClick={() => openDetail(item)}
+            >
+              <CardContent className="flex items-center gap-4 py-3">
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs text-muted-foreground">{item.reference}</span>
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${intervenStatusTone(item.status)}`}>
+                      {statusLabel(item.status)}
+                    </span>
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${priorityTone(item.priority)}`}>
+                      {priorityLabel(item.priority)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{typeLabel(item.interventionType)}</span>
+                  </div>
+                  <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {item.scheduledStartAt && (
+                      <span>{new Date(item.scheduledStartAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</span>
+                    )}
+                    {item.technicianName && <span>{item.technicianName}</span>}
+                  </div>
+                </div>
+                <Pencil className="h-4 w-4 text-muted-foreground shrink-0" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Dialog détail / compte-rendu */}
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-sm text-muted-foreground">{selected.reference}</span>
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${intervenStatusTone(selected.status)}`}>
+                    {statusLabel(selected.status)}
+                  </span>
+                </DialogTitle>
+                <DialogDescription className="text-base font-semibold text-foreground">{selected.title}</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-2">
+                {/* Infos */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Type</p>
+                    <p className="font-medium">{typeLabel(selected.interventionType)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Priorité</p>
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${priorityTone(selected.priority)}`}>
+                      {priorityLabel(selected.priority)}
+                    </span>
+                  </div>
+                  {selected.scheduledStartAt && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Début planifié</p>
+                      <p className="font-medium">{new Date(selected.scheduledStartAt).toLocaleString("fr-FR")}</p>
+                    </div>
+                  )}
+                  {selected.scheduledEndAt && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Fin planifiée</p>
+                      <p className="font-medium">{new Date(selected.scheduledEndAt).toLocaleString("fr-FR")}</p>
+                    </div>
+                  )}
+                  {selected.technicianName && (
+                    <div className="col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Technicien</p>
+                      <p className="font-medium">{selected.technicianName}</p>
+                    </div>
+                  )}
+                  {selected.description && (
+                    <div className="col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Description</p>
+                      <p className="whitespace-pre-wrap">{selected.description}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Changement de statut */}
+                <div className="space-y-2 border-t pt-4">
+                  <p className="text-sm font-semibold">Statut</p>
+                  <div className="flex items-center gap-2">
+                    <Select value={editStatusValue} onValueChange={setEditStatusValue}>
+                      <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {INTERVENTION_STATUS_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      disabled={editStatusValue === selected.status || updateStatusMutation.isPending}
+                      onClick={() =>
+                        updateStatusMutation.mutate({
+                          interventionId: selected.id,
+                          status: editStatusValue as InterventionStatus,
+                        })
+                      }
+                    >
+                      {updateStatusMutation.isPending ? "…" : "Enregistrer"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Compte-rendu */}
+                <div className="space-y-3 border-t pt-4">
+                  <p className="text-sm font-semibold">Compte-rendu</p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Travaux effectués</Label>
+                    <Textarea
+                      rows={4}
+                      placeholder="Décrivez les travaux réalisés…"
+                      value={reportForm.report}
+                      onChange={(e) => setReportForm((p) => ({ ...p, report: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Notes internes</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Notes pour l'équipe (non visible par le client)…"
+                      value={reportForm.internalNotes}
+                      onChange={(e) => setReportForm((p) => ({ ...p, internalNotes: e.target.value }))}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={updateReportMutation.isPending}
+                    onClick={() =>
+                      updateReportMutation.mutate({
+                        interventionId: selected.id,
+                        report: reportForm.report || null,
+                        internalNotes: reportForm.internalNotes || null,
+                      })
+                    }
+                  >
+                    {updateReportMutation.isPending ? "Sauvegarde…" : "Sauvegarder le compte-rendu"}
+                  </Button>
+                </div>
+
+                {/* Photos */}
+                <div className="space-y-3 border-t pt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">Photos</p>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        disabled={uploadingPhoto}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handlePhotoUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button size="sm" variant="outline" disabled={uploadingPhoto} asChild>
+                        <span className="flex items-center gap-1.5">
+                          <Camera className="h-4 w-4" />
+                          {uploadingPhoto ? "Upload…" : "Ajouter une photo"}
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+                  {mediaQuery.isLoading ? (
+                    <p className="text-xs text-muted-foreground">Chargement photos…</p>
+                  ) : (mediaQuery.data ?? []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Aucune photo pour cette intervention.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {(mediaQuery.data ?? []).map((photo) => (
+                        <div key={photo.id} className="relative group rounded-md overflow-hidden border bg-muted aspect-video">
+                          {photo.signedUrl ? (
+                            <img
+                              src={photo.signedUrl}
+                              alt={photo.caption ?? photo.fileName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center">
+                              <Camera className="h-6 w-6 text-muted-foreground/40" />
+                            </div>
+                          )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="destructive"
+                                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer cette photo ?</AlertDialogTitle>
+                                <AlertDialogDescription>Le fichier sera supprimé du stockage.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteMedia.mutate({ id: photo.id })}
+                                  className="bg-rose-600 text-white hover:bg-rose-700"
+                                >
+                                  Supprimer
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

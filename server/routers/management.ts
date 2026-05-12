@@ -56,6 +56,15 @@ import {
   updateProjectJournalEntry,
   updateProjectMemo,
 } from "../integrations/supabase/db/chantier-features";
+import {
+  createInterventionMediaUploadUrl,
+  deleteInterventionMedia,
+  listInterventionMedia,
+  listInterventionsByProject,
+  registerInterventionMedia,
+  updateIntervention,
+  updateInterventionReport,
+} from "../integrations/supabase/db/intervention-features";
 import { SUPABASE_ENV } from "../integrations/supabase/env";
 import { storagePut } from "../storage";
 
@@ -179,6 +188,38 @@ const interventionStatusUpdateSchema = z.object({
   interventionId: z.number().int().positive(),
   status: z.enum(["planifiee", "assignee", "en_cours", "rapport_a_faire", "terminee", "annulee"]),
   report: z.string().optional().nullable(),
+});
+
+const updateInterventionSchema = z.object({
+  interventionId: z.number().int().positive(),
+  title: z.string().min(3),
+  interventionType: z.enum(["installation", "maintenance", "depannage", "inspection", "urgence", "autre"]),
+  priority: z.enum(["basse", "normale", "haute", "urgente"]),
+  technicianId: z.number().int().positive().optional().nullable(),
+  scheduledStartAt: z.string().optional().nullable(),
+  scheduledEndAt: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+});
+
+const updateInterventionReportSchema = z.object({
+  interventionId: z.number().int().positive(),
+  report: z.string().optional().nullable(),
+  internalNotes: z.string().optional().nullable(),
+});
+
+const interventionMediaUploadSchema = z.object({
+  interventionId: z.number().int().positive(),
+  fileName: z.string().min(1),
+  mimeType: z.string().min(1),
+});
+
+const registerInterventionMediaSchema = z.object({
+  interventionId: z.number().int().positive(),
+  caption: z.string().optional().nullable(),
+  fileName: z.string().min(1),
+  fileKey: z.string().min(1),
+  mimeType: z.string().min(1),
+  sizeBytes: z.number().int().optional().nullable(),
 });
 
 const uploadDocumentSchema = z.object({
@@ -1108,6 +1149,74 @@ export const managementRouter = router({
             scope.user.role === "technicien" && scope.technicianProfile ? eq(interventions.technicianId, scope.technicianProfile.id) : undefined,
           ))
           .orderBy(desc(interventions.completedAt), desc(interventions.createdAt));
+      }),
+    listByProject: protectedProcedure
+      .input(z.object({ projectId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          return await listInterventionsByProject(scope, input.projectId);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur liste interventions." });
+        }
+      }),
+    update: adminProcedure.input(updateInterventionSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        const result = await updateIntervention(scope, input);
+        const db = await requireDb();
+        await logActivity(db, ctx.user.id, "intervention", input.interventionId, "intervention.updated", `Intervention modifiée: ${input.title}`);
+        return result;
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour intervention." });
+      }
+    }),
+    updateReport: protectedProcedure.input(updateInterventionReportSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        const result = await updateInterventionReport(scope, input);
+        const db = await requireDb();
+        await logActivity(db, ctx.user.id, "intervention", input.interventionId, "intervention.updated", "Compte-rendu mis à jour.");
+        return result;
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour compte-rendu." });
+      }
+    }),
+    createMediaUploadUrl: protectedProcedure.input(interventionMediaUploadSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await createInterventionMediaUploadUrl(scope, input);
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur création URL upload." });
+      }
+    }),
+    registerMedia: protectedProcedure.input(registerInterventionMediaSchema).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await registerInterventionMedia(scope, input);
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur enregistrement média." });
+      }
+    }),
+    listMedia: protectedProcedure
+      .input(z.object({ interventionId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          return await listInterventionMedia(scope, input.interventionId);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur liste médias." });
+        }
+      }),
+    deleteMedia: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          return await deleteInterventionMedia(scope, input.id);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur suppression média." });
+        }
       }),
   }),
 

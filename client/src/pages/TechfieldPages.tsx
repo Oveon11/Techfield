@@ -63,10 +63,11 @@ import { ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
 import {
+  ProjectDocumentsPanel,
+  ProjectInterventionsPanel,
   ProjectJournalPanel,
   ProjectMediaPanel,
   ProjectMemosPanel,
-  ProjectDocumentsPanel,
 } from "./ProjectDetailTabs";
 
 function AppShell({ children }: { children: ReactNode }) {
@@ -1108,7 +1109,10 @@ export function ProjectDetailPage() {
     { projectId },
     { enabled: validId },
   );
-  const interventionsQuery = trpc.management.interventions.list.useQuery();
+  const interventionsQuery = trpc.management.interventions.history.useQuery(
+    { projectId },
+    { enabled: validId },
+  );
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
@@ -1154,10 +1158,7 @@ export function ProjectDetailPage() {
     });
   }, [projectQuery.data]);
 
-  const linkedInterventions = useMemo(() => {
-    if (!validId) return [];
-    return (interventionsQuery.data ?? []).filter(item => item.projectId === projectId);
-  }, [interventionsQuery.data, projectId, validId]);
+  const linkedInterventions = interventionsQuery.data ?? [];
 
   if (!validId) {
     return (
@@ -1384,47 +1385,12 @@ export function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="interventions" className="mt-6">
-            <SurfaceCard>
-              <CardHeader>
-                <CardTitle>Interventions rattachées</CardTitle>
-                <CardDescription>Liste des opérations terrain associées à ce chantier.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {interventionsQuery.isLoading ? (
-                  <p className="text-sm text-muted-foreground">Chargement…</p>
-                ) : linkedInterventions.length ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Référence</TableHead>
-                        <TableHead>Intitulé</TableHead>
-                        <TableHead>Statut</TableHead>
-                        <TableHead>Date planifiée</TableHead>
-                        <TableHead>Technicien</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {linkedInterventions.map(item => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-mono text-xs">{item.reference}</TableCell>
-                          <TableCell>{item.title}</TableCell>
-                          <TableCell><StatusBadge value={item.status} /></TableCell>
-                          <TableCell>
-                            {item.scheduledStartAt ? new Date(item.scheduledStartAt).toLocaleString() : "—"}
-                          </TableCell>
-                          <TableCell>{item.technicianName || "—"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <EmptyState
-                    title="Aucune intervention liée"
-                    description="Créez une intervention depuis l'onglet Interventions en la rattachant à ce chantier."
-                  />
-                )}
-              </CardContent>
-            </SurfaceCard>
+            <ProjectInterventionsPanel
+              projectId={project.id}
+              clientId={project.clientId}
+              siteId={project.siteId ?? null}
+              canManage={canManage}
+            />
           </TabsContent>
 
           <TabsContent value="journal" className="mt-6">
