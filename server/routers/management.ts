@@ -57,6 +57,7 @@ import {
   updateProjectMemo,
 } from "../integrations/supabase/db/chantier-features";
 import {
+  createIntervention,
   createInterventionMediaUploadUrl,
   deleteInterventionMedia,
   listInterventionMedia,
@@ -64,6 +65,7 @@ import {
   registerInterventionMedia,
   updateIntervention,
   updateInterventionReport,
+  updateInterventionStatus,
 } from "../integrations/supabase/db/intervention-features";
 import { SUPABASE_ENV } from "../integrations/supabase/env";
 import { storagePut } from "../storage";
@@ -1060,6 +1062,15 @@ export const managementRouter = router({
         .orderBy(asc(interventions.scheduledStartAt), desc(interventions.createdAt));
     }),
     create: adminProcedure.input(createInterventionSchema).mutation(async ({ ctx, input }) => {
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          const result = await createIntervention(scope, input, ctx.user.id);
+          return { success: true, id: result.id, reference: result.reference };
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur création intervention." });
+        }
+      }
       const db = await requireDb();
       const reference = makeReference("INT");
       const [created] = await db
@@ -1087,6 +1098,15 @@ export const managementRouter = router({
       return { success: true, id: createdId, reference };
     }),
     updateStatus: protectedProcedure.input(interventionStatusUpdateSchema).mutation(async ({ ctx, input }) => {
+      if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          await updateInterventionStatus(scope, input);
+          return { success: true };
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour statut." });
+        }
+      }
       const db = await requireDb();
       const scope = await getScope(ctx.user.openId);
 
@@ -1164,8 +1184,7 @@ export const managementRouter = router({
       const scope = await getScope(ctx.user.openId);
       try {
         const result = await updateIntervention(scope, input);
-        const db = await requireDb();
-        await logActivity(db, ctx.user.id, "intervention", input.interventionId, "intervention.updated", `Intervention modifiée: ${input.title}`);
+        getDb().then(db => logActivity(db, ctx.user.id, "intervention", input.interventionId, "intervention.updated", `Intervention modifiée: ${input.title}`)).catch(() => {});
         return result;
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour intervention." });
@@ -1175,8 +1194,7 @@ export const managementRouter = router({
       const scope = await getScope(ctx.user.openId);
       try {
         const result = await updateInterventionReport(scope, input);
-        const db = await requireDb();
-        await logActivity(db, ctx.user.id, "intervention", input.interventionId, "intervention.updated", "Compte-rendu mis à jour.");
+        getDb().then(db => logActivity(db, ctx.user.id, "intervention", input.interventionId, "intervention.updated", "Compte-rendu mis à jour.")).catch(() => {});
         return result;
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour compte-rendu." });

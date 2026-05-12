@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { createSupabaseAdminClient } from "./admin";
 
 type AccessRole = "admin" | "technicien" | "client";
@@ -293,6 +294,90 @@ export async function deleteInterventionMedia(scope: AccessScope, mediaId: numbe
     await supabase.storage.from(MEDIA_BUCKET).remove([fileKey]);
   }
   const { error } = await supabase.from("intervention_media").delete().eq("id", mediaId);
+  if (error) throw error;
+  return { ok: true as const };
+}
+
+// ============================================================
+// Création d'une intervention (admin)
+// ============================================================
+
+type CreateInterventionInput = {
+  clientId: number;
+  siteId?: number | null;
+  projectId?: number | null;
+  contractId?: number | null;
+  technicianId?: number | null;
+  title: string;
+  description?: string | null;
+  interventionType: string;
+  priority: string;
+  status: string;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+};
+
+export async function createIntervention(
+  scope: AccessScope,
+  input: CreateInterventionInput,
+  createdByUserId: number
+) {
+  if (scope.user.role !== "admin") {
+    throw new Error("Seul un administrateur peut créer une intervention.");
+  }
+  const reference = `INT-${nanoid(8).toUpperCase()}`;
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("interventions")
+    .insert({
+      reference,
+      client_id: input.clientId,
+      site_id: input.siteId ?? null,
+      project_id: input.projectId ?? null,
+      contract_id: input.contractId ?? null,
+      technician_id: input.technicianId ?? null,
+      title: input.title,
+      description: input.description ?? null,
+      intervention_type: input.interventionType,
+      priority: input.priority,
+      status: input.status,
+      scheduled_start_at: input.scheduledStartAt ?? null,
+      scheduled_end_at: input.scheduledEndAt ?? null,
+      created_by_user_id: createdByUserId,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return { id: Number((data as Record<string, unknown>).id), reference };
+}
+
+// ============================================================
+// Mise à jour du statut (admin ou technicien assigné)
+// ============================================================
+
+type UpdateInterventionStatusInput = {
+  interventionId: number;
+  status: string;
+  report?: string | null;
+};
+
+export async function updateInterventionStatus(
+  scope: AccessScope,
+  input: UpdateInterventionStatusInput
+) {
+  await assertInterventionAccess(scope, input.interventionId);
+  if (scope.user.role === "client") {
+    throw new Error("Le client ne peut pas modifier l'intervention.");
+  }
+  const supabase = createSupabaseAdminClient();
+  const updateData: Record<string, unknown> = { status: input.status };
+  if (input.report !== undefined) updateData.report = input.report ?? null;
+  if (input.status === "en_cours") updateData.started_at = new Date().toISOString();
+  if (input.status === "terminee") updateData.completed_at = new Date().toISOString();
+  const { error } = await supabase
+    .from("interventions")
+    .update(updateData)
+    .eq("id", input.interventionId);
   if (error) throw error;
   return { ok: true as const };
 }
