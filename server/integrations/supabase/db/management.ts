@@ -235,6 +235,25 @@ export async function getSupabaseClientsList(scope: AccessScope) {
   return (data ?? []).map((row: unknown) => mapClientRow(row as Record<string, unknown>));
 }
 
+export async function createSupabaseClientInline(input: { companyName: string; phone: string | null; billingAddress: string | null }) {
+  const supabase = createSupabaseAdminClient();
+
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      company_name: input.companyName,
+      phone: input.phone,
+      billing_address: input.billingAddress,
+      customer_type: "particulier",
+      is_active: true,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return { id: Number((data as Record<string, unknown>).id) };
+}
+
 export async function getSupabaseClientContactsList(scope: AccessScope) {
   const supabase = createSupabaseAdminClient();
 

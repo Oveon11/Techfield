@@ -92,6 +92,7 @@ function mapJournalRow(row: Record<string, unknown>) {
     title: (row.title as string | null | undefined) ?? null,
     content: String(row.content ?? ""),
     occurredAt: row.occurred_at ? new Date(String(row.occurred_at)).toISOString() : null,
+    pinned: Boolean(row.pinned ?? false),
     createdByUserId: row.created_by_user_id == null ? null : Number(row.created_by_user_id),
     createdByName: author ? String(author.name ?? "") : "",
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : null,
@@ -105,8 +106,9 @@ export async function listProjectJournalEntries(scope: AccessScope, projectId: n
 
   const { data, error } = await supabase
     .from("project_journal_entries")
-    .select("id, project_id, entry_type, title, content, occurred_at, created_by_user_id, created_at, updated_at, users:created_by_user_id(name)")
+    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users:created_by_user_id(name)")
     .eq("project_id", projectId)
+    .order("pinned", { ascending: false })
     .order("occurred_at", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -208,6 +210,68 @@ export async function deleteProjectJournalEntry(scope: AccessScope, entryId: num
 
   if (error) throw error;
   return { ok: true as const };
+}
+
+export async function togglePinJournalEntry(scope: AccessScope, entryId: number) {
+  const supabase = createSupabaseAdminClient();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("project_journal_entries")
+    .select("id, project_id, pinned")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) throw new Error("Entrée de journal introuvable.");
+
+  const row = existing as Record<string, unknown>;
+  await assertProjectAccess(scope, Number(row.project_id));
+
+  const newPinned = !Boolean(row.pinned ?? false);
+
+  const { error } = await supabase
+    .from("project_journal_entries")
+    .update({ pinned: newPinned })
+    .eq("id", entryId);
+
+  if (error) throw error;
+  return { ok: true as const, pinned: newPinned };
+}
+
+export async function listAllJournalEntries(scope: AccessScope) {
+  if (scope.user.role === "client") {
+    return [];
+  }
+  const supabase = createSupabaseAdminClient();
+
+  let baseQuery = supabase
+    .from("project_journal_entries")
+    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users:created_by_user_id(name), projects:project_id(name, reference)")
+    .order("pinned", { ascending: false })
+    .order("occurred_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (scope.user.role === "technicien" && scope.technicianProfile) {
+    const { data: assignments } = await supabase
+      .from("project_assignments")
+      .select("project_id")
+      .eq("technician_id", scope.technicianProfile.id);
+    const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
+    if (projectIds.length === 0) return [];
+    baseQuery = baseQuery.in("project_id", projectIds);
+  }
+
+  const { data, error } = await baseQuery;
+  if (error) throw error;
+
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
+    const project = (row.projects as Record<string, unknown> | null | undefined) ?? null;
+    return {
+      ...mapJournalRow(row),
+      projectName: project ? String(project.name ?? "") : "",
+      projectRef: project ? String(project.reference ?? "") : "",
+    };
+  });
 }
 
 // ============================================================
@@ -332,6 +396,41 @@ export async function deleteProjectMemo(scope: AccessScope, memoId: number) {
 
   if (error) throw error;
   return { ok: true as const };
+}
+
+export async function listAllMemos(scope: AccessScope) {
+  if (scope.user.role === "client") {
+    return [];
+  }
+  const supabase = createSupabaseAdminClient();
+
+  let baseQuery = supabase
+    .from("project_memos")
+    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users:created_by_user_id(name), projects:project_id(name, reference)")
+    .order("updated_at", { ascending: false })
+    .limit(200);
+
+  if (scope.user.role === "technicien" && scope.technicianProfile) {
+    const { data: assignments } = await supabase
+      .from("project_assignments")
+      .select("project_id")
+      .eq("technician_id", scope.technicianProfile.id);
+    const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
+    if (projectIds.length === 0) return [];
+    baseQuery = baseQuery.in("project_id", projectIds);
+  }
+
+  const { data, error } = await baseQuery;
+  if (error) throw error;
+
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
+    const project = (row.projects as Record<string, unknown> | null | undefined) ?? null;
+    return {
+      ...mapMemoRow(row),
+      projectName: project ? String(project.name ?? "") : "",
+      projectRef: project ? String(project.reference ?? "") : "",
+    };
+  });
 }
 
 // ============================================================

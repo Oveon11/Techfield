@@ -18,6 +18,7 @@ import {
 import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getDb, getUserAccessProfile } from "../db";
 import {
+  createSupabaseClientInline,
   createSupabaseProject,
   deleteSupabaseProject,
   getSupabaseCalendarEvents,
@@ -47,12 +48,15 @@ import {
   deleteProjectMemo,
   getProjectDocumentSignedUrl,
   getProjectMediaSignedUrl,
+  listAllJournalEntries,
+  listAllMemos,
   listProjectDocuments,
   listProjectJournalEntries,
   listProjectMedia,
   listProjectMemos,
   registerProjectDocument,
   registerProjectMedia,
+  togglePinJournalEntry,
   updateProjectJournalEntry,
   updateProjectMemo,
 } from "../integrations/supabase/db/chantier-features";
@@ -145,6 +149,23 @@ const createProjectSchema = z.object({
 
 const updateProjectSchema = createProjectSchema.extend({
   projectId: z.number().int().positive(),
+});
+
+const createProjectWithClientSchema = z.object({
+  clientName: z.string().min(1),
+  clientPhone: z.string().optional().nullable(),
+  clientAddress: z.string().optional().nullable(),
+  title: z.string().min(3),
+  serviceType: z.enum(["clim", "pac", "chauffe_eau", "pv", "vmc", "autre"]).default("autre"),
+  description: z.string().optional().nullable(),
+  status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]).default("planifie"),
+  progressPercent: z.number().int().min(0).max(100).default(0),
+  estimatedHours: z.string().default("0.00"),
+  actualHours: z.string().default("0.00"),
+  budgetAmount: z.string().default("0.00"),
+  startDate: z.string().optional().nullable(),
+  plannedEndDate: z.string().optional().nullable(),
+  technicianIds: z.array(z.number().int().positive()).default([]),
 });
 
 const createContractSchema = z.object({
@@ -853,6 +874,35 @@ export const managementRouter = router({
       await logActivity(db, ctx.user.id, "project", createdId, "project.created", `Chantier créé: ${reference}`);
       return { success: true, id: createdId, reference };
     }),
+    createWithClient: adminProcedure.input(createProjectWithClientSchema).mutation(async ({ ctx, input }) => {
+      if (!SUPABASE_ENV.isConfigured || !ctx.supabase) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cette fonctionnalité nécessite Supabase." });
+      }
+      const reference = makeReference("CH");
+      const clientResult = await createSupabaseClientInline({
+        companyName: input.clientName,
+        phone: input.clientPhone ?? null,
+        billingAddress: input.clientAddress ?? null,
+      });
+      const result = await createSupabaseProject({
+        reference,
+        clientId: clientResult.id,
+        siteId: null,
+        title: input.title,
+        serviceType: input.serviceType,
+        description: input.description ?? null,
+        status: input.status,
+        progressPercent: input.progressPercent,
+        estimatedHours: input.estimatedHours,
+        actualHours: input.actualHours,
+        budgetAmount: input.budgetAmount,
+        startDate: input.startDate ?? null,
+        plannedEndDate: input.plannedEndDate ?? null,
+        technicianIds: input.technicianIds,
+        createdByUserId: ctx.user.id,
+      });
+      return { success: true, id: result.id, reference, clientId: clientResult.id };
+    }),
     update: adminProcedure.input(updateProjectSchema).mutation(async ({ ctx, input }) => {
       if (SUPABASE_ENV.isConfigured && ctx.supabase) {
         await updateSupabaseProject({
@@ -1406,6 +1456,22 @@ export const managementRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression journal." });
       }
     }),
+    togglePin: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await togglePinJournalEntry(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur épinglage journal." });
+      }
+    }),
+    listAll: protectedProcedure.query(async ({ ctx }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listAllJournalEntries(scope);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur fil d'actualité." });
+      }
+    }),
   }),
 
   projectMemos: router({
@@ -1456,6 +1522,14 @@ export const managementRouter = router({
         return await deleteProjectMemo(scope, input.id);
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression mémo." });
+      }
+    }),
+    listAll: protectedProcedure.query(async ({ ctx }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listAllMemos(scope);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur liste mémos." });
       }
     }),
   }),

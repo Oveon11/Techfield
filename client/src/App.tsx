@@ -10,7 +10,9 @@ import {
   ContractsPage,
   DashboardPage,
   DocumentsPage,
+  FeedPage,
   InterventionsPage,
+  MemosGlobalPage,
   ProjectDetailPage,
   ProjectsPage,
   SitesPage,
@@ -21,6 +23,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={DashboardPage} />
+      <Route path="/fil-actualite" component={FeedPage} />
+      <Route path="/memos-globaux" component={MemosGlobalPage} />
       <Route path="/clients" component={ClientsPage} />
       <Route path="/sites" component={SitesPage} />
       <Route path="/chantiers" component={ProjectsPage} />

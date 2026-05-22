@@ -39,6 +39,7 @@ import {
   Download,
   FolderOpen,
   Pencil,
+  Pin,
   Plus,
   StickyNote,
   Trash2,
@@ -1642,6 +1643,10 @@ export function ProjectActivityFeedPanel({
     onSuccess: async () => { toast.success("Entrée supprimée."); await utils.management.projectJournal.list.invalidate({ projectId }); },
     onError: e => toast.error(e.message),
   });
+  const togglePin = trpc.management.projectJournal.togglePin.useMutation({
+    onSuccess: async (res) => { toast.success(res.pinned ? "Message épinglé." : "Message désépinglé."); await utils.management.projectJournal.list.invalidate({ projectId }); },
+    onError: e => toast.error(e.message),
+  });
 
   const createMediaUrl = trpc.management.projectMedia.createUploadUrl.useMutation();
   const registerMedia = trpc.management.projectMedia.register.useMutation();
@@ -1842,7 +1847,7 @@ export function ProjectActivityFeedPanel({
               const tone = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType)?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
               const label = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType)?.label ?? entry.entryType;
               return (
-                <Card key={`j-${entry.id}`} className="border-white/10 shadow-sm shadow-slate-950/5">
+                <Card key={`j-${entry.id}`} className={`shadow-sm shadow-slate-950/5 ${entry.pinned ? "border-primary/40 bg-primary/[0.03]" : "border-white/10"}`}>
                   <CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -1850,32 +1855,45 @@ export function ProjectActivityFeedPanel({
                           <BookOpen className="h-4 w-4 text-teal-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                            {entry.pinned && <Pin className="h-3 w-3 text-primary fill-primary" />}
+                            <span className="text-sm font-bold text-foreground">{entry.createdByName || "—"}</span>
+                            <span className="text-xs text-muted-foreground">{formatDateTime(entry.occurredAt ?? entry.createdAt)}</span>
                             <Badge className={`border ${tone} text-xs`}>{label}</Badge>
                             {entry.title && <span className="text-sm font-semibold text-foreground">{entry.title}</span>}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(entry.occurredAt ?? entry.createdAt)} · Par {entry.createdByName || "—"}</p>
-                          <p className="whitespace-pre-wrap text-sm leading-6 text-foreground mt-2">{entry.content}</p>
+                          <p className="whitespace-pre-wrap text-sm leading-6 text-foreground mt-1">{entry.content}</p>
                         </div>
                       </div>
                       {canManage && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-rose-700 hover:bg-rose-50">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
-                              <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Annuler</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => deleteJournal.mutate({ id: entry.id })} className="bg-rose-600 text-white hover:bg-rose-700">Supprimer</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${entry.pinned ? "text-primary hover:bg-primary/10" : "text-muted-foreground hover:bg-slate-100"}`}
+                            onClick={() => togglePin.mutate({ id: entry.id })}
+                            title={entry.pinned ? "Désépingler" : "Épingler"}
+                          >
+                            <Pin className={`h-3.5 w-3.5 ${entry.pinned ? "fill-primary" : ""}`} />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-700 hover:bg-rose-50">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
+                                <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteJournal.mutate({ id: entry.id })} className="bg-rose-600 text-white hover:bg-rose-700">Supprimer</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       )}
                     </div>
                   </CardContent>

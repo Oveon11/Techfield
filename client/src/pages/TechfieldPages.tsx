@@ -63,6 +63,7 @@ import {
   MapPin,
   MapPinned,
   MoreVertical,
+  Newspaper,
   Pencil,
   Search,
   ShieldCheck,
@@ -740,6 +741,40 @@ const INITIAL_PROJECT_FORM: ProjectFormState = {
   technicianIds: [],
 };
 
+type CreateWithClientFormState = {
+  clientName: string;
+  clientPhone: string;
+  clientAddress: string;
+  title: string;
+  serviceType: ProjectServiceType;
+  description: string;
+  status: ProjectStatus;
+  progressPercent: number;
+  estimatedHours: string;
+  actualHours: string;
+  budgetAmount: string;
+  startDate: string;
+  plannedEndDate: string;
+  technicianIds: number[];
+};
+
+const INITIAL_CREATE_FORM: CreateWithClientFormState = {
+  clientName: "",
+  clientPhone: "",
+  clientAddress: "",
+  title: "",
+  serviceType: "autre",
+  description: "",
+  status: "planifie",
+  progressPercent: 0,
+  estimatedHours: "0.00",
+  actualHours: "0.00",
+  budgetAmount: "0.00",
+  startDate: "",
+  plannedEndDate: "",
+  technicianIds: [],
+};
+
 const SERVICE_TYPE_OPTIONS: { value: ProjectServiceType; label: string }[] = [
   { value: "clim", label: "CLIM" },
   { value: "pac", label: "PAC" },
@@ -875,11 +910,11 @@ export function ProjectsPage() {
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
 
-  const createProject = trpc.management.projects.create.useMutation({
+  const createWithClient = trpc.management.projects.createWithClient.useMutation({
     onSuccess: async () => {
       toast.success("Chantier créé avec succès.");
       setCreateOpen(false);
-      setForm(INITIAL_PROJECT_FORM);
+      setCreateForm(INITIAL_CREATE_FORM);
       await invalidateAll();
     },
     onError: error => toast.error(error.message),
@@ -903,7 +938,7 @@ export function ProjectsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [form, setForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
+  const [createForm, setCreateForm] = useState<CreateWithClientFormState>(INITIAL_CREATE_FORM);
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
@@ -970,17 +1005,90 @@ export function ProjectsPage() {
                 <DialogContent className="sm:max-w-3xl">
                   <DialogHeader>
                     <DialogTitle>Nouveau chantier</DialogTitle>
-                    <DialogDescription>Créez un chantier et préparez immédiatement son affectation opérationnelle.</DialogDescription>
+                    <DialogDescription>Renseignez les informations client et les détails du chantier.</DialogDescription>
                   </DialogHeader>
-                  <ProjectFormFields form={form} setForm={setForm} clients={clients} sites={sites} technicians={technicians} />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Nom du client *</Label>
+                      <Input placeholder="Dupont Jean" value={createForm.clientName} onChange={e => setCreateForm(prev => ({ ...prev, clientName: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Téléphone client</Label>
+                      <Input placeholder="06 00 00 00 00" value={createForm.clientPhone} onChange={e => setCreateForm(prev => ({ ...prev, clientPhone: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Adresse client</Label>
+                      <Input placeholder="12 rue de la Paix, 75001 Paris" value={createForm.clientAddress} onChange={e => setCreateForm(prev => ({ ...prev, clientAddress: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2 border-t pt-4">
+                      <Label>Intitulé du chantier *</Label>
+                      <Input placeholder="Installation pompe à chaleur" value={createForm.title} onChange={e => setCreateForm(prev => ({ ...prev, title: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Type de service</Label>
+                      <Select value={createForm.serviceType} onValueChange={value => setCreateForm(prev => ({ ...prev, serviceType: value as ProjectServiceType }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {SERVICE_TYPE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Statut</Label>
+                      <Select value={createForm.status} onValueChange={value => setCreateForm(prev => ({ ...prev, status: value as ProjectStatus }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PROJECT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Début</Label>
+                      <Input type="date" value={createForm.startDate} onChange={e => setCreateForm(prev => ({ ...prev, startDate: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fin prévue</Label>
+                      <Input type="date" value={createForm.plannedEndDate} onChange={e => setCreateForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Description</Label>
+                      <Textarea value={createForm.description} onChange={e => setCreateForm(prev => ({ ...prev, description: e.target.value }))} />
+                    </div>
+                    {technicians.length ? (
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Techniciens à affecter</Label>
+                        <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 p-3">
+                          {technicians.map(tech => {
+                            const checked = createForm.technicianIds.includes(tech.id);
+                            return (
+                              <button
+                                key={tech.id}
+                                type="button"
+                                className={`rounded-full border px-3 py-1 text-sm ${checked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+                                onClick={() => setCreateForm(prev => ({
+                                  ...prev,
+                                  technicianIds: checked ? prev.technicianIds.filter(id => id !== tech.id) : [...prev.technicianIds, tech.id],
+                                }))}
+                              >
+                                {tech.firstName} {tech.lastName}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                   <DialogFooter>
                     <Button
-                      onClick={() => createProject.mutate({
-                        ...form,
-                        clientId: Number(form.clientId),
-                        siteId: form.siteId ? Number(form.siteId) : null,
+                      onClick={() => createWithClient.mutate({
+                        ...createForm,
+                        clientPhone: createForm.clientPhone || null,
+                        clientAddress: createForm.clientAddress || null,
+                        description: createForm.description || null,
+                        startDate: createForm.startDate || null,
+                        plannedEndDate: createForm.plannedEndDate || null,
                       })}
-                      disabled={createProject.isPending || !form.clientId || !form.title.trim()}
+                      disabled={createWithClient.isPending || !createForm.clientName.trim() || !createForm.title.trim()}
                     >
                       Enregistrer
                     </Button>
@@ -2699,9 +2807,102 @@ export function OverviewPage() {
   return <DashboardPage />;
 }
 
+function fmtDt(value: string | null | undefined) {
+  if (!value) return "";
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? value : d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+export function FeedPage() {
+  const feedQuery = trpc.management.projectJournal.listAll.useQuery();
+  const items = feedQuery.data ?? [];
+
+  return (
+    <AppShell>
+      <div className="space-y-6">
+        <PageHeader title="Fil d'actualité" description="Toutes les entrées de journal des chantiers, dans l'ordre chronologique." />
+        {feedQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : items.length === 0 ? (
+          <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucune entrée dans le journal.</CardContent></SurfaceCard>
+        ) : (
+          <div className="space-y-3">
+            {items.map(entry => (
+              <SurfaceCard key={entry.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        {entry.pinned && <BookOpen className="h-3 w-3 text-primary" />}
+                        <span className="text-sm font-bold text-foreground">{entry.createdByName || "—"}</span>
+                        <span className="text-xs text-muted-foreground">{fmtDt(entry.occurredAt ?? entry.createdAt)}</span>
+                        {entry.projectName && (
+                          <span className="text-xs text-muted-foreground">· {entry.projectName}</span>
+                        )}
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
+                    </div>
+                    <Link href={`/chantiers/${entry.projectId}`}>
+                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir chantier</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </SurfaceCard>
+            ))}
+          </div>
+        )}
+      </div>
+    </AppShell>
+  );
+}
+
+export function MemosGlobalPage() {
+  const memosQuery = trpc.management.projectMemos.listAll.useQuery();
+  const items = memosQuery.data ?? [];
+
+  return (
+    <AppShell>
+      <div className="space-y-6">
+        <PageHeader title="Mémos" description="Tous les mémos internes associés aux chantiers." />
+        {memosQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : items.length === 0 ? (
+          <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucun mémo enregistré.</CardContent></SurfaceCard>
+        ) : (
+          <div className="space-y-3">
+            {items.map(memo => (
+              <SurfaceCard key={memo.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-sm font-bold text-foreground">{memo.createdByName || "—"}</span>
+                        <span className="text-xs text-muted-foreground">{fmtDt(memo.updatedAt ?? memo.createdAt)}</span>
+                        {memo.projectName && (
+                          <span className="text-xs text-muted-foreground">· {memo.projectName}</span>
+                        )}
+                      </div>
+                      {memo.title && <p className="text-sm font-semibold text-foreground">{memo.title}</p>}
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground mt-0.5">{memo.content}</p>
+                    </div>
+                    <Link href={`/chantiers/${memo.projectId}`}>
+                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir chantier</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </SurfaceCard>
+            ))}
+          </div>
+        )}
+      </div>
+    </AppShell>
+  );
+}
+
 export const techfieldMenu = [
   { icon: LayoutDashboard, label: "Tableau de bord", path: "/" },
-  { icon: Building2, label: "Clients", path: "/clients" },
+  { icon: Newspaper, label: "Fil d'actualité", path: "/fil-actualite" },
+  { icon: StickyNote, label: "Mémos", path: "/memos-globaux" },
   { icon: MapPinned, label: "Sites", path: "/sites" },
   { icon: BriefcaseBusiness, label: "Chantiers", path: "/chantiers" },
   { icon: ClipboardCheck, label: "Contrats", path: "/contrats" },
