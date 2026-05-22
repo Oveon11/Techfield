@@ -79,6 +79,28 @@ function buildStorageKey(projectId: number, fileName: string, prefix: string): s
   return `projects/${projectId}/${prefix}/${ts}_${rand}_${sanitizeFileName(fileName)}`;
 }
 
+async function fetchUserNameMap(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  userIds: number[],
+): Promise<Map<number, string>> {
+  if (userIds.length === 0) return new Map();
+  const { data, error } = await supabase.from("users").select("id, name").in("id", userIds);
+  if (error) throw error;
+  const map = new Map<number, string>();
+  for (const u of (data ?? []) as Record<string, unknown>[]) {
+    map.set(Number(u.id), String(u.name ?? ""));
+  }
+  return map;
+}
+
+function uniqueIds(rows: Record<string, unknown>[], field: string): number[] {
+  const seen = new Map<number, true>();
+  for (const r of rows) {
+    if (r[field] != null) seen.set(Number(r[field]), true);
+  }
+  return Array.from(seen.keys());
+}
+
 // ============================================================
 // Journal d'étapes
 // ============================================================
@@ -106,14 +128,19 @@ export async function listProjectJournalEntries(scope: AccessScope, projectId: n
 
   const { data, error } = await supabase
     .from("project_journal_entries")
-    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users!created_by_user_id(name)")
+    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at")
     .eq("project_id", projectId)
     .order("pinned", { ascending: false })
     .order("occurred_at", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []).map((row) => mapJournalRow(row as Record<string, unknown>));
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const userMap = await fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id"));
+  return rows.map((row) => {
+    const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
+    return mapJournalRow({ ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null });
+  });
 }
 
 type CreateJournalInput = {
@@ -238,19 +265,10 @@ export async function togglePinJournalEntry(scope: AccessScope, entryId: number)
 }
 
 export async function listAllJournalEntries(scope: AccessScope) {
-  if (scope.user.role === "client") {
-    return [];
-  }
+  if (scope.user.role === "client") return [];
   const supabase = createSupabaseAdminClient();
 
-  let baseQuery = supabase
-    .from("project_journal_entries")
-    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users!created_by_user_id(name), projects!project_id(name, reference)")
-    .order("pinned", { ascending: false })
-    .order("occurred_at", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(200);
-
+  let projectFilter: number[] | null = null;
   if (scope.user.role === "technicien" && scope.technicianProfile) {
     const { data: assignments } = await supabase
       .from("project_assignments")
@@ -258,18 +276,43 @@ export async function listAllJournalEntries(scope: AccessScope) {
       .eq("technician_id", scope.technicianProfile.id);
     const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
     if (projectIds.length === 0) return [];
-    baseQuery = baseQuery.in("project_id", projectIds);
+    projectFilter = projectIds;
   }
 
-  const { data, error } = await baseQuery;
-  if (error) throw error;
+  let entriesQuery = supabase
+    .from("project_journal_entries")
+    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at")
+    .order("pinned", { ascending: false })
+    .order("occurred_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (projectFilter) entriesQuery = entriesQuery.in("project_id", projectFilter);
 
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
-    const project = (row.projects as Record<string, unknown> | null | undefined) ?? null;
+  const { data, error } = await entriesQuery;
+  if (error) throw error;
+  const rows = (data ?? []) as Record<string, unknown>[];
+
+  const [projectsRes, userMap] = await Promise.all([
+    uniqueIds(rows, "project_id").length > 0
+      ? supabase.from("projects").select("id, name, reference").in("id", uniqueIds(rows, "project_id"))
+      : { data: [] as unknown[], error: null },
+    fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
+  ]);
+  if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
+
+  const projectMap = new Map<number, { name: string; reference: string }>();
+  for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
+    projectMap.set(Number(p.id), { name: String(p.name ?? ""), reference: String(p.reference ?? "") });
+  }
+
+  return rows.map((row) => {
+    const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
+    const enriched = { ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null };
+    const project = projectMap.get(Number(row.project_id)) ?? null;
     return {
-      ...mapJournalRow(row),
-      projectName: project ? String(project.name ?? "") : "",
-      projectRef: project ? String(project.reference ?? "") : "",
+      ...mapJournalRow(enriched),
+      projectName: project?.name ?? "",
+      projectRef: project?.reference ?? "",
     };
   });
 }
@@ -302,12 +345,17 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_memos")
-    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users!created_by_user_id(name)")
+    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at")
     .eq("project_id", projectId)
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []).map((row) => mapMemoRow(row as Record<string, unknown>));
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const userMap = await fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id"));
+  return rows.map((row) => {
+    const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
+    return mapMemoRow({ ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null });
+  });
 }
 
 type CreateMemoInput = {
@@ -399,17 +447,10 @@ export async function deleteProjectMemo(scope: AccessScope, memoId: number) {
 }
 
 export async function listAllMemos(scope: AccessScope) {
-  if (scope.user.role === "client") {
-    return [];
-  }
+  if (scope.user.role === "client") return [];
   const supabase = createSupabaseAdminClient();
 
-  let baseQuery = supabase
-    .from("project_memos")
-    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users!created_by_user_id(name), projects!project_id(name, reference)")
-    .order("updated_at", { ascending: false })
-    .limit(200);
-
+  let projectFilter: number[] | null = null;
   if (scope.user.role === "technicien" && scope.technicianProfile) {
     const { data: assignments } = await supabase
       .from("project_assignments")
@@ -417,18 +458,41 @@ export async function listAllMemos(scope: AccessScope) {
       .eq("technician_id", scope.technicianProfile.id);
     const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
     if (projectIds.length === 0) return [];
-    baseQuery = baseQuery.in("project_id", projectIds);
+    projectFilter = projectIds;
   }
 
-  const { data, error } = await baseQuery;
-  if (error) throw error;
+  let memosQuery = supabase
+    .from("project_memos")
+    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  if (projectFilter) memosQuery = memosQuery.in("project_id", projectFilter);
 
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
-    const project = (row.projects as Record<string, unknown> | null | undefined) ?? null;
+  const { data, error } = await memosQuery;
+  if (error) throw error;
+  const rows = (data ?? []) as Record<string, unknown>[];
+
+  const [projectsRes, userMap] = await Promise.all([
+    uniqueIds(rows, "project_id").length > 0
+      ? supabase.from("projects").select("id, name, reference").in("id", uniqueIds(rows, "project_id"))
+      : { data: [] as unknown[], error: null },
+    fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
+  ]);
+  if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
+
+  const projectMap = new Map<number, { name: string; reference: string }>();
+  for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
+    projectMap.set(Number(p.id), { name: String(p.name ?? ""), reference: String(p.reference ?? "") });
+  }
+
+  return rows.map((row) => {
+    const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
+    const enriched = { ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null };
+    const project = projectMap.get(Number(row.project_id)) ?? null;
     return {
-      ...mapMemoRow(row),
-      projectName: project ? String(project.name ?? "") : "",
-      projectRef: project ? String(project.reference ?? "") : "",
+      ...mapMemoRow(enriched),
+      projectName: project?.name ?? "",
+      projectRef: project?.reference ?? "",
     };
   });
 }
@@ -467,13 +531,18 @@ export async function listProjectMedia(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_media")
-    .select("id, project_id, media_type, caption, file_name, file_key, mime_type, size_bytes, uploaded_by_user_id, created_at, users!uploaded_by_user_id(name)")
+    .select("id, project_id, media_type, caption, file_name, file_key, mime_type, size_bytes, uploaded_by_user_id, created_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
   const rows = (data ?? []) as Record<string, unknown>[];
-  return Promise.all(rows.map((row) => mapMediaRow(supabase, row)));
+  const userMap = await fetchUserNameMap(supabase, uniqueIds(rows, "uploaded_by_user_id"));
+  const enriched = rows.map((row) => {
+    const uid = row.uploaded_by_user_id == null ? null : Number(row.uploaded_by_user_id);
+    return { ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null };
+  });
+  return Promise.all(enriched.map((row) => mapMediaRow(supabase, row)));
 }
 
 type CreateMediaUploadInput = {
@@ -599,7 +668,7 @@ export async function listProjectDocuments(scope: AccessScope, projectId: number
 
   let query = supabase
     .from("documents")
-    .select("id, project_id, title, file_name, file_key, mime_type, document_type, visibility, uploaded_by_user_id, created_at, users!uploaded_by_user_id(name)")
+    .select("id, project_id, title, file_name, file_key, mime_type, document_type, visibility, uploaded_by_user_id, created_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
 
@@ -611,7 +680,12 @@ export async function listProjectDocuments(scope: AccessScope, projectId: number
   if (error) throw error;
 
   const rows = (data ?? []) as Record<string, unknown>[];
-  return Promise.all(rows.map((row) => mapProjectDocumentRow(supabase, row)));
+  const userMap = await fetchUserNameMap(supabase, uniqueIds(rows, "uploaded_by_user_id"));
+  const enriched = rows.map((row) => {
+    const uid = row.uploaded_by_user_id == null ? null : Number(row.uploaded_by_user_id);
+    return { ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null };
+  });
+  return Promise.all(enriched.map((row) => mapProjectDocumentRow(supabase, row)));
 }
 
 type CreateDocumentUploadInput = {
