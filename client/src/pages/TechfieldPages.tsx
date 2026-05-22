@@ -63,6 +63,7 @@ import { ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
 import {
+  ProjectActivityFeedPanel,
   ProjectDocumentsPanel,
   ProjectInterventionsPanel,
   ProjectJournalPanel,
@@ -1294,7 +1295,7 @@ export function ProjectDetailPage() {
           />
         </SectionGrid>
 
-        <Tabs defaultValue="infos">
+        <Tabs defaultValue="journal">
           <TabsList>
             <TabsTrigger value="infos">Infos</TabsTrigger>
             <TabsTrigger value="interventions">Interventions</TabsTrigger>
@@ -1394,7 +1395,12 @@ export function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="journal" className="mt-6">
-            <ProjectJournalPanel projectId={project.id} canManage={canManage} />
+            <ProjectActivityFeedPanel
+              projectId={project.id}
+              clientId={project.clientId}
+              siteId={project.siteId ?? null}
+              canManage={canManage}
+            />
           </TabsContent>
           <TabsContent value="medias" className="mt-6">
             <ProjectMediaPanel projectId={project.id} canManage={canManage} />
