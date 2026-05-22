@@ -1844,12 +1844,19 @@ export function ProjectActivityFeedPanel({
               return (
                 <Card key={`j-${entry.id}`} className="border-white/10 shadow-sm shadow-slate-950/5">
                   <CardContent className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <Badge className={`border ${tone} text-xs`}>{label}</Badge>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(entry.occurredAt ?? entry.createdAt)}</span>
-                        {entry.title && <span className="text-sm font-medium text-foreground">{entry.title}</span>}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-teal-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                          <BookOpen className="h-4 w-4 text-teal-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge className={`border ${tone} text-xs`}>{label}</Badge>
+                            {entry.title && <span className="text-sm font-semibold text-foreground">{entry.title}</span>}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(entry.occurredAt ?? entry.createdAt)} · Par {entry.createdByName || "—"}</p>
+                          <p className="whitespace-pre-wrap text-sm leading-6 text-foreground mt-2">{entry.content}</p>
+                        </div>
                       </div>
                       {canManage && (
                         <AlertDialog>
@@ -1871,8 +1878,6 @@ export function ProjectActivityFeedPanel({
                         </AlertDialog>
                       )}
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
-                    <p className="text-xs text-muted-foreground">Par {entry.createdByName || "—"}</p>
                   </CardContent>
                 </Card>
               );
