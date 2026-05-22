@@ -1277,6 +1277,7 @@ function generateFinDeChantierPDF(
   serviceLabel: string,
   statusLabel: string,
   signatureDataUrl: string | null,
+  logoDataUrl: string | null,
 ) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = 210;
@@ -1289,35 +1290,38 @@ function generateFinDeChantierPDF(
     return new Date(d).toLocaleDateString("fr-FR");
   };
 
-  // ── Logo zone (left) + Header band ──
-  const headerH = 32;
-  doc.setFillColor(37, 99, 235); // blue-600
+  // ── Header band ──
+  const headerH = 36;
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageW, headerH, "F");
+  doc.setDrawColor(226, 232, 240);
+  doc.line(0, headerH, pageW, headerH);
 
-  // Logo: blue rounded square with "T"
-  const logoX = margin;
+  // Logo OVEON (left)
   const logoY = 4;
-  const logoSize = 22;
-  doc.setFillColor(255, 255, 255, 0.15); // white semi-transparent
-  doc.roundedRect(logoX, logoY, logoSize, logoSize, 3, 3, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text("T", logoX + logoSize / 2, logoY + 15.5, { align: "center" });
+  const logoH = 26;
+  if (logoDataUrl) {
+    // Maintain aspect ratio: logo is roughly 3.5:1 wide
+    const logoW = logoH * 3.2;
+    doc.addImage(logoDataUrl, "PNG", margin, logoY, logoW, logoH);
+  } else {
+    // Fallback text
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(55, 65, 81);
+    doc.text("OVEON", margin, logoY + 18);
+  }
 
-  // Title
-  doc.setFontSize(13);
+  // Title block (right side)
+  doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(255, 255, 255);
-  doc.text("RAPPORT DE FIN DE CHANTIER", logoX + logoSize + 6, logoY + 9);
+  doc.setTextColor(30, 41, 59);
+  doc.text("RAPPORT DE FIN DE CHANTIER", colRight, logoY + 10, { align: "right" });
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text("Techfield — Gestion de chantier", logoX + logoSize + 6, logoY + 16);
-
-  // Date + ref (right)
-  doc.setFontSize(8);
-  doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, colRight, logoY + 9, { align: "right" });
-  doc.text(`Réf. ${project.reference}`, colRight, logoY + 16, { align: "right" });
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, colRight, logoY + 17, { align: "right" });
+  doc.text(`Réf. ${project.reference}`, colRight, logoY + 23, { align: "right" });
 
   y = headerH + 10;
 
@@ -1596,7 +1600,21 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   const [reserveText, setReserveText] = useState("");
   const [reservePhotos, setReservePhotos] = useState<string[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Preload OVEON logo once
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0);
+      setLogoDataUrl(canvas.toDataURL("image/png"));
+    };
+    img.src = "/oveon-logo.png";
+  }, []);
 
   const handlePhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -1615,7 +1633,7 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   const removePhoto = (i: number) => setReservePhotos(prev => prev.filter((_, idx) => idx !== i));
 
   const handleGenerate = () => {
-    generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl);
+    generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl, logoDataUrl);
     setOpen(false);
   };
 
