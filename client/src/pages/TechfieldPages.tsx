@@ -75,7 +75,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
 import {
@@ -1273,39 +1273,60 @@ function generateFinDeChantierPDF(
   project: FinDeChantierProject,
   avecReserve: boolean,
   reserveText: string,
+  reservePhotos: string[],
   serviceLabel: string,
   statusLabel: string,
+  signatureDataUrl: string | null,
 ) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = 210;
   const margin = 18;
   const colRight = pageW - margin;
-  let y = 20;
+  let y = 0;
 
   const fmt = (d: Date | string | null | undefined) => {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("fr-FR");
   };
 
-  // Header band
-  doc.setFillColor(30, 64, 175); // indigo-700
-  doc.rect(0, 0, pageW, 28, "F");
+  // ── Logo zone (left) + Header band ──
+  const headerH = 32;
+  doc.setFillColor(37, 99, 235); // blue-600
+  doc.rect(0, 0, pageW, headerH, "F");
+
+  // Logo: blue rounded square with "T"
+  const logoX = margin;
+  const logoY = 4;
+  const logoSize = 22;
+  doc.setFillColor(255, 255, 255, 0.15); // white semi-transparent
+  doc.roundedRect(logoX, logoY, logoSize, logoSize, 3, 3, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text("RAPPORT DE FIN DE CHANTIER", margin, 12);
-  doc.setFontSize(9);
+  doc.text("T", logoX + logoSize / 2, logoY + 15.5, { align: "center" });
+
+  // Title
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(255, 255, 255);
+  doc.text("RAPPORT DE FIN DE CHANTIER", logoX + logoSize + 6, logoY + 9);
+  doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, colRight, 12, { align: "right" });
-  doc.text(`Réf. ${project.reference}`, colRight, 20, { align: "right" });
-  y = 38;
+  doc.text("Techfield — Gestion de chantier", logoX + logoSize + 6, logoY + 16);
+
+  // Date + ref (right)
+  doc.setFontSize(8);
+  doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, colRight, logoY + 9, { align: "right" });
+  doc.text(`Réf. ${project.reference}`, colRight, logoY + 16, { align: "right" });
+
+  y = headerH + 10;
 
   // Helper: section title
   const sectionTitle = (label: string) => {
-    doc.setFillColor(241, 245, 249); // slate-100
+    doc.setFillColor(241, 245, 249);
     doc.rect(margin, y - 5, pageW - margin * 2, 9, "F");
-    doc.setTextColor(30, 41, 59); // slate-800
-    doc.setFontSize(10);
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.text(label.toUpperCase(), margin + 2, y + 0.5);
     y += 8;
@@ -1315,19 +1336,19 @@ function generateFinDeChantierPDF(
   const kv = (key: string, value: string) => {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(100, 116, 139); // slate-500
+    doc.setTextColor(100, 116, 139);
     doc.text(key, margin, y);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(15, 23, 42); // slate-900
+    doc.setTextColor(15, 23, 42);
     doc.text(value, margin + 48, y);
     y += 7;
   };
 
-  // Divider line
+  // Divider
   const divider = () => {
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, y - 1, colRight, y - 1);
-    y += 3;
+    y += 4;
   };
 
   // ── Section CHANTIER ──
@@ -1339,12 +1360,9 @@ function generateFinDeChantierPDF(
   kv("Site", project.siteName ?? "—");
   kv("Type de service", serviceLabel);
   kv("Statut", statusLabel);
-  kv("Avancement", `${project.progressPercent} %`);
   kv("Heures estimées", `${Number(project.estimatedHours).toFixed(0)} h`);
-  kv("Heures réalisées", `${Number(project.actualHours).toFixed(0)} h`);
   kv("Date de début", fmt(project.startDate));
-  kv("Date prévue de fin", fmt(project.plannedEndDate));
-  kv("Date réelle de fin", fmt(project.actualEndDate));
+  kv("Date de fin", fmt(project.plannedEndDate));
   divider();
 
   // Description
@@ -1356,7 +1374,7 @@ function generateFinDeChantierPDF(
     doc.setTextColor(15, 23, 42);
     const lines = doc.splitTextToSize(project.description, pageW - margin * 2);
     doc.text(lines, margin, y);
-    y += lines.length * 5 + 3;
+    y += (lines as string[]).length * 5 + 3;
     divider();
   }
 
@@ -1382,7 +1400,7 @@ function generateFinDeChantierPDF(
   }
   divider();
 
-  // ── Section RÉSERVES (conditional) ──
+  // ── Section RÉSERVES ──
   if (avecReserve) {
     sectionTitle("Réserves");
     y += 2;
@@ -1392,7 +1410,7 @@ function generateFinDeChantierPDF(
       doc.setTextColor(15, 23, 42);
       const lines = doc.splitTextToSize(reserveText.trim(), pageW - margin * 2);
       doc.text(lines, margin, y);
-      y += lines.length * 5 + 5;
+      y += (lines as string[]).length * 5 + 5;
     } else {
       doc.setFontSize(9);
       doc.setFont("helvetica", "italic");
@@ -1400,9 +1418,24 @@ function generateFinDeChantierPDF(
       doc.text("Aucune réserve notée.", margin, y);
       y += 7;
     }
+    // Photos des réserves (2 par ligne)
+    if (reservePhotos.length > 0) {
+      const imgW = (pageW - margin * 2 - 6) / 2;
+      const imgH = imgW * 0.7;
+      reservePhotos.forEach((dataUrl, i) => {
+        const col = i % 2;
+        if (col === 0 && i > 0) y += imgH + 4;
+        const x = margin + col * (imgW + 6);
+        // new page if needed
+        if (y + imgH > 270) { doc.addPage(); y = 20; }
+        doc.addImage(dataUrl, "JPEG", x, y, imgW, imgH);
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(x, y, imgW, imgH, "S");
+      });
+      y += imgH + 6;
+    }
     divider();
   } else {
-    // No-reserve attestation
     sectionTitle("Sans réserve");
     y += 2;
     doc.setFontSize(9);
@@ -1413,17 +1446,38 @@ function generateFinDeChantierPDF(
     divider();
   }
 
-  // Signature zone
-  y += 6;
-  doc.setFontSize(9);
+  // ── Signature zone ──
+  y += 4;
+  const sigBoxW = 78;
+  const sigBoxH = 28;
+  const sigClientX = margin;
+  const sigSocX = pageW / 2 + 4;
+
+  doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
-  doc.text("Signature du client :", margin, y);
-  doc.text("Cachet / Signature société :", pageW / 2 + 5, y);
-  y += 20;
-  doc.setDrawColor(100, 116, 139);
-  doc.line(margin, y, margin + 60, y);
-  doc.line(pageW / 2 + 5, y, pageW / 2 + 65, y);
+  doc.text("Signature du client :", sigClientX, y);
+  doc.text("Signature société :", sigSocX, y);
+  y += 3;
+
+  // Boxes
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(sigClientX, y, sigBoxW, sigBoxH, 2, 2, "S");
+  doc.roundedRect(sigSocX, y, sigBoxW, sigBoxH, 2, 2, "S");
+
+  // Embed company signature if provided
+  if (signatureDataUrl) {
+    doc.addImage(signatureDataUrl, "PNG", sigSocX + 2, y + 2, sigBoxW - 4, sigBoxH - 4);
+  }
+
+  y += sigBoxH + 4;
+
+  // Date fields under signatures
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Date : ____/____/________`, sigClientX, y);
+  doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, sigSocX, y);
 
   // Footer
   doc.setFontSize(7);
@@ -1434,6 +1488,104 @@ function generateFinDeChantierPDF(
   doc.save(`rapport-fin-chantier-${project.reference}.pdf`);
 }
 
+function SignaturePad({ onchange }: { onchange: (dataUrl: string | null) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const hasStrokes = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }, []);
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if ("touches" in e) {
+      return {
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY,
+      };
+    }
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  };
+
+  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    drawing.current = true;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    hasStrokes.current = true;
+  };
+
+  const endDraw = () => {
+    drawing.current = false;
+    if (hasStrokes.current && canvasRef.current) {
+      onchange(canvasRef.current.toDataURL("image/png"));
+    }
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasStrokes.current = false;
+    onchange(null);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-medium">Signature société</Label>
+        <button type="button" onClick={clear} className="text-xs text-muted-foreground underline hover:text-foreground">
+          Effacer
+        </button>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={160}
+        className="w-full rounded-lg border border-border bg-slate-50 touch-none cursor-crosshair"
+        style={{ height: "100px" }}
+        onMouseDown={startDraw}
+        onMouseMove={draw}
+        onMouseUp={endDraw}
+        onMouseLeave={endDraw}
+        onTouchStart={startDraw}
+        onTouchMove={draw}
+        onTouchEnd={endDraw}
+      />
+      <p className="text-xs text-muted-foreground">Dessinez votre signature dans la zone ci-dessus</p>
+    </div>
+  );
+}
+
 function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   project: FinDeChantierProject;
   serviceLabel: string;
@@ -1442,9 +1594,28 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   const [open, setOpen] = useState(false);
   const [avecReserve, setAvecReserve] = useState(false);
   const [reserveText, setReserveText] = useState("");
+  const [reservePhotos, setReservePhotos] = useState<string[]>([]);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        if (ev.target?.result) {
+          setReservePhotos(prev => [...prev, ev.target!.result as string]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const removePhoto = (i: number) => setReservePhotos(prev => prev.filter((_, idx) => idx !== i));
 
   const handleGenerate = () => {
-    generateFinDeChantierPDF(project, avecReserve, reserveText, serviceLabel, statusLabel);
+    generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl);
     setOpen(false);
   };
 
@@ -1456,7 +1627,7 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
           Rapport PDF
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Rapport de fin de chantier</DialogTitle>
           <DialogDescription>{project.reference} — {project.title}</DialogDescription>
@@ -1470,21 +1641,57 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
             <Switch checked={avecReserve} onCheckedChange={setAvecReserve} />
           </div>
           {avecReserve && (
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Détail des réserves</Label>
-              <Textarea
-                placeholder="Décrire les réserves constatées…"
-                value={reserveText}
-                onChange={e => setReserveText(e.target.value)}
-                rows={5}
-                className="resize-none text-sm"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Détail des réserves</Label>
+                <Textarea
+                  placeholder="Décrire les réserves constatées…"
+                  value={reserveText}
+                  onChange={e => setReserveText(e.target.value)}
+                  rows={4}
+                  className="resize-none text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Photos des réserves</Label>
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  >
+                    <ImageIcon className="h-3 w-3" />
+                    Ajouter des photos
+                  </button>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handlePhotos}
+                  />
+                </div>
+                {reservePhotos.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {reservePhotos.map((src, i) => (
+                      <div key={i} className="relative group">
+                        <img src={src} alt="" className="h-20 w-full rounded-md object-cover border border-border/60" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(i)}
+                          className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
-          <p className="text-xs text-muted-foreground">
-            Le PDF inclura les informations du chantier, les techniciens assignés
-            {avecReserve ? " et les réserves saisies" : " et une attestation sans réserve"}.
-          </p>
+          <SignaturePad onchange={setSignatureDataUrl} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
