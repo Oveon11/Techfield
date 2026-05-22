@@ -88,12 +88,12 @@ function AppShell({ children }: { children: ReactNode }) {
   return <DashboardLayout>{children}</DashboardLayout>;
 }
 
-function PageHeader({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
+function PageHeader({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col gap-4 border-b border-border/60 pb-6 md:flex-row md:items-end md:justify-between">
-      <div className="space-y-2">
+      <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">{title}</h1>
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        {description ? <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -203,7 +203,6 @@ export function DashboardPage() {
       <div className="space-y-6">
         <PageHeader
           title="Pilotage d'activité"
-          description="Vue consolidée des chantiers, interventions et contrats d’entretien, conçue pour offrir une lecture rapide de l’activité et des échéances à surveiller."
         />
 
         <SectionGrid>
@@ -368,7 +367,6 @@ export function ClientsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Clients"
-          description="Gestion centralisée des entreprises et donneurs d’ordre, avec leurs informations administratives et opérationnelles."
           action={
             permissions?.manageClients ? (
               <div className="flex flex-wrap gap-3">
@@ -613,7 +611,6 @@ export function SitesPage() {
       <div className="space-y-6">
         <PageHeader
           title="Sites"
-          description="Les sites rattachent les interventions au terrain réel, avec adresse, consignes d’accès et rattachement client."
           action={
             permissions?.manageSites ? (
               <Dialog>
@@ -995,18 +992,18 @@ export function ProjectsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Chantiers"
-          description="Création, suivi d’avancement, pilotage opérationnel et affectation des techniciens sur les dossiers terrain."
           action={
             canManage ? (
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogTrigger asChild>
                   <Button>Nouveau chantier</Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
+                <DialogContent className="sm:max-w-3xl flex flex-col max-h-[90dvh]">
                   <DialogHeader>
                     <DialogTitle>Nouveau chantier</DialogTitle>
                     <DialogDescription>Renseignez les informations client et les détails du chantier.</DialogDescription>
                   </DialogHeader>
+                  <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-2">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2 md:col-span-2">
                       <Label>Nom du client *</Label>
@@ -1078,7 +1075,8 @@ export function ProjectsPage() {
                       </div>
                     ) : null}
                   </div>
-                  <DialogFooter>
+                  </div>
+                  <DialogFooter className="pt-2 border-t border-border/60">
                     <Button
                       onClick={() => createWithClient.mutate({
                         ...createForm,
@@ -1470,23 +1468,23 @@ export function ProjectDetailPage() {
         </div>
 
         <Tabs defaultValue="journal">
-          <TabsList className="h-auto flex-wrap gap-0.5 rounded-xl bg-slate-100/80 p-1">
-            <TabsTrigger value="journal" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+          <TabsList className="h-auto w-full overflow-x-auto flex-nowrap gap-0.5 rounded-xl bg-slate-100/80 p-1 justify-start">
+            <TabsTrigger value="journal" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <BookOpen className="h-3.5 w-3.5" />Journal
             </TabsTrigger>
-            <TabsTrigger value="medias" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="medias" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <ImageIcon className="h-3.5 w-3.5" />Médias
             </TabsTrigger>
-            <TabsTrigger value="memos" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="memos" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <StickyNote className="h-3.5 w-3.5" />Mémos
             </TabsTrigger>
-            <TabsTrigger value="interventions" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="interventions" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <Wrench className="h-3.5 w-3.5" />Interventions
             </TabsTrigger>
-            <TabsTrigger value="documents" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="documents" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <FileText className="h-3.5 w-3.5" />Documents
             </TabsTrigger>
-            <TabsTrigger value="infos" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+            <TabsTrigger value="infos" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <Info className="h-3.5 w-3.5" />Infos
             </TabsTrigger>
           </TabsList>
@@ -1687,7 +1685,6 @@ export function ContractsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Contrats d'entretien"
-          description="Création, renouvellement et suivi des échéances contractuelles pour la maintenance préventive et les visites périodiques."
           action={
             permissions?.manageContracts ? (
               <Dialog>
@@ -2006,7 +2003,6 @@ export function InterventionsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Interventions"
-          description="Planification, affectation terrain, suivi d’exécution et historisation des opérations techniques."
           action={
             permissions?.manageInterventions ? (
               <Dialog>
@@ -2315,7 +2311,6 @@ export function TeamPage() {
       <div className="space-y-6">
         <PageHeader
           title="Techniciens et disponibilités"
-          description="Pilotage de l’équipe opérationnelle, des compétences et des créneaux de disponibilité terrain."
           action={
             permissions?.manageTechnicians ? (
               <div className="flex flex-wrap gap-3">
@@ -2514,7 +2509,6 @@ export function CalendarPage() {
       <div className="space-y-6">
         <PageHeader
           title="Calendrier opérationnel"
-          description="Vue regroupée des interventions programmées et des maintenances prévues par contrat."
         />
 
         <SurfaceCard>
@@ -2644,7 +2638,6 @@ export function DocumentsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Documents et photos"
-          description="Téléversez et consultez rapports, photos de chantier et pièces contractuelles dans un stockage centralisé et sécurisé."
           action={
             permissions?.documents ? (
               <Dialog>
@@ -2820,7 +2813,7 @@ export function FeedPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <PageHeader title="Fil d'actualité" description="Toutes les entrées de journal des chantiers, dans l'ordre chronologique." />
+        <PageHeader title="Fil d'actualité" />
         {feedQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
         ) : items.length === 0 ? (
@@ -2863,7 +2856,7 @@ export function MemosGlobalPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <PageHeader title="Mémos" description="Tous les mémos internes associés aux chantiers." />
+        <PageHeader title="Mémos" />
         {memosQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
         ) : items.length === 0 ? (
