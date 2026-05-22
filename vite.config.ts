@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { VitePWA } from "vite-plugin-pwa";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -156,6 +157,28 @@ const plugins = [
   react(),
   tailwindcss(),
   jsxLocPlugin(),
+  VitePWA({
+    registerType: "autoUpdate",
+    includeAssets: ["icon.svg"],
+    manifest: {
+      name: "Techfield",
+      short_name: "Techfield",
+      description: "Gestion de chantiers et interventions terrain",
+      theme_color: "#2563EB",
+      background_color: "#0D1526",
+      display: "standalone",
+      orientation: "portrait",
+      start_url: "/",
+      scope: "/",
+      icons: [
+        { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+      ],
+    },
+    workbox: {
+      globPatterns: ["**/*.{js,css,html,svg,woff2}"],
+      navigateFallback: "/index.html",
+    },
+  }),
   ...(!isVercelTarget ? [vitePluginManusRuntime(), vitePluginManusDebugCollector()] : []),
 ];
 
