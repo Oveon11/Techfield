@@ -1468,26 +1468,28 @@ export function ProjectDetailPage() {
         </div>
 
         <Tabs defaultValue="journal">
-          <TabsList className="h-auto w-full overflow-x-auto flex-nowrap gap-0.5 rounded-xl bg-slate-100/80 p-1 justify-start">
-            <TabsTrigger value="journal" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <BookOpen className="h-3.5 w-3.5" />Journal
-            </TabsTrigger>
-            <TabsTrigger value="medias" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <ImageIcon className="h-3.5 w-3.5" />Médias
-            </TabsTrigger>
-            <TabsTrigger value="memos" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <StickyNote className="h-3.5 w-3.5" />Mémos
-            </TabsTrigger>
-            <TabsTrigger value="interventions" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <Wrench className="h-3.5 w-3.5" />Interventions
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <FileText className="h-3.5 w-3.5" />Documents
-            </TabsTrigger>
-            <TabsTrigger value="infos" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <Info className="h-3.5 w-3.5" />Infos
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto w-full">
+            <TabsList className="h-auto w-max flex-nowrap gap-0.5 rounded-xl bg-slate-100/80 p-1">
+              <TabsTrigger value="journal" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <BookOpen className="h-3.5 w-3.5" />Journal
+              </TabsTrigger>
+              <TabsTrigger value="medias" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <ImageIcon className="h-3.5 w-3.5" />Médias
+              </TabsTrigger>
+              <TabsTrigger value="memos" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <StickyNote className="h-3.5 w-3.5" />Mémos
+              </TabsTrigger>
+              <TabsTrigger value="interventions" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <Wrench className="h-3.5 w-3.5" />Interventions
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <FileText className="h-3.5 w-3.5" />Documents
+              </TabsTrigger>
+              <TabsTrigger value="infos" className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-2 sm:px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <Info className="h-3.5 w-3.5" />Infos
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="infos" className="mt-6 space-y-4">
             <SectionGrid>
@@ -2816,6 +2818,8 @@ export function FeedPage() {
         <PageHeader title="Fil d'actualité" />
         {feedQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : feedQuery.error ? (
+          <SurfaceCard><CardContent className="py-10 text-center text-sm text-destructive">{feedQuery.error.message}</CardContent></SurfaceCard>
         ) : items.length === 0 ? (
           <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucune entrée dans le journal.</CardContent></SurfaceCard>
         ) : (
@@ -2859,6 +2863,8 @@ export function MemosGlobalPage() {
         <PageHeader title="Mémos" />
         {memosQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : memosQuery.error ? (
+          <SurfaceCard><CardContent className="py-10 text-center text-sm text-destructive">{memosQuery.error.message}</CardContent></SurfaceCard>
         ) : items.length === 0 ? (
           <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucun mémo enregistré.</CardContent></SurfaceCard>
         ) : (
