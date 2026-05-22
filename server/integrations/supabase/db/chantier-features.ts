@@ -106,7 +106,7 @@ export async function listProjectJournalEntries(scope: AccessScope, projectId: n
 
   const { data, error } = await supabase
     .from("project_journal_entries")
-    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users:created_by_user_id(name)")
+    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users!created_by_user_id(name)")
     .eq("project_id", projectId)
     .order("pinned", { ascending: false })
     .order("occurred_at", { ascending: false })
@@ -245,7 +245,7 @@ export async function listAllJournalEntries(scope: AccessScope) {
 
   let baseQuery = supabase
     .from("project_journal_entries")
-    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users:created_by_user_id(name), projects:project_id(name, reference)")
+    .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at, users!created_by_user_id(name), projects!project_id(name, reference)")
     .order("pinned", { ascending: false })
     .order("occurred_at", { ascending: false })
     .order("created_at", { ascending: false })
@@ -302,7 +302,7 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_memos")
-    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users:created_by_user_id(name)")
+    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users!created_by_user_id(name)")
     .eq("project_id", projectId)
     .order("updated_at", { ascending: false });
 
@@ -406,7 +406,7 @@ export async function listAllMemos(scope: AccessScope) {
 
   let baseQuery = supabase
     .from("project_memos")
-    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users:created_by_user_id(name), projects:project_id(name, reference)")
+    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at, users!created_by_user_id(name), projects!project_id(name, reference)")
     .order("updated_at", { ascending: false })
     .limit(200);
 
@@ -467,7 +467,7 @@ export async function listProjectMedia(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_media")
-    .select("id, project_id, media_type, caption, file_name, file_key, mime_type, size_bytes, uploaded_by_user_id, created_at, users:uploaded_by_user_id(name)")
+    .select("id, project_id, media_type, caption, file_name, file_key, mime_type, size_bytes, uploaded_by_user_id, created_at, users!uploaded_by_user_id(name)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
 
@@ -599,7 +599,7 @@ export async function listProjectDocuments(scope: AccessScope, projectId: number
 
   let query = supabase
     .from("documents")
-    .select("id, project_id, title, file_name, file_key, mime_type, document_type, visibility, uploaded_by_user_id, created_at, users:uploaded_by_user_id(name)")
+    .select("id, project_id, title, file_name, file_key, mime_type, document_type, visibility, uploaded_by_user_id, created_at, users!uploaded_by_user_id(name)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
 
