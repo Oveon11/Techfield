@@ -1,17 +1,10 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -23,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
 import { techfieldMenu } from "@/pages/TechfieldPages";
-import { Building2, LogOut, Mail, PanelLeft } from "lucide-react";
+import { Building2, Mail, PanelLeft } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -192,29 +185,58 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
     };
   }, [isResizing, setSidebarWidth]);
 
+  const roleLabel =
+    user?.role === "admin" ? "Administrateur" :
+    user?.role === "technicien" ? "Technicien" :
+    user?.role === "client" ? "Client" : "Utilisateur";
+
   return (
     <>
       <div className="relative" ref={sidebarRef}>
-        <Sidebar collapsible="icon" className="border-r-0 bg-slate-950 text-slate-50" disableTransition={isResizing}>
-          <SidebarHeader className="h-20 justify-center border-b border-white/10 px-3">
-            <div className="flex w-full items-center gap-3 px-2 transition-all">
+        <Sidebar collapsible="icon" className="border-r-0 bg-[#0D1526] text-slate-50" disableTransition={isResizing}>
+          <SidebarHeader className="h-16 justify-center border-b border-white/8 px-3">
+            <div className="flex w-full items-center gap-3 px-1 transition-all">
               <button
                 onClick={toggleSidebar}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                 aria-label="Toggle navigation"
               >
-                <PanelLeft className="h-4 w-4 text-slate-300" />
+                <PanelLeft className="h-4 w-4 text-slate-400" />
               </button>
               {!isCollapsed ? (
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">Techfield</p>
-                  <span className="block truncate text-sm font-semibold tracking-tight text-white">Gestion chantiers & maintenance</span>
+                  <span className="block truncate text-sm font-bold tracking-tight text-white">Techfield</span>
+                  <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">Gestion terrain</p>
                 </div>
               ) : null}
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="gap-0 px-2 py-4">
+          <SidebarContent className="gap-0 px-2 py-3">
+            {/* User Profile Card */}
+            <div className="mb-3 rounded-xl border border-white/8 bg-white/5 p-3 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2">
+              <div className="flex items-center gap-3 group-data-[collapsible=icon]:gap-0">
+                <Avatar className="h-9 w-9 shrink-0">
+                  <AvatarFallback className="bg-primary text-sm font-bold text-white">
+                    {user?.name?.charAt(0).toUpperCase() || "T"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                  <p className="truncate text-sm font-semibold text-white">{user?.name || "Utilisateur"}</p>
+                  <span className="mt-0.5 inline-block rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-300">
+                    {roleLabel}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                className="mt-2.5 w-full text-left text-[11px] font-medium text-rose-400 transition-colors hover:text-rose-300 group-data-[collapsible=icon]:hidden"
+              >
+                Déconnexion
+              </button>
+            </div>
+
+            {/* Navigation */}
             <SidebarMenu>
               {techfieldMenu.map(item => {
                 const isActive = location === item.path;
@@ -224,9 +246,13 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
                       tooltip={item.label}
-                      className={`h-11 rounded-xl px-3 font-normal transition-all ${isActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}
+                      className={`h-10 rounded-xl px-3 font-medium transition-all ${
+                        isActive
+                          ? "bg-primary text-white shadow-sm shadow-primary/40 hover:bg-primary/90"
+                          : "text-slate-400 hover:bg-white/5 hover:text-white"
+                      }`}
                     >
-                      <item.icon className={`h-4 w-4 ${isActive ? "text-sky-300" : "text-slate-400"}`} />
+                      <item.icon className={`h-4 w-4 ${isActive ? "text-white" : "text-slate-500"}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -234,30 +260,6 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
               })}
             </SidebarMenu>
           </SidebarContent>
-
-          <SidebarFooter className="border-t border-white/10 p-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-left transition-colors hover:bg-white/10 group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20">
-                  <Avatar className="h-10 w-10 border border-white/10 bg-slate-900">
-                    <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
-                      {user?.name?.charAt(0).toUpperCase() || "T"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                    <p className="truncate text-sm font-medium leading-none text-white">{user?.name || "Utilisateur"}</p>
-                    <p className="mt-1.5 truncate text-xs text-slate-400">{user?.email || user?.role || "Profil sécurisé"}</p>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Se déconnecter</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
         </Sidebar>
         <div
           className={`absolute right-0 top-0 h-full w-1 cursor-col-resize transition-colors hover:bg-sky-400/20 ${isCollapsed ? "hidden" : ""}`}

@@ -10,6 +10,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,16 +51,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
-  CalendarClock,
+  BookOpen,
   BriefcaseBusiness,
   Building2,
+  CalendarClock,
   ClipboardCheck,
   FileText,
+  ImageIcon,
+  Info,
   LayoutDashboard,
+  MapPin,
   MapPinned,
+  MoreVertical,
   Pencil,
   Search,
   ShieldCheck,
+  StickyNote,
   Trash2,
   Users,
   Wrench,
@@ -133,6 +145,26 @@ function StatusBadge({ value }: { value: string | null | undefined }) {
           : "bg-slate-500/10 text-slate-700 border-slate-200";
 
   return <Badge className={`border ${tone}`}>{label.replaceAll("_", " ")}</Badge>;
+}
+
+function getServiceStyle(type: string): { bg: string; text: string; label: string } {
+  switch (type) {
+    case "clim": return { bg: "bg-blue-100", text: "text-blue-700", label: "CLIM" };
+    case "pac": return { bg: "bg-red-100", text: "text-red-700", label: "PAC" };
+    case "pv": return { bg: "bg-amber-100", text: "text-amber-700", label: "PV" };
+    case "vmc": return { bg: "bg-violet-100", text: "text-violet-700", label: "VMC" };
+    case "chauffe_eau": return { bg: "bg-orange-100", text: "text-orange-700", label: "CE" };
+    default: return { bg: "bg-slate-100", text: "text-slate-600", label: "AUTRE" };
+  }
+}
+
+function ServiceTypePill({ type }: { type: string }) {
+  const { bg, text, label } = getServiceStyle(type);
+  return (
+    <span className={`inline-flex shrink-0 items-center rounded-md px-2 py-1 text-[10px] font-bold tracking-widest ${bg} ${text}`}>
+      {label}
+    </span>
+  );
 }
 
 function useRoleMatrix() {
@@ -870,6 +902,7 @@ export function ProjectsPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [form, setForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
   const [search, setSearch] = useState("");
@@ -991,97 +1024,108 @@ export function ProjectsPage() {
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredProjects.length ? (
             filteredProjects.map(project => (
-              <SurfaceCard key={project.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <CardTitle className="truncate">{project.title}</CardTitle>
-                      <CardDescription>{project.reference} · {project.clientName}</CardDescription>
-                    </div>
-                    <StatusBadge value={project.status} />
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Avancement</span>
-                      <span className="font-medium text-foreground">{project.progressPercent}%</span>
-                    </div>
-                    <Progress value={project.progressPercent ?? 0} />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                    <span>Client: {project.clientName}</span>
-                    <span>Site: {project.siteName || "—"}</span>
-                    <span>Techniciens: {project.assignedTechnicians || "Non affectés"}</span>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-3">
-                    <Link href={`/chantiers/${project.id}`}>
-                      <Button variant="outline" size="sm">Voir le détail</Button>
-                    </Link>
-                    {canManage ? (
-                      <>
-                        <Dialog open={editingId === project.id} onOpenChange={open => setEditingId(open ? project.id : null)}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Pencil className="h-3.5 w-3.5" />
-                              Éditer
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-3xl">
-                            <DialogHeader>
-                              <DialogTitle>Modifier le chantier</DialogTitle>
-                              <DialogDescription>{project.reference} · {project.clientName}</DialogDescription>
-                            </DialogHeader>
-                            {projectDetailQuery.isLoading && editingId === project.id ? (
-                              <p className="py-6 text-sm text-muted-foreground">Chargement…</p>
-                            ) : (
-                              <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} />
-                            )}
-                            <DialogFooter>
-                              <Button
-                                onClick={() => updateProject.mutate({
-                                  ...editForm,
-                                  projectId: project.id,
-                                  clientId: Number(editForm.clientId),
-                                  siteId: editForm.siteId ? Number(editForm.siteId) : null,
-                                })}
-                                disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
-                              >
-                                Enregistrer les modifications
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="text-rose-700 hover:bg-rose-50">
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Supprimer
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Supprimer ce chantier ?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Le chantier « {project.title} » sera supprimé définitivement. Ses affectations seront retirées et les interventions associées seront détachées. Cette action est irréversible.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Annuler</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteProject.mutate({ projectId: project.id })}
-                                className="bg-rose-600 text-white hover:bg-rose-700"
-                              >
-                                Supprimer
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    ) : null}
-                  </div>
-                </CardContent>
-              </SurfaceCard>
+              <div key={project.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:border-slate-200 hover:shadow-md">
+                {/* Hidden dialogs — triggered by state */}
+                {canManage && (
+                  <>
+                    <Dialog open={editingId === project.id} onOpenChange={open => setEditingId(open ? project.id : null)}>
+                      <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                          <DialogTitle>Modifier le chantier</DialogTitle>
+                          <DialogDescription>{project.reference} · {project.clientName}</DialogDescription>
+                        </DialogHeader>
+                        {projectDetailQuery.isLoading && editingId === project.id ? (
+                          <p className="py-6 text-sm text-muted-foreground">Chargement…</p>
+                        ) : (
+                          <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} />
+                        )}
+                        <DialogFooter>
+                          <Button
+                            onClick={() => updateProject.mutate({
+                              ...editForm,
+                              projectId: project.id,
+                              clientId: Number(editForm.clientId),
+                              siteId: editForm.siteId ? Number(editForm.siteId) : null,
+                            })}
+                            disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
+                          >
+                            Enregistrer les modifications
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                    <AlertDialog open={deletingId === project.id} onOpenChange={open => setDeletingId(open ? project.id : null)}>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Supprimer ce chantier ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Le chantier « {project.title} » sera supprimé définitivement. Ses affectations seront retirées et les interventions associées seront détachées. Cette action est irréversible.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteProject.mutate({ projectId: project.id })}
+                            className="bg-rose-600 text-white hover:bg-rose-700"
+                          >
+                            Supprimer
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </>
+                )}
+
+                {/* Top row: service badge + title + admin dropdown */}
+                <div className="flex items-start gap-3">
+                  <ServiceTypePill type={project.serviceType} />
+                  <p className="min-w-0 flex-1 font-semibold leading-snug text-foreground">{project.title}</p>
+                  {canManage && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="-mt-0.5 shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setEditingId(project.id)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Éditer
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setDeletingId(project.id)} className="text-rose-600 focus:text-rose-600">
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+
+                {/* Info row */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                    {project.clientName}
+                  </span>
+                  {project.siteName ? (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      {project.siteName}
+                    </span>
+                  ) : null}
+                  <span className="text-xs text-slate-400">{project.reference}</span>
+                </div>
+
+                {/* Bottom row: status + open button */}
+                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                  <StatusBadge value={project.status} />
+                  <Link href={`/chantiers/${project.id}`}>
+                    <Button size="sm" className="bg-primary font-semibold text-white shadow-sm shadow-primary/30 hover:bg-primary/90">
+                      OUVRIR
+                    </Button>
+                  </Link>
+                </div>
+              </div>
             ))
           ) : (
             <div className="xl:col-span-2">
@@ -1137,6 +1181,7 @@ export function ProjectDetailPage() {
   });
 
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteDetailOpen, setDeleteDetailOpen] = useState(false);
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
 
   useMemo(() => {
@@ -1192,117 +1237,150 @@ export function ProjectDetailPage() {
 
   return (
     <AppShell>
+      {/* Hidden dialogs */}
+      {canManage && (
+        <>
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogContent className="sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Modifier le chantier</DialogTitle>
+                <DialogDescription>{project.reference}</DialogDescription>
+              </DialogHeader>
+              <ProjectFormFields
+                form={editForm}
+                setForm={setEditForm}
+                clients={clientsQuery.data ?? []}
+                sites={sitesQuery.data ?? []}
+                technicians={techniciansQuery.data ?? []}
+              />
+              <DialogFooter>
+                <Button
+                  onClick={() => updateProject.mutate({
+                    ...editForm,
+                    projectId: project.id,
+                    clientId: Number(editForm.clientId),
+                    siteId: editForm.siteId ? Number(editForm.siteId) : null,
+                  })}
+                  disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
+                >
+                  Enregistrer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <AlertDialog open={deleteDetailOpen} onOpenChange={setDeleteDetailOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Supprimer ce chantier ?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  « {project.title} » sera supprimé définitivement. Ses affectations seront retirées et les interventions associées seront détachées. Cette action est irréversible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteProject.mutate({ projectId: project.id })}
+                  className="bg-rose-600 text-white hover:bg-rose-700"
+                >
+                  Supprimer
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
+
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 border-b border-border/60 pb-6 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
+        {/* OVEON-style header */}
+        <div className="space-y-4">
+          {/* Row 1: back link + action buttons */}
+          <div className="flex items-center justify-between gap-4">
             <Link href="/chantiers">
-              <button className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <button className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
                 <ArrowLeft className="h-4 w-4" />
-                Retour aux chantiers
+                Retour
               </button>
             </Link>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">{project.title}</h1>
+            {canManage ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                  Éditer
+                </Button>
+                <Button variant="outline" size="sm" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => setDeleteDetailOpen(true)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Supprimer
+                </Button>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Row 2: title + service badge */}
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{project.title}</h1>
+              <ServiceTypePill type={project.serviceType} />
               <StatusBadge value={project.status} />
             </div>
-            <p className="text-sm text-muted-foreground">
-              {project.reference} · {project.clientName}{project.siteName ? ` · ${project.siteName}` : ""}
-            </p>
-          </div>
-          {canManage ? (
-            <div className="flex flex-wrap gap-2">
-              <Dialog open={editOpen} onOpenChange={setEditOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline">
-                    <Pencil className="h-4 w-4" />
-                    Éditer
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Modifier le chantier</DialogTitle>
-                    <DialogDescription>{project.reference}</DialogDescription>
-                  </DialogHeader>
-                  <ProjectFormFields
-                    form={editForm}
-                    setForm={setEditForm}
-                    clients={clientsQuery.data ?? []}
-                    sites={sitesQuery.data ?? []}
-                    technicians={techniciansQuery.data ?? []}
-                  />
-                  <DialogFooter>
-                    <Button
-                      onClick={() => updateProject.mutate({
-                        ...editForm,
-                        projectId: project.id,
-                        clientId: Number(editForm.clientId),
-                        siteId: editForm.siteId ? Number(editForm.siteId) : null,
-                      })}
-                      disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
-                    >
-                      Enregistrer
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="text-rose-700 hover:bg-rose-50">
-                    <Trash2 className="h-4 w-4" />
-                    Supprimer
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Supprimer ce chantier ?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      « {project.title} » sera supprimé définitivement. Ses affectations seront retirées et les interventions associées seront détachées. Cette action est irréversible.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => deleteProject.mutate({ projectId: project.id })}
-                      className="bg-rose-600 text-white hover:bg-rose-700"
-                    >
-                      Supprimer
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                {project.clientName}
+              </span>
+              {project.siteName ? (
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  {project.siteName}
+                </span>
+              ) : null}
+              <span className="text-xs text-slate-400">{project.reference}</span>
             </div>
-          ) : null}
+          </div>
+
+          {/* Row 3: stats card */}
+          <div className="rounded-xl border border-border/60 bg-white px-5 py-4 shadow-sm">
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Charge de travail</p>
+            <div className="grid grid-cols-3 gap-4 sm:grid-cols-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Réalisé</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{Number(project.actualHours ?? 0).toFixed(0)} h</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Estimé</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{Number(project.estimatedHours ?? 0).toFixed(0)} h</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Avancement</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{project.progressPercent ?? 0} %</p>
+              </div>
+              <div className="hidden sm:block">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Interventions</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{linkedInterventions.length}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <SectionGrid>
-          <MetricCard
-            title="Avancement"
-            value={`${project.progressPercent ?? 0}%`}
-            hint={`Statut actuel : ${statusLabel}.`}
-            icon={<BriefcaseBusiness className="h-5 w-5" />}
-          />
-          <MetricCard
-            title="Type de service"
-            value={serviceLabel}
-            hint="Catégorie technique du chantier pour l'organisation des interventions."
-            icon={<Wrench className="h-5 w-5" />}
-          />
-          <MetricCard
-            title="Interventions liées"
-            value={linkedInterventions.length}
-            hint="Nombre d'interventions terrain rattachées à ce chantier."
-            icon={<ClipboardCheck className="h-5 w-5" />}
-          />
-        </SectionGrid>
-
         <Tabs defaultValue="journal">
-          <TabsList>
-            <TabsTrigger value="infos">Infos</TabsTrigger>
-            <TabsTrigger value="interventions">Interventions</TabsTrigger>
-            <TabsTrigger value="journal">Journal</TabsTrigger>
-            <TabsTrigger value="medias">Médias</TabsTrigger>
-            <TabsTrigger value="memos">Mémos</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsList className="h-auto flex-wrap gap-0.5 rounded-xl bg-slate-100/80 p-1">
+            <TabsTrigger value="journal" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <BookOpen className="h-3.5 w-3.5" />Journal
+            </TabsTrigger>
+            <TabsTrigger value="medias" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <ImageIcon className="h-3.5 w-3.5" />Médias
+            </TabsTrigger>
+            <TabsTrigger value="memos" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <StickyNote className="h-3.5 w-3.5" />Mémos
+            </TabsTrigger>
+            <TabsTrigger value="interventions" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <Wrench className="h-3.5 w-3.5" />Interventions
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <FileText className="h-3.5 w-3.5" />Documents
+            </TabsTrigger>
+            <TabsTrigger value="infos" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <Info className="h-3.5 w-3.5" />Infos
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="infos" className="mt-6 space-y-4">
