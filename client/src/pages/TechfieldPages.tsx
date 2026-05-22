@@ -47,6 +47,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
@@ -56,6 +57,7 @@ import {
   Building2,
   CalendarClock,
   ClipboardCheck,
+  FileDown,
   FileText,
   ImageIcon,
   Info,
@@ -72,6 +74,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { jsPDF } from "jspdf";
 import { ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
@@ -1249,6 +1252,252 @@ export function ProjectsPage() {
   );
 }
 
+interface FinDeChantierProject {
+  reference: string;
+  title: string;
+  clientName: string;
+  siteName: string | null;
+  serviceType: string;
+  status: string;
+  startDate: Date | string | null;
+  plannedEndDate: Date | string | null;
+  actualEndDate: Date | string | null;
+  progressPercent: number;
+  estimatedHours: string;
+  actualHours: string;
+  description: string | null;
+  assignedTechnicianNames?: string[];
+}
+
+function generateFinDeChantierPDF(
+  project: FinDeChantierProject,
+  avecReserve: boolean,
+  reserveText: string,
+  serviceLabel: string,
+  statusLabel: string,
+) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = 210;
+  const margin = 18;
+  const colRight = pageW - margin;
+  let y = 20;
+
+  const fmt = (d: Date | string | null | undefined) => {
+    if (!d) return "—";
+    return new Date(d).toLocaleDateString("fr-FR");
+  };
+
+  // Header band
+  doc.setFillColor(30, 64, 175); // indigo-700
+  doc.rect(0, 0, pageW, 28, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text("RAPPORT DE FIN DE CHANTIER", margin, 12);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, colRight, 12, { align: "right" });
+  doc.text(`Réf. ${project.reference}`, colRight, 20, { align: "right" });
+  y = 38;
+
+  // Helper: section title
+  const sectionTitle = (label: string) => {
+    doc.setFillColor(241, 245, 249); // slate-100
+    doc.rect(margin, y - 5, pageW - margin * 2, 9, "F");
+    doc.setTextColor(30, 41, 59); // slate-800
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(label.toUpperCase(), margin + 2, y + 0.5);
+    y += 8;
+  };
+
+  // Helper: key-value row
+  const kv = (key: string, value: string) => {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text(key, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.text(value, margin + 48, y);
+    y += 7;
+  };
+
+  // Divider line
+  const divider = () => {
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y - 1, colRight, y - 1);
+    y += 3;
+  };
+
+  // ── Section CHANTIER ──
+  sectionTitle("Informations chantier");
+  y += 2;
+  kv("Référence", project.reference);
+  kv("Intitulé", project.title);
+  kv("Client", project.clientName);
+  kv("Site", project.siteName ?? "—");
+  kv("Type de service", serviceLabel);
+  kv("Statut", statusLabel);
+  kv("Avancement", `${project.progressPercent} %`);
+  kv("Heures estimées", `${Number(project.estimatedHours).toFixed(0)} h`);
+  kv("Heures réalisées", `${Number(project.actualHours).toFixed(0)} h`);
+  kv("Date de début", fmt(project.startDate));
+  kv("Date prévue de fin", fmt(project.plannedEndDate));
+  kv("Date réelle de fin", fmt(project.actualEndDate));
+  divider();
+
+  // Description
+  if (project.description) {
+    sectionTitle("Description");
+    y += 2;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(15, 23, 42);
+    const lines = doc.splitTextToSize(project.description, pageW - margin * 2);
+    doc.text(lines, margin, y);
+    y += lines.length * 5 + 3;
+    divider();
+  }
+
+  // ── Section TECHNICIENS ──
+  sectionTitle("Techniciens assignés");
+  y += 2;
+  const names = project.assignedTechnicianNames ?? [];
+  if (names.length === 0) {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Aucun technicien assigné", margin, y);
+    y += 7;
+  } else {
+    names.forEach((name, i) => {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${i + 1}.  ${name}`, margin + 4, y);
+      y += 6;
+    });
+    y += 2;
+  }
+  divider();
+
+  // ── Section RÉSERVES (conditional) ──
+  if (avecReserve) {
+    sectionTitle("Réserves");
+    y += 2;
+    if (reserveText.trim()) {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(15, 23, 42);
+      const lines = doc.splitTextToSize(reserveText.trim(), pageW - margin * 2);
+      doc.text(lines, margin, y);
+      y += lines.length * 5 + 5;
+    } else {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(100, 116, 139);
+      doc.text("Aucune réserve notée.", margin, y);
+      y += 7;
+    }
+    divider();
+  } else {
+    // No-reserve attestation
+    sectionTitle("Sans réserve");
+    y += 2;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(15, 23, 42);
+    doc.text("Les travaux ont été réalisés sans réserve.", margin, y);
+    y += 10;
+    divider();
+  }
+
+  // Signature zone
+  y += 6;
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59);
+  doc.text("Signature du client :", margin, y);
+  doc.text("Cachet / Signature société :", pageW / 2 + 5, y);
+  y += 20;
+  doc.setDrawColor(100, 116, 139);
+  doc.line(margin, y, margin + 60, y);
+  doc.line(pageW / 2 + 5, y, pageW / 2 + 65, y);
+
+  // Footer
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(148, 163, 184);
+  doc.text(`Document généré par Techfield · ${project.reference}`, pageW / 2, 291, { align: "center" });
+
+  doc.save(`rapport-fin-chantier-${project.reference}.pdf`);
+}
+
+function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
+  project: FinDeChantierProject;
+  serviceLabel: string;
+  statusLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [avecReserve, setAvecReserve] = useState(false);
+  const [reserveText, setReserveText] = useState("");
+
+  const handleGenerate = () => {
+    generateFinDeChantierPDF(project, avecReserve, reserveText, serviceLabel, statusLabel);
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <FileDown className="h-3.5 w-3.5" />
+          Rapport PDF
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rapport de fin de chantier</DialogTitle>
+          <DialogDescription>{project.reference} — {project.title}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-slate-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Avec réserves</p>
+              <p className="text-xs text-muted-foreground">Cochez si des réserves doivent être mentionnées</p>
+            </div>
+            <Switch checked={avecReserve} onCheckedChange={setAvecReserve} />
+          </div>
+          {avecReserve && (
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Détail des réserves</Label>
+              <Textarea
+                placeholder="Décrire les réserves constatées…"
+                value={reserveText}
+                onChange={e => setReserveText(e.target.value)}
+                rows={5}
+                className="resize-none text-sm"
+              />
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Le PDF inclura les informations du chantier, les techniciens assignés
+            {avecReserve ? " et les réserves saisies" : " et une attestation sans réserve"}.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+          <Button onClick={handleGenerate}>
+            <FileDown className="h-3.5 w-3.5" />
+            Générer le PDF
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ProjectDetailPage() {
   const { permissions } = useRoleMatrix();
   const invalidateAll = useInvalidateAfterSuccess();
@@ -1407,18 +1656,25 @@ export function ProjectDetailPage() {
                 Retour
               </button>
             </Link>
-            {canManage ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                  <Pencil className="h-3.5 w-3.5" />
-                  Éditer
-                </Button>
-                <Button variant="outline" size="sm" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => setDeleteDetailOpen(true)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Supprimer
-                </Button>
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <FinDeChantierDialog
+                project={project}
+                serviceLabel={serviceLabel}
+                statusLabel={statusLabel}
+              />
+              {canManage && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Éditer
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => setDeleteDetailOpen(true)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Supprimer
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Row 2: title + service badge */}
@@ -2900,7 +3156,6 @@ export const techfieldMenu = [
   { icon: LayoutDashboard, label: "Tableau de bord", path: "/" },
   { icon: Newspaper, label: "Fil d'actualité", path: "/fil-actualite" },
   { icon: StickyNote, label: "Mémos", path: "/memos-globaux" },
-  { icon: MapPinned, label: "Sites", path: "/sites" },
   { icon: BriefcaseBusiness, label: "Chantiers", path: "/chantiers" },
   { icon: ClipboardCheck, label: "Contrats", path: "/contrats" },
   { icon: Wrench, label: "Interventions", path: "/interventions" },

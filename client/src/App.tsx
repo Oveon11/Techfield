@@ -15,7 +15,6 @@ import {
   MemosGlobalPage,
   ProjectDetailPage,
   ProjectsPage,
-  SitesPage,
   TeamPage,
 } from "./pages/TechfieldPages";
 
@@ -26,7 +25,6 @@ function Router() {
       <Route path="/fil-actualite" component={FeedPage} />
       <Route path="/memos-globaux" component={MemosGlobalPage} />
       <Route path="/clients" component={ClientsPage} />
-      <Route path="/sites" component={SitesPage} />
       <Route path="/chantiers" component={ProjectsPage} />
       <Route path="/chantiers/:id" component={ProjectDetailPage} />
       <Route path="/contrats" component={ContractsPage} />

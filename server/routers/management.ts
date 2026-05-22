@@ -804,13 +804,19 @@ export const managementRouter = router({
         }
 
         const assignmentRows = await db
-          .select({ technicianId: projectAssignments.technicianId })
+          .select({
+            technicianId: projectAssignments.technicianId,
+            firstName: technicians.firstName,
+            lastName: technicians.lastName,
+          })
           .from(projectAssignments)
+          .innerJoin(technicians, eq(projectAssignments.technicianId, technicians.id))
           .where(eq(projectAssignments.projectId, input.projectId));
 
         return {
           ...project,
           technicianIds: assignmentRows.map(item => item.technicianId),
+          assignedTechnicianNames: assignmentRows.map(item => `${item.firstName} ${item.lastName}`.trim()),
         };
       }),
     create: adminProcedure.input(createProjectSchema).mutation(async ({ ctx, input }) => {

@@ -385,6 +385,13 @@ function mapProjectDetailRow(row: Record<string, unknown>) {
   const technicianIds = assignments
     .map((assignment) => Number(assignment.technician_id ?? 0))
     .filter((id) => id > 0);
+  const assignedTechnicianNames = assignments
+    .map((assignment) => {
+      const tech = getSingleRelation(assignment, "technicians");
+      if (!tech) return null;
+      return `${String(tech.first_name ?? "").trim()} ${String(tech.last_name ?? "").trim()}`.trim();
+    })
+    .filter((n): n is string => !!n);
 
   return {
     id: Number(row.id),
@@ -407,6 +414,7 @@ function mapProjectDetailRow(row: Record<string, unknown>) {
     clientName: String(client?.company_name ?? ""),
     siteName: (site?.site_name as string | undefined) ?? null,
     technicianIds,
+    assignedTechnicianNames,
   };
 }
 
@@ -432,7 +440,7 @@ export async function getSupabaseProjectById(scope: AccessScope, projectId: numb
 
   let query = supabase
     .from("projects")
-    .select("id, reference, client_id, site_id, title, service_type, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, created_at, updated_at, clients(company_name), sites(site_name), project_assignments(technician_id)")
+    .select("id, reference, client_id, site_id, title, service_type, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, created_at, updated_at, clients(company_name), sites(site_name), project_assignments(technician_id, technicians(first_name, last_name))")
     .eq("id", projectId);
 
   if (scope.user.role === "client" && scope.clientContactProfile) {
