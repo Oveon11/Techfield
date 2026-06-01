@@ -1277,7 +1277,8 @@ function generateFinDeChantierPDF(
   serviceLabel: string,
   statusLabel: string,
   signatureDataUrl: string | null,
-  logoDataUrl: string | null,
+  logoInfo: { dataUrl: string; ratio: number } | null,
+  clientSignatureDataUrl: string | null,
 ) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = 210;
@@ -1300,10 +1301,9 @@ function generateFinDeChantierPDF(
   // Logo OVEON (left)
   const logoY = 4;
   const logoH = 26;
-  if (logoDataUrl) {
-    // Maintain aspect ratio: logo is roughly 3.5:1 wide
-    const logoW = logoH * 3.2;
-    doc.addImage(logoDataUrl, "PNG", margin, logoY, logoW, logoH);
+  if (logoInfo) {
+    const logoW = logoH * logoInfo.ratio;
+    doc.addImage(logoInfo.dataUrl, "PNG", margin, logoY, logoW, logoH);
   } else {
     // Fallback text
     doc.setFontSize(20);
@@ -1469,6 +1469,10 @@ function generateFinDeChantierPDF(
   doc.roundedRect(sigClientX, y, sigBoxW, sigBoxH, 2, 2, "S");
   doc.roundedRect(sigSocX, y, sigBoxW, sigBoxH, 2, 2, "S");
 
+  // Embed client signature if provided
+  if (clientSignatureDataUrl) {
+    doc.addImage(clientSignatureDataUrl, "PNG", sigClientX + 2, y + 2, sigBoxW - 4, sigBoxH - 4);
+  }
   // Embed company signature if provided
   if (signatureDataUrl) {
     doc.addImage(signatureDataUrl, "PNG", sigSocX + 2, y + 2, sigBoxW - 4, sigBoxH - 4);
@@ -1492,7 +1496,7 @@ function generateFinDeChantierPDF(
   doc.save(`rapport-fin-chantier-${project.reference}.pdf`);
 }
 
-function SignaturePad({ onchange }: { onchange: (dataUrl: string | null) => void }) {
+function SignaturePad({ onchange, label = "Signature société" }: { onchange: (dataUrl: string | null) => void; label?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const hasStrokes = useRef(false);
@@ -1566,7 +1570,7 @@ function SignaturePad({ onchange }: { onchange: (dataUrl: string | null) => void
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Signature société</Label>
+        <Label className="text-sm font-medium">{label}</Label>
         <button type="button" onClick={clear} className="text-xs text-muted-foreground underline hover:text-foreground">
           Effacer
         </button>
@@ -1600,10 +1604,11 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   const [reserveText, setReserveText] = useState("");
   const [reservePhotos, setReservePhotos] = useState<string[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
-  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [clientSignatureDataUrl, setClientSignatureDataUrl] = useState<string | null>(null);
+  const [logoInfo, setLogoInfo] = useState<{ dataUrl: string; ratio: number } | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  // Preload OVEON logo once
+  // Preload OVEON logo once — conserve le vrai ratio
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
@@ -1611,7 +1616,7 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
       canvas.width = img.width;
       canvas.height = img.height;
       canvas.getContext("2d")!.drawImage(img, 0, 0);
-      setLogoDataUrl(canvas.toDataURL("image/png"));
+      setLogoInfo({ dataUrl: canvas.toDataURL("image/png"), ratio: img.width / img.height });
     };
     img.src = "/oveon-logo.png";
   }, []);
@@ -1633,7 +1638,7 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   const removePhoto = (i: number) => setReservePhotos(prev => prev.filter((_, idx) => idx !== i));
 
   const handleGenerate = () => {
-    generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl, logoDataUrl);
+    generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl, logoInfo, clientSignatureDataUrl);
     setOpen(false);
   };
 
@@ -1709,7 +1714,10 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
               </div>
             </div>
           )}
-          <SignaturePad onchange={setSignatureDataUrl} />
+          <div className="grid grid-cols-2 gap-4">
+            <SignaturePad label="Signature client" onchange={setClientSignatureDataUrl} />
+            <SignaturePad label="Signature société" onchange={setSignatureDataUrl} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
