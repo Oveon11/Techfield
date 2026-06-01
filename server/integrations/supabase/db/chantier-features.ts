@@ -294,15 +294,15 @@ export async function listAllJournalEntries(scope: AccessScope) {
 
   const [projectsRes, userMap] = await Promise.all([
     uniqueIds(rows, "project_id").length > 0
-      ? supabase.from("projects").select("id, title, reference").in("id", uniqueIds(rows, "project_id"))
+      ? supabase.from("projects").select("id, title, reference, service_type").in("id", uniqueIds(rows, "project_id"))
       : { data: [] as unknown[], error: null },
     fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
   ]);
   if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
 
-  const projectMap = new Map<number, { name: string; reference: string }>();
+  const projectMap = new Map<number, { name: string; reference: string; serviceType: string }>();
   for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
-    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? "") });
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre") });
   }
 
   return rows.map((row) => {
@@ -313,6 +313,7 @@ export async function listAllJournalEntries(scope: AccessScope) {
       ...mapJournalRow(enriched),
       projectName: project?.name ?? "",
       projectRef: project?.reference ?? "",
+      projectServiceType: project?.serviceType ?? "autre",
     };
   });
 }
@@ -474,15 +475,15 @@ export async function listAllMemos(scope: AccessScope) {
 
   const [projectsRes, userMap] = await Promise.all([
     uniqueIds(rows, "project_id").length > 0
-      ? supabase.from("projects").select("id, title, reference").in("id", uniqueIds(rows, "project_id"))
+      ? supabase.from("projects").select("id, title, reference, service_type").in("id", uniqueIds(rows, "project_id"))
       : { data: [] as unknown[], error: null },
     fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
   ]);
   if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
 
-  const projectMap = new Map<number, { name: string; reference: string }>();
+  const projectMap = new Map<number, { name: string; reference: string; serviceType: string }>();
   for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
-    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? "") });
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre") });
   }
 
   return rows.map((row) => {
@@ -493,6 +494,7 @@ export async function listAllMemos(scope: AccessScope) {
       ...mapMemoRow(enriched),
       projectName: project?.name ?? "",
       projectRef: project?.reference ?? "",
+      projectServiceType: project?.serviceType ?? "autre",
     };
   });
 }

@@ -247,9 +247,12 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
                 <PanelLeft className="h-4 w-4 text-slate-400" />
               </button>
               {!isCollapsed ? (
-                <div className="min-w-0">
-                  <span className="block truncate text-sm font-bold tracking-tight text-white">Techfield</span>
-                  <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">Gestion terrain</p>
+                <div className="min-w-0 flex items-center">
+                  <img src="/oveon-logo.png" alt="Oveon" className="h-8 w-8 rounded-lg object-contain" />
+                  <div className="ml-2">
+                    <span className="block truncate text-sm font-bold tracking-tight text-white">Techfield</span>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">Gestion terrain</p>
+                  </div>
                 </div>
               ) : null}
             </div>

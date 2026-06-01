@@ -3311,28 +3311,41 @@ export function FeedPage() {
           <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucune entrée dans le journal.</CardContent></SurfaceCard>
         ) : (
           <div className="space-y-3">
-            {items.map(entry => (
+            {items.map(entry => {
+              const ENTRY_TYPE_STYLE: Record<string, { label: string; tone: string }> = {
+                etape: { label: "Étape", tone: "bg-blue-500/10 text-blue-700 border-blue-200" },
+                blocage: { label: "Blocage", tone: "bg-rose-500/10 text-rose-700 border-rose-200" },
+                livraison: { label: "Livraison", tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200" },
+                contact_client: { label: "Contact client", tone: "bg-violet-500/10 text-violet-700 border-violet-200" },
+                note: { label: "Note", tone: "bg-slate-500/10 text-slate-700 border-slate-200" },
+              };
+              const entryStyle = ENTRY_TYPE_STYLE[entry.entryType] ?? { label: entry.entryType, tone: "bg-slate-500/10 text-slate-700 border-slate-200" };
+              return (
               <SurfaceCard key={entry.id}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
                         {entry.pinned && <BookOpen className="h-3 w-3 text-primary" />}
-                        <span className="text-sm font-bold text-foreground">{entry.createdByName || "—"}</span>
+                        <ServiceTypePill type={entry.projectServiceType ?? "autre"} />
+                        <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>{entryStyle.label}</span>
+                        <span className="text-sm font-semibold text-foreground">{entry.createdByName || "—"}</span>
                         <span className="text-xs text-muted-foreground">{fmtDt(entry.occurredAt ?? entry.createdAt)}</span>
-                        {entry.projectName && (
-                          <span className="text-xs text-muted-foreground">· {entry.projectName}</span>
-                        )}
                       </div>
+                      {entry.projectName && (
+                        <p className="text-xs font-medium text-muted-foreground mb-1">{entry.projectName}{entry.projectRef ? ` · ${entry.projectRef}` : ""}</p>
+                      )}
+                      {entry.title && <p className="text-sm font-semibold text-foreground mb-0.5">{entry.title}</p>}
                       <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
                     </div>
                     <Link href={`/chantiers/${entry.projectId}`}>
-                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir chantier</Button>
+                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir</Button>
                     </Link>
                   </div>
                 </CardContent>
               </SurfaceCard>
-            ))}
+            );})}
+
           </div>
         )}
       </div>
@@ -3361,18 +3374,19 @@ export function MemosGlobalPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="text-sm font-bold text-foreground">{memo.createdByName || "—"}</span>
+                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                        <ServiceTypePill type={memo.projectServiceType ?? "autre"} />
+                        <span className="text-sm font-semibold text-foreground">{memo.createdByName || "—"}</span>
                         <span className="text-xs text-muted-foreground">{fmtDt(memo.updatedAt ?? memo.createdAt)}</span>
-                        {memo.projectName && (
-                          <span className="text-xs text-muted-foreground">· {memo.projectName}</span>
-                        )}
                       </div>
+                      {memo.projectName && (
+                        <p className="text-xs font-medium text-muted-foreground mb-1">{memo.projectName}{memo.projectRef ? ` · ${memo.projectRef}` : ""}</p>
+                      )}
                       {memo.title && <p className="text-sm font-semibold text-foreground">{memo.title}</p>}
                       <p className="whitespace-pre-wrap text-sm leading-6 text-foreground mt-0.5">{memo.content}</p>
                     </div>
                     <Link href={`/chantiers/${memo.projectId}`}>
-                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir chantier</Button>
+                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir</Button>
                     </Link>
                   </div>
                 </CardContent>
