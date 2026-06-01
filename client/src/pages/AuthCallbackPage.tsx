@@ -9,43 +9,44 @@ export default function AuthCallbackPage() {
   const utils = trpc.useUtils();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const tokenHash = params.get("token_hash");
-    const type = params.get("type");
-
     const supabase = getSupabaseBrowserClient();
-    if (!supabase || (!code && !tokenHash)) {
+    if (!supabase) {
       navigate("/");
       return;
     }
 
-    async function handleCallback() {
-      try {
-        let authError: { message: string } | null = null;
-
-        if (code) {
-          ({ error: authError } = await supabase!.auth.exchangeCodeForSession(code));
-        } else if (tokenHash && type) {
-          ({ error: authError } = await supabase!.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: type as "signup" | "invite" | "magiclink" | "recovery" | "email_change" | "email",
-          }));
-        }
-
-        if (authError) {
-          setError(authError.message);
-          return;
-        }
-
+    // Avec flowType "implicit", le SDK détecte automatiquement les tokens
+    // dans le hash (#access_token=...) ou les params (?token_hash=...) dès
+    // l'initialisation. On écoute juste le SIGNED_IN.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event === "SIGNED_IN") {
+        subscription.unsubscribe();
         await utils.auth.me.invalidate();
         navigate("/");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erreur de connexion inattendue.");
+      } else if (event === "SIGNED_OUT") {
+        subscription.unsubscribe();
+        setError("Lien de connexion invalide ou expiré.");
       }
-    }
+    });
 
-    void handleCallback();
+    // Si la session est déjà établie (rechargement de page)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        subscription.unsubscribe();
+        void utils.auth.me.invalidate().then(() => navigate("/"));
+      }
+    });
+
+    // Timeout de sécurité : si rien ne se passe en 8s, c'est que le lien est mauvais
+    const timeout = setTimeout(() => {
+      subscription.unsubscribe();
+      setError("Lien de connexion invalide ou expiré. Demandez un nouveau lien.");
+    }, 8000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [navigate, utils]);
 
   if (error) {

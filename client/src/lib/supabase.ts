@@ -39,6 +39,8 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
     return null;
   }
 
-  browserClient = createBrowserClient(config.url, config.anonKey);
+  browserClient = createBrowserClient(config.url, config.anonKey, {
+    auth: { flowType: "implicit" },
+  });
   return browserClient;
 }
