@@ -12,12 +12,16 @@ export function createTechfieldApp() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Échange PKCE : Supabase redirige ici avec ?code=xxx après clic sur magic link
+  // Échange auth : Supabase redirige ici après clic sur magic link
+  // - PKCE flow : ?code=xxx → exchangeCodeForSession
+  // - OTP flow  : ?token_hash=xxx&type=email → verifyOtp
   app.get("/auth/callback", async (req, res) => {
     const code = typeof req.query.code === "string" ? req.query.code : undefined;
+    const tokenHash = typeof req.query.token_hash === "string" ? req.query.token_hash : undefined;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
     const next = typeof req.query.next === "string" && req.query.next.startsWith("/") ? req.query.next : "/";
 
-    if (!code || !SUPABASE_ENV.isConfigured) {
+    if (!SUPABASE_ENV.isConfigured || (!code && !tokenHash)) {
       return res.redirect("/?error=auth_callback_invalid");
     }
 
@@ -26,7 +30,15 @@ export function createTechfieldApp() {
         req as unknown as IncomingMessage,
         res as unknown as ServerResponse,
       );
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+      let error: { message: string } | null = null;
+
+      if (code) {
+        ({ error } = await supabase.auth.exchangeCodeForSession(code));
+      } else if (tokenHash && type) {
+        ({ error } = await (supabase.auth as any).verifyOtp({ token_hash: tokenHash, type }));
+      }
+
       if (error) {
         return res.redirect(`/?error=${encodeURIComponent(error.message)}`);
       }
