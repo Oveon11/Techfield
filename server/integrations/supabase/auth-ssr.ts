@@ -33,11 +33,18 @@ function serializeCookie(name: string, value: string, options: CookieOptions, ma
   return `${name}=${encodeURIComponent(value)}; Path=${options.path ?? "/"}; HttpOnly; SameSite=${options.sameSite ?? "Lax"}${options.secure ? "; Secure" : ""}${typeof maxAge === "number" ? `; Max-Age=${maxAge}` : ""}`;
 }
 
+function isHttpsRequest(req: IncomingMessage): boolean {
+  const forwarded = req.headers["x-forwarded-proto"];
+  const proto = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  return proto?.trim().toLowerCase() === "https";
+}
+
 export function createSupabaseServerSsrClient(req: IncomingMessage, res: ServerResponse) {
   assertSupabaseEnv(["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
 
   const cookieStore = parseCookies(req.headers.cookie);
   const writableResponse = res as HeaderWritableResponse;
+  const secure = isHttpsRequest(req);
 
   return createServerClient(SUPABASE_ENV.url, SUPABASE_ENV.anonKey, {
     cookies: {
@@ -46,11 +53,11 @@ export function createSupabaseServerSsrClient(req: IncomingMessage, res: ServerR
       },
       set(name: string, value: string, options: CookieOptions) {
         cookieStore[name] = value;
-        appendSetCookie(writableResponse, serializeCookie(name, value, options, options.maxAge));
+        appendSetCookie(writableResponse, serializeCookie(name, value, { ...options, secure }, options.maxAge));
       },
       remove(name: string, options: CookieOptions) {
         delete cookieStore[name];
-        appendSetCookie(writableResponse, serializeCookie(name, "", options, 0));
+        appendSetCookie(writableResponse, serializeCookie(name, "", { ...options, secure }, 0));
       },
     },
   });
