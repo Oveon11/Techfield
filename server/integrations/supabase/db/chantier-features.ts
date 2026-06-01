@@ -294,7 +294,7 @@ export async function listAllJournalEntries(scope: AccessScope) {
 
   const [projectsRes, userMap] = await Promise.all([
     uniqueIds(rows, "project_id").length > 0
-      ? supabase.from("projects").select("id, name, reference").in("id", uniqueIds(rows, "project_id"))
+      ? supabase.from("projects").select("id, title, reference").in("id", uniqueIds(rows, "project_id"))
       : { data: [] as unknown[], error: null },
     fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
   ]);
@@ -302,7 +302,7 @@ export async function listAllJournalEntries(scope: AccessScope) {
 
   const projectMap = new Map<number, { name: string; reference: string }>();
   for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
-    projectMap.set(Number(p.id), { name: String(p.name ?? ""), reference: String(p.reference ?? "") });
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? "") });
   }
 
   return rows.map((row) => {
@@ -474,7 +474,7 @@ export async function listAllMemos(scope: AccessScope) {
 
   const [projectsRes, userMap] = await Promise.all([
     uniqueIds(rows, "project_id").length > 0
-      ? supabase.from("projects").select("id, name, reference").in("id", uniqueIds(rows, "project_id"))
+      ? supabase.from("projects").select("id, title, reference").in("id", uniqueIds(rows, "project_id"))
       : { data: [] as unknown[], error: null },
     fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
   ]);
@@ -482,7 +482,7 @@ export async function listAllMemos(scope: AccessScope) {
 
   const projectMap = new Map<number, { name: string; reference: string }>();
   for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
-    projectMap.set(Number(p.id), { name: String(p.name ?? ""), reference: String(p.reference ?? "") });
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? "") });
   }
 
   return rows.map((row) => {
