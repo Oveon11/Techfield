@@ -59,19 +59,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 
 function UnauthenticatedCard() {
-  const { authAvailable, authMessage, error, isRequestingMagicLink, requestMagicLink } = useAuth();
+  const { authAvailable, authMessage, error, isRequestingMagicLink, isVerifyingCode, pendingEmail, requestMagicLink, verifyCode } = useAuth();
   const [email, setEmail] = useState("");
-  const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [code, setCode] = useState("");
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmitEmail = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setLocalMessage(null);
-
     try {
       await requestMagicLink(email);
-      setLocalMessage("Le lien de connexion a bien été envoyé. Ouvrez votre e-mail puis revenez sur cette page.");
     } catch {
-      // Le message détaillé est porté par le hook.
+      // message géré par le hook
+    }
+  };
+
+  const handleSubmitCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      await verifyCode(code);
+    } catch {
+      // message géré par le hook
     }
   };
 
@@ -92,38 +98,75 @@ function UnauthenticatedCard() {
         </p>
 
         {authAvailable ? (
-          <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <label htmlFor="login-email" className="text-sm font-medium text-foreground">
-                Adresse e-mail professionnelle
-              </label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          !pendingEmail ? (
+            <form className="mt-8 space-y-4" onSubmit={handleSubmitEmail}>
+              <div className="space-y-2">
+                <label htmlFor="login-email" className="text-sm font-medium text-foreground">
+                  Adresse e-mail professionnelle
+                </label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="login-email"
+                    type="email"
+                    autoComplete="email"
+                    className="pl-9"
+                    placeholder="nom@entreprise.fr"
+                    value={email}
+                    onChange={event => setEmail(event.target.value)}
+                  />
+                </div>
+              </div>
+              <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isRequestingMagicLink}>
+                {isRequestingMagicLink ? "Envoi en cours..." : "Recevoir mon code de connexion"}
+              </Button>
+              {error ? (
+                <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                  {error.message}
+                </p>
+              ) : null}
+            </form>
+          ) : (
+            <form className="mt-8 space-y-4" onSubmit={handleSubmitCode}>
+              {authMessage && (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {authMessage}
+                </p>
+              )}
+              <div className="space-y-2">
+                <label htmlFor="login-code" className="text-sm font-medium text-foreground">
+                  Code à 6 chiffres
+                </label>
                 <Input
-                  id="login-email"
-                  type="email"
-                  autoComplete="email"
-                  className="pl-9"
-                  placeholder="nom@entreprise.fr"
-                  value={email}
-                  onChange={event => setEmail(event.target.value)}
+                  id="login-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="text-center text-2xl tracking-widest font-mono"
+                  placeholder="000000"
+                  maxLength={6}
+                  value={code}
+                  onChange={event => setCode(event.target.value.replace(/\D/g, ""))}
+                  autoFocus
                 />
               </div>
-            </div>
-            <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isRequestingMagicLink}>
-              {isRequestingMagicLink ? "Envoi en cours..." : "Recevoir un lien de connexion"}
-            </Button>
-            {localMessage || authMessage ? (
-              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {localMessage ?? authMessage}
-              </p>
-            ) : null}
-            {error ? (
-              <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                {error.message}
-              </p>
-            ) : null}
-          </form>
+              <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isVerifyingCode || code.length !== 6}>
+                {isVerifyingCode ? "Vérification..." : "Se connecter"}
+              </Button>
+              {error ? (
+                <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                  {error.message}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className="w-full text-xs text-muted-foreground hover:text-foreground underline"
+                onClick={() => { /* reset géré par pendingEmail dans le hook */ window.location.reload(); }}
+              >
+                Utiliser une autre adresse e-mail
+              </button>
+            </form>
+          )
         ) : (
           <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
             L’authentification Supabase côté navigateur n’est pas encore configurée. Ajoutez <code>VITE_SUPABASE_URL</code> et <code>VITE_SUPABASE_ANON_KEY</code> dans l’environnement de déploiement pour activer la connexion.

@@ -13,8 +13,10 @@ export function useAuth(options?: UseAuthOptions) {
   const { redirectOnUnauthenticated = false, redirectPath = getAuthRedirectPath() } = options ?? {};
   const utils = trpc.useUtils();
   const [isRequestingMagicLink, setIsRequestingMagicLink] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const supabaseConfig = useMemo(() => resolveSupabasePublicConfig(import.meta.env), []);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
@@ -62,26 +64,54 @@ export function useAuth(options?: UseAuthOptions) {
     setAuthMessage(null);
 
     try {
+      // Pas de emailRedirectTo → Supabase envoie un code à 6 chiffres
+      // (évite le problème de pre-fetch Outlook/Exchange qui consomme les magic links)
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+        options: { shouldCreateUser: false },
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setAuthMessage("Un lien de connexion a été envoyé à votre adresse e-mail.");
+      setPendingEmail(normalizedEmail);
+      setAuthMessage("Un code de connexion à 6 chiffres a été envoyé à votre adresse e-mail.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Impossible d’envoyer le lien de connexion.";
+      const message = error instanceof Error ? error.message : "Impossible d’envoyer le code de connexion.";
       setAuthError(message);
       throw error;
     } finally {
       setIsRequestingMagicLink(false);
     }
   }, []);
+
+  const verifyCode = useCallback(async (token: string) => {
+    const email = pendingEmail;
+    if (!email) throw new Error("Veuillez d’abord saisir votre adresse e-mail.");
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) throw new Error("Authentification Supabase non configurée.");
+
+    setIsVerifyingCode(true);
+    setAuthError(null);
+
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: token.trim(),
+        type: "email",
+      });
+
+      if (error) throw error;
+
+      await utils.auth.me.invalidate();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Code invalide ou expiré.";
+      setAuthError(message);
+      throw error;
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  }, [pendingEmail, utils]);
 
   const logout = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -150,8 +180,11 @@ export function useAuth(options?: UseAuthOptions) {
     authAvailable: supabaseConfig.isConfigured,
     authMessage,
     isRequestingMagicLink,
+    isVerifyingCode,
+    pendingEmail,
     refresh: () => meQuery.refetch(),
     requestMagicLink,
+    verifyCode,
     logout,
   };
 }
