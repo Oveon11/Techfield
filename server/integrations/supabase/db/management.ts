@@ -353,7 +353,7 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
 
   let query = supabase
     .from("projects")
-    .select("id, reference, title, status, progress_percent, service_type, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
+    .select("id, reference, title, status, progress_percent, service_type, start_date, planned_end_date, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
     .order("created_at", { ascending: false });
 
   if (projectIds) {
@@ -372,6 +372,8 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
     return {
       ...mapProjectRow(item),
       serviceType: ((item.service_type as ProjectServiceType | undefined) ?? "autre") as ProjectServiceType,
+      startDate: (item.start_date as string | null) ?? null,
+      plannedEndDate: (item.planned_end_date as string | null) ?? null,
     };
   });
 }

@@ -52,6 +52,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
+  AlertTriangle,
   BookOpen,
   BriefcaseBusiness,
   Building2,
@@ -140,11 +141,11 @@ function MetricCard({ title, value, hint, icon }: { title: string; value: string
 function StatusBadge({ value }: { value: string | null | undefined }) {
   const label = value ?? "non défini";
   const tone =
-    label.includes("term") || label.includes("actif")
+    label.includes("term") || label.includes("actif") || label.includes("cours")
       ? "bg-emerald-500/10 text-emerald-700 border-emerald-200"
       : label.includes("urgent") || label.includes("expire") || label.includes("bloqu")
         ? "bg-rose-500/10 text-rose-700 border-rose-200"
-        : label.includes("cours") || label.includes("planifi") || label.includes("assig")
+        : label.includes("planifi") || label.includes("assig")
           ? "bg-amber-500/10 text-amber-700 border-amber-200"
           : "bg-slate-500/10 text-slate-700 border-slate-200";
 
@@ -156,7 +157,7 @@ function getServiceStyle(type: string): { bg: string; text: string; label: strin
     case "clim": return { bg: "bg-blue-100", text: "text-blue-700", label: "CLIM" };
     case "pac": return { bg: "bg-red-100", text: "text-red-700", label: "PAC" };
     case "pv": return { bg: "bg-amber-100", text: "text-amber-700", label: "PV" };
-    case "vmc": return { bg: "bg-violet-100", text: "text-violet-700", label: "VMC" };
+    case "vmc": return { bg: "bg-green-100", text: "text-green-700", label: "VMC" };
     case "chauffe_eau": return { bg: "bg-orange-100", text: "text-orange-700", label: "CE" };
     default: return { bg: "bg-slate-100", text: "text-slate-600", label: "AUTRE" };
   }
@@ -1227,7 +1228,14 @@ export function ProjectsPage() {
 
                 {/* Bottom row: status + open button */}
                 <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                  <StatusBadge value={project.status} />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <StatusBadge value={project.status} />
+                    {project.plannedEndDate && project.status === "en_cours" && new Date(project.plannedEndDate) < new Date() && (
+                      <span className="inline-flex items-center gap-1 rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600">
+                        <AlertTriangle className="h-3 w-3" /> Retard
+                      </span>
+                    )}
+                  </div>
                   <Link href={`/chantiers/${project.id}`}>
                     <Button size="sm" className="bg-primary font-semibold text-white shadow-sm shadow-primary/30 hover:bg-primary/90">
                       OUVRIR
