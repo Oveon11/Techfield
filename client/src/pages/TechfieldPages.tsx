@@ -1232,7 +1232,7 @@ export function ProjectsPage() {
                 {canManage && (
                   <>
                     <Dialog open={editingId === project.id} onOpenChange={open => setEditingId(open ? project.id : null)}>
-                      <DialogContent className="sm:max-w-3xl">
+                      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle>Modifier le chantier</DialogTitle>
                           <DialogDescription>{project.reference} · {project.clientName}</DialogDescription>
@@ -1280,10 +1280,10 @@ export function ProjectsPage() {
                   </>
                 )}
 
-                {/* Top row: service badge + title + admin dropdown */}
+                {/* Top row: service badge + CLIENT NAME + admin dropdown */}
                 <div className="flex items-start gap-3">
                   <ServiceTypePill type={project.serviceType} />
-                  <p className="min-w-0 flex-1 font-semibold leading-snug text-foreground">{project.title}</p>
+                  <p className="min-w-0 flex-1 font-semibold leading-snug text-foreground">{project.clientName}</p>
                   {canManage && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1308,8 +1308,8 @@ export function ProjectsPage() {
                 {/* Info row */}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5 shrink-0" />
-                    {project.clientName}
+                    <Wrench className="h-3.5 w-3.5 shrink-0" />
+                    {project.title}
                   </span>
                   {project.siteName ? (
                     <span className="flex items-center gap-1.5">
@@ -3560,53 +3560,56 @@ function LinkedInCard({ children, href }: { children: React.ReactNode; href: str
 type FeedPhoto = { id: number; signedUrl: string | null; caption: string | null };
 
 function PhotoGrid({ photos }: { photos: FeedPhoto[] }) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
   if (photos.length === 0) return null;
 
-  if (photos.length === 1) {
-    return (
-      <img
-        src={photos[0].signedUrl ?? ""}
-        alt={photos[0].caption ?? ""}
-        className="w-full max-h-80 object-cover"
-      />
-    );
-  }
+  const zoom = (url: string | null) => (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (url) setLightbox(url); };
 
-  if (photos.length === 2) {
-    return (
+  let grid: React.ReactNode;
+  if (photos.length === 1) {
+    grid = <img src={photos[0].signedUrl ?? ""} alt={photos[0].caption ?? ""} className="w-full max-h-80 object-cover cursor-zoom-in" onClick={zoom(photos[0].signedUrl)} />;
+  } else if (photos.length === 2) {
+    grid = (
       <div className="grid grid-cols-2 gap-0.5">
-        {photos.map((p) => (
-          <img key={p.id} src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover" />
+        {photos.map(p => <img key={p.id} src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover cursor-zoom-in" onClick={zoom(p.signedUrl)} />)}
+      </div>
+    );
+  } else if (photos.length === 3) {
+    grid = (
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
+        <img src={photos[0].signedUrl ?? ""} alt={photos[0].caption ?? ""} className="row-span-2 h-full w-full object-cover cursor-zoom-in" style={{ aspectRatio: "1" }} onClick={zoom(photos[0].signedUrl)} />
+        <img src={photos[1].signedUrl ?? ""} alt={photos[1].caption ?? ""} className="aspect-square w-full object-cover cursor-zoom-in" onClick={zoom(photos[1].signedUrl)} />
+        <img src={photos[2].signedUrl ?? ""} alt={photos[2].caption ?? ""} className="aspect-square w-full object-cover cursor-zoom-in" onClick={zoom(photos[2].signedUrl)} />
+      </div>
+    );
+  } else {
+    const visible = photos.slice(0, 4);
+    const overflow = photos.length - 4;
+    grid = (
+      <div className="grid grid-cols-2 gap-0.5">
+        {visible.map((p, i) => (
+          <div key={p.id} className="relative cursor-zoom-in" onClick={zoom(p.signedUrl)}>
+            <img src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover" />
+            {i === 3 && overflow > 0 && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center pointer-events-none">
+                <span className="text-white font-bold text-2xl">+{overflow}</span>
+              </div>
+            )}
+          </div>
         ))}
       </div>
     );
   }
 
-  if (photos.length === 3) {
-    return (
-      <div className="grid gap-0.5" style={{ gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
-        <img src={photos[0].signedUrl ?? ""} alt={photos[0].caption ?? ""} className="row-span-2 h-full w-full object-cover" style={{ aspectRatio: "1" }} />
-        <img src={photos[1].signedUrl ?? ""} alt={photos[1].caption ?? ""} className="aspect-square w-full object-cover" />
-        <img src={photos[2].signedUrl ?? ""} alt={photos[2].caption ?? ""} className="aspect-square w-full object-cover" />
-      </div>
-    );
-  }
-
-  const visible = photos.slice(0, 4);
-  const overflow = photos.length - 4;
   return (
-    <div className="grid grid-cols-2 gap-0.5">
-      {visible.map((p, i) => (
-        <div key={p.id} className="relative">
-          <img src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover" />
-          {i === 3 && overflow > 0 && (
-            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-              <span className="text-white font-bold text-2xl">+{overflow}</span>
-            </div>
-          )}
+    <>
+      {lightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setLightbox(null)}>
+          <img src={lightbox} className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" onClick={e => e.stopPropagation()} />
         </div>
-      ))}
-    </div>
+      )}
+      {grid}
+    </>
   );
 }
 
@@ -3617,6 +3620,7 @@ type MediaGroup = {
   projectName: string;
   projectRef: string;
   projectServiceType: string;
+  clientName: string;
   authorName: string;
   date: string | null;
   photos: FeedPhoto[];
@@ -3629,6 +3633,7 @@ type JournalFeedEntry = {
   projectName: string;
   projectRef: string;
   projectServiceType: string;
+  clientName: string;
   entryType: string;
   title: string | null;
   content: string;
@@ -3655,6 +3660,7 @@ function groupMediaForFeed(items: Array<{
   projectName: string;
   projectRef: string;
   projectServiceType: string;
+  projectClientName?: string;
   uploadedByName: string;
   uploadedByUserId: number | null;
   createdAt: string | null;
@@ -3688,6 +3694,7 @@ function groupMediaForFeed(items: Array<{
         projectName: item.projectName,
         projectRef: item.projectRef,
         projectServiceType: item.projectServiceType,
+        clientName: item.projectClientName ?? "",
         authorName: item.uploadedByName || "—",
         date: item.createdAt,
         photos: [{ id: item.id, signedUrl: item.signedUrl, caption: item.caption }],
@@ -3731,6 +3738,7 @@ function buildFeed(journals: JournalFeedEntry[], mediaGroups: MediaGroup[]): Fee
         projectName: item.projectName,
         projectRef: item.projectRef,
         projectServiceType: item.projectServiceType,
+        clientName: item.clientName,
         entryType: item.entryType,
         title: item.title,
         content: item.content,
@@ -3761,6 +3769,7 @@ export function FeedPage() {
       projectName: e.projectName ?? "",
       projectRef: e.projectRef ?? "",
       projectServiceType: e.projectServiceType ?? "autre",
+      clientName: (e as Record<string, unknown>).projectClientName as string ?? "",
       entryType: e.entryType,
       title: e.title,
       content: e.content,
@@ -3790,6 +3799,8 @@ export function FeedPage() {
               const authorName = item.kind === "media" ? item.authorName : item.createdByName;
               const serviceType = item.projectServiceType;
               const itemDate = getItemDate(item);
+              const clientLabel = item.clientName || item.projectName;
+              const projectSub = item.clientName ? item.projectName : "";
 
               if (item.kind === "media") {
                 return (
@@ -3804,7 +3815,8 @@ export function FeedPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <ServiceTypePill type={serviceType} />
-                            {item.projectName && <span className="text-xs text-muted-foreground truncate">{item.projectName}</span>}
+                            {clientLabel && <span className="text-xs font-medium text-foreground truncate">{clientLabel}</span>}
+                            {projectSub && <span className="text-xs text-muted-foreground truncate">{projectSub}</span>}
                           </div>
                         </div>
                         <span className="shrink-0 inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
@@ -3839,7 +3851,8 @@ export function FeedPage() {
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <ServiceTypePill type={serviceType} />
-                          {item.projectName && <span className="text-xs text-muted-foreground truncate">{item.projectName}</span>}
+                          {clientLabel && <span className="text-xs font-medium text-foreground truncate">{clientLabel}</span>}
+                          {projectSub && <span className="text-xs text-muted-foreground truncate">{projectSub}</span>}
                         </div>
                       </div>
                       <span className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>

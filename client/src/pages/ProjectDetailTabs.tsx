@@ -38,6 +38,7 @@ import {
   ClipboardList,
   Download,
   FolderOpen,
+  ImageIcon,
   Pencil,
   Pin,
   Plus,
@@ -45,8 +46,9 @@ import {
   Trash2,
   Upload,
   Wrench,
+  X,
 } from "lucide-react";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ============================================================
@@ -216,6 +218,57 @@ function PostAvatar({ name }: { name: string }) {
   );
 }
 
+type LocalPhoto = { id: number; signedUrl: string | null; caption: string | null };
+
+function PhotoGrid({ photos, onZoom }: { photos: LocalPhoto[]; onZoom: (url: string) => void }) {
+  if (photos.length === 0) return null;
+  const z = (url: string | null) => (e: React.MouseEvent) => { e.stopPropagation(); if (url) onZoom(url); };
+  if (photos.length === 1) {
+    return <img src={photos[0].signedUrl ?? ""} alt={photos[0].caption ?? ""} className="w-full max-h-72 object-cover cursor-zoom-in rounded-b-2xl" onClick={z(photos[0].signedUrl)} />;
+  }
+  if (photos.length === 2) {
+    return (
+      <div className="grid grid-cols-2 gap-0.5">
+        {photos.map(p => <img key={p.id} src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover cursor-zoom-in" onClick={z(p.signedUrl)} />)}
+      </div>
+    );
+  }
+  if (photos.length === 3) {
+    return (
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
+        <img src={photos[0].signedUrl ?? ""} alt="" className="row-span-2 h-full w-full object-cover cursor-zoom-in" style={{ aspectRatio: "1" }} onClick={z(photos[0].signedUrl)} />
+        <img src={photos[1].signedUrl ?? ""} alt="" className="aspect-square w-full object-cover cursor-zoom-in" onClick={z(photos[1].signedUrl)} />
+        <img src={photos[2].signedUrl ?? ""} alt="" className="aspect-square w-full object-cover cursor-zoom-in" onClick={z(photos[2].signedUrl)} />
+      </div>
+    );
+  }
+  const visible = photos.slice(0, 4);
+  const overflow = photos.length - 4;
+  return (
+    <div className="grid grid-cols-2 gap-0.5">
+      {visible.map((p, i) => (
+        <div key={p.id} className="relative cursor-zoom-in" onClick={z(p.signedUrl)}>
+          <img src={p.signedUrl ?? ""} alt="" className="aspect-square w-full object-cover" />
+          {i === 3 && overflow > 0 && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center pointer-events-none">
+              <span className="text-white font-bold text-2xl">+{overflow}</span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
+      <button className="absolute top-4 right-4 text-white/80 hover:text-white" onClick={onClose}><X className="h-6 w-6" /></button>
+      <img src={src} className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" onClick={e => e.stopPropagation()} />
+    </div>
+  );
+}
+
 function isoToLocalDateTime(iso: string | null | undefined) {
   if (!iso) return "";
   try {
@@ -248,13 +301,18 @@ const INITIAL_JOURNAL_FORM: JournalFormState = {
 export function ProjectJournalPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectJournal.list.useQuery({ projectId });
+  const mediaListQuery = trpc.management.projectMedia.list.useQuery({ projectId });
+  const createUploadMutation = trpc.management.projectMedia.createUploadUrl.useMutation();
+  const registerMediaMutation = trpc.management.projectMedia.register.useMutation();
 
   const createMutation = trpc.management.projectJournal.create.useMutation({
     onSuccess: async () => {
       toast.success("Entrée de journal ajoutée.");
       setCreateOpen(false);
       setForm(INITIAL_JOURNAL_FORM);
+      setAttachedFiles([]);
       await utils.management.projectJournal.list.invalidate({ projectId });
+      await utils.management.projectMedia.list.invalidate({ projectId });
     },
     onError: error => toast.error(error.message),
   });
@@ -278,8 +336,38 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<JournalFormState>(INITIAL_JOURNAL_FORM);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<JournalFormState>(INITIAL_JOURNAL_FORM);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSubmitCreate = async () => {
+    if (!form.content.trim()) return;
+    setSubmitting(true);
+    try {
+      const entryResult = await createMutation.mutateAsync({
+        projectId,
+        entryType: form.entryType,
+        title: form.title.trim() ? form.title.trim() : null,
+        content: form.content.trim(),
+        occurredAt: toIsoOrNull(form.occurredAt),
+      });
+      if (attachedFiles.length > 0) {
+        for (const file of attachedFiles) {
+          try {
+            const upload = await createUploadMutation.mutateAsync({ projectId, fileName: file.name, mimeType: file.type, mediaType: "photo" });
+            await fetch(upload.signedUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+            await registerMediaMutation.mutateAsync({ projectId, mediaType: "photo", caption: null, fileName: file.name, fileKey: upload.fileKey, mimeType: file.type, sizeBytes: file.size });
+          } catch { /* skip failed photo */ }
+        }
+      }
+      void entryResult;
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const startEdit = (entry: NonNullable<typeof listQuery.data>[number]) => {
     setEditId(entry.id);
@@ -344,25 +432,33 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
                   <div className="space-y-2">
                     <Label>Contenu</Label>
                     <Textarea
-                      rows={5}
+                      rows={4}
                       value={form.content}
                       onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
                       placeholder="Description détaillée…"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Photos (optionnel)</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {attachedFiles.map((f, i) => (
+                        <div key={i} className="relative group">
+                          <img src={URL.createObjectURL(f)} className="h-16 w-16 object-cover rounded-lg border border-slate-200" />
+                          <button type="button" className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-0.5 hidden group-hover:flex" onClick={() => setAttachedFiles(prev => prev.filter((_, j) => j !== i))}>
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button type="button" className="h-16 w-16 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:border-primary hover:text-primary transition-colors" onClick={() => fileInputRef.current?.click()}>
+                        <ImageIcon className="h-5 w-5" />
+                      </button>
+                      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple className="hidden" onChange={e => { if (e.target.files) { setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = ""; } }} />
+                    </div>
+                  </div>
                 </div>
                 <DialogFooter>
-                  <Button
-                    onClick={() => createMutation.mutate({
-                      projectId,
-                      entryType: form.entryType,
-                      title: form.title.trim() ? form.title.trim() : null,
-                      content: form.content.trim(),
-                      occurredAt: toIsoOrNull(form.occurredAt),
-                    })}
-                    disabled={createMutation.isPending || !form.content.trim()}
-                  >
-                    Enregistrer
+                  <Button onClick={handleSubmitCreate} disabled={submitting || !form.content.trim()}>
+                    {submitting ? `Envoi…` : "Enregistrer"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -370,6 +466,8 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
           ) : null
         }
       />
+
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
       {listQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement du journal…</p>
@@ -383,8 +481,16 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
           {listQuery.data.map(entry => {
             const typeOpt = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType);
             const tone = typeOpt?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
+            const dot = typeOpt?.value === "etape" ? "bg-blue-500" : typeOpt?.value === "blocage" ? "bg-rose-500" : typeOpt?.value === "livraison" ? "bg-emerald-500" : typeOpt?.value === "contact_client" ? "bg-violet-500" : "bg-slate-400";
             const entryTypeLabel = typeOpt?.label ?? entry.entryType;
             const authorName = entry.createdByName || "—";
+            const entryTs = entry.occurredAt ?? entry.createdAt;
+            const matchedPhotos: LocalPhoto[] = (mediaListQuery.data ?? []).filter(m => {
+              if (m.mediaType !== "photo" || !m.signedUrl) return false;
+              const mTs = m.createdAt ? new Date(m.createdAt).getTime() : 0;
+              const eTs = entryTs ? new Date(entryTs).getTime() : 0;
+              return m.uploadedByUserId === entry.createdByUserId && Math.abs(mTs - eTs) <= 10 * 60 * 1000;
+            }).map(m => ({ id: m.id, signedUrl: m.signedUrl, caption: m.caption }));
             return (
               <div key={entry.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-4">
@@ -397,7 +503,8 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
                         {entryTypeLabel}
                       </span>
                       {canManage && (
@@ -491,8 +598,9 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
                     <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
                   </div>
                 </div>
+                {matchedPhotos.length > 0 && <PhotoGrid photos={matchedPhotos} onZoom={setLightboxSrc} />}
                 <div className="border-t border-slate-100 px-4 py-2">
-                  <span className="text-xs text-muted-foreground">{formatDateTime(entry.occurredAt ?? entry.createdAt)}</span>
+                  <span className="text-xs text-muted-foreground">{formatDateTime(entryTs)}</span>
                 </div>
               </div>
             );
@@ -708,6 +816,7 @@ async function uploadFileToSignedUrl(signedUrl: string, file: File): Promise<voi
 export function ProjectMediaPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectMedia.list.useQuery({ projectId });
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const createUploadMutation = trpc.management.projectMedia.createUploadUrl.useMutation();
   const registerMutation = trpc.management.projectMedia.register.useMutation();
@@ -807,6 +916,8 @@ export function ProjectMediaPanel({ projectId, canManage }: { projectId: number;
         }
       />
 
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+
       {listQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement des médias…</p>
       ) : !listQuery.data || listQuery.data.length === 0 ? (
@@ -823,7 +934,7 @@ export function ProjectMediaPanel({ projectId, canManage }: { projectId: number;
                   item.mediaType === "video" ? (
                     <video src={item.signedUrl} controls className="h-full w-full object-cover" preload="metadata" />
                   ) : (
-                    <img src={item.signedUrl} alt={item.caption ?? item.fileName} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={item.signedUrl} alt={item.caption ?? item.fileName} className="h-full w-full object-cover cursor-zoom-in" loading="lazy" onClick={() => item.signedUrl && setLightboxSrc(item.signedUrl)} />
                   )
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">

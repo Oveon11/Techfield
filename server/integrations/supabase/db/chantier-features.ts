@@ -294,15 +294,16 @@ export async function listAllJournalEntries(scope: AccessScope) {
 
   const [projectsRes, userMap] = await Promise.all([
     uniqueIds(rows, "project_id").length > 0
-      ? supabase.from("projects").select("id, title, reference, service_type").in("id", uniqueIds(rows, "project_id"))
+      ? supabase.from("projects").select("id, title, reference, service_type, clients(company_name)").in("id", uniqueIds(rows, "project_id"))
       : { data: [] as unknown[], error: null },
     fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id")),
   ]);
   if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
 
-  const projectMap = new Map<number, { name: string; reference: string; serviceType: string }>();
+  const projectMap = new Map<number, { name: string; reference: string; serviceType: string; clientName: string }>();
   for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
-    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre") });
+    const cr = p.clients as Record<string, unknown> | null | undefined;
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre"), clientName: cr ? String(cr.company_name ?? "") : "" });
   }
 
   return rows.map((row) => {
@@ -314,6 +315,7 @@ export async function listAllJournalEntries(scope: AccessScope) {
       projectName: project?.name ?? "",
       projectRef: project?.reference ?? "",
       projectServiceType: project?.serviceType ?? "autre",
+      projectClientName: project?.clientName ?? "",
     };
   });
 }
@@ -665,15 +667,16 @@ export async function listAllProjectMedia(scope: AccessScope) {
 
   const [projectsRes, userMap] = await Promise.all([
     uniqueIds(rows, "project_id").length > 0
-      ? supabase.from("projects").select("id, title, reference, service_type").in("id", uniqueIds(rows, "project_id"))
+      ? supabase.from("projects").select("id, title, reference, service_type, clients(company_name)").in("id", uniqueIds(rows, "project_id"))
       : { data: [] as unknown[], error: null },
     fetchUserNameMap(supabase, uniqueIds(rows, "uploaded_by_user_id")),
   ]);
   if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
 
-  const projectMap = new Map<number, { name: string; reference: string; serviceType: string }>();
+  const projectMap = new Map<number, { name: string; reference: string; serviceType: string; clientName: string }>();
   for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
-    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre") });
+    const cr = p.clients as Record<string, unknown> | null | undefined;
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre"), clientName: cr ? String(cr.company_name ?? "") : "" });
   }
 
   const enriched = rows.map((row) => {
@@ -690,6 +693,7 @@ export async function listAllProjectMedia(scope: AccessScope) {
       projectName: project?.name ?? "",
       projectRef: project?.reference ?? "",
       projectServiceType: project?.serviceType ?? "autre",
+      projectClientName: project?.clientName ?? "",
     };
   });
 }
