@@ -40,7 +40,12 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
   }
 
   browserClient = createBrowserClient(config.url, config.anonKey, {
-    auth: { flowType: "implicit" },
+    auth: {
+      flowType: "implicit",
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
   });
   return browserClient;
 }
