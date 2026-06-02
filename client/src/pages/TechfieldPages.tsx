@@ -837,31 +837,29 @@ const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: "termine", label: "Terminé" },
 ];
 
+const STATIC_SERVICE_OPTIONS = [
+  { value: "clim", label: "Climatisation" },
+  { value: "pac", label: "PAC" },
+  { value: "chauffe_eau", label: "Chauffe-eau" },
+  { value: "pv", label: "Photovoltaïque" },
+  { value: "vmc", label: "VMC" },
+  { value: "autre", label: "Autre" },
+];
+
 function ProjectFormFields({
   form,
   setForm,
   clients,
   sites,
   technicians,
-  serviceTypes,
 }: {
   form: ProjectFormState;
   setForm: (updater: (prev: ProjectFormState) => ProjectFormState) => void;
   clients: Array<{ id: number; companyName: string }>;
   sites: Array<{ id: number; siteName: string }>;
   technicians: Array<{ id: number; firstName: string; lastName: string }>;
-  serviceTypes?: Array<{ code: string; label: string; color: string }>;
 }) {
-  const stOptions = serviceTypes && serviceTypes.length > 0
-    ? serviceTypes.map(st => ({ value: st.code, label: st.label }))
-    : [
-        { value: "clim", label: "Climatisation" },
-        { value: "pac", label: "PAC" },
-        { value: "chauffe_eau", label: "Chauffe-eau" },
-        { value: "pv", label: "Photovoltaïque" },
-        { value: "vmc", label: "VMC" },
-        { value: "autre", label: "Autre" },
-      ];
+  const stOptions = STATIC_SERVICE_OPTIONS;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -970,7 +968,6 @@ export function ProjectsPage() {
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
-  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
 
   const createWithClient = trpc.management.projects.createWithClient.useMutation({
     onSuccess: async () => {
@@ -1096,7 +1093,7 @@ export function ProjectsPage() {
                       <Select value={createForm.serviceType} onValueChange={value => setCreateForm(prev => ({ ...prev, serviceType: value }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {(serviceTypesQuery.data ?? [{ code: "autre", label: "Autre", color: "slate" }]).map(st => <SelectItem key={st.code} value={st.code}>{st.label}</SelectItem>)}
+                          {STATIC_SERVICE_OPTIONS.map(st => <SelectItem key={st.value} value={st.value}>{st.label}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1191,7 +1188,7 @@ export function ProjectsPage() {
                 <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les services</SelectItem>
-                  {(serviceTypesQuery.data ?? []).map(st => <SelectItem key={st.code} value={st.code}>{st.label}</SelectItem>)}
+                  {STATIC_SERVICE_OPTIONS.map(st => <SelectItem key={st.value} value={st.value}>{st.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1214,7 +1211,7 @@ export function ProjectsPage() {
                         {projectDetailQuery.isLoading && editingId === project.id ? (
                           <p className="py-6 text-sm text-muted-foreground">Chargement…</p>
                         ) : (
-                          <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} serviceTypes={serviceTypesQuery.data} />
+                          <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} />
                         )}
                         <DialogFooter>
                           <Button
@@ -1857,7 +1854,6 @@ export function ProjectDetailPage() {
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
-  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
 
   const closeProject = trpc.management.projects.close.useMutation({
     onSuccess: async () => {
@@ -1944,8 +1940,7 @@ export function ProjectDetailPage() {
   }
 
   const canManage = !!permissions?.manageProjects;
-  const dynamicServiceTypes = serviceTypesQuery.data ?? [];
-  const serviceLabel = dynamicServiceTypes.find(st => st.code === project.serviceType)?.label ?? project.serviceType;
+  const serviceLabel = STATIC_SERVICE_OPTIONS.find(st => st.value === project.serviceType)?.label ?? project.serviceType;
   const statusLabel = PROJECT_STATUS_OPTIONS.find(opt => opt.value === project.status)?.label ?? STATUS_CONFIG[project.status]?.display ?? project.status;
 
   return (
@@ -1965,7 +1960,6 @@ export function ProjectDetailPage() {
                 clients={clientsQuery.data ?? []}
                 sites={sitesQuery.data ?? []}
                 technicians={techniciansQuery.data ?? []}
-                serviceTypes={serviceTypesQuery.data}
               />
               <DialogFooter>
                 <Button
@@ -2091,7 +2085,7 @@ export function ProjectDetailPage() {
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{project.title}</h1>
-              <ServiceTypePill type={project.serviceType} dynamicTypes={dynamicServiceTypes} />
+              <ServiceTypePill type={project.serviceType} />
               <StatusBadge value={project.status} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
@@ -3534,45 +3528,228 @@ function LinkedInCard({ children, href }: { children: React.ReactNode; href: str
   );
 }
 
+type FeedPhoto = { id: number; signedUrl: string | null; caption: string | null };
+
+function PhotoGrid({ photos }: { photos: FeedPhoto[] }) {
+  if (photos.length === 0) return null;
+
+  if (photos.length === 1) {
+    return (
+      <img
+        src={photos[0].signedUrl ?? ""}
+        alt={photos[0].caption ?? ""}
+        className="w-full max-h-80 object-cover"
+      />
+    );
+  }
+
+  if (photos.length === 2) {
+    return (
+      <div className="grid grid-cols-2 gap-0.5">
+        {photos.map((p) => (
+          <img key={p.id} src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover" />
+        ))}
+      </div>
+    );
+  }
+
+  if (photos.length === 3) {
+    return (
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
+        <img src={photos[0].signedUrl ?? ""} alt={photos[0].caption ?? ""} className="row-span-2 h-full w-full object-cover" style={{ aspectRatio: "1" }} />
+        <img src={photos[1].signedUrl ?? ""} alt={photos[1].caption ?? ""} className="aspect-square w-full object-cover" />
+        <img src={photos[2].signedUrl ?? ""} alt={photos[2].caption ?? ""} className="aspect-square w-full object-cover" />
+      </div>
+    );
+  }
+
+  const visible = photos.slice(0, 4);
+  const overflow = photos.length - 4;
+  return (
+    <div className="grid grid-cols-2 gap-0.5">
+      {visible.map((p, i) => (
+        <div key={p.id} className="relative">
+          <img src={p.signedUrl ?? ""} alt={p.caption ?? ""} className="aspect-square w-full object-cover" />
+          {i === 3 && overflow > 0 && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <span className="text-white font-bold text-2xl">+{overflow}</span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type MediaGroup = {
+  kind: "media";
+  id: string;
+  projectId: number;
+  projectName: string;
+  projectRef: string;
+  projectServiceType: string;
+  authorName: string;
+  date: string | null;
+  photos: FeedPhoto[];
+};
+
+type JournalFeedEntry = {
+  kind: "journal";
+  id: number;
+  projectId: number;
+  projectName: string;
+  projectRef: string;
+  projectServiceType: string;
+  entryType: string;
+  title: string | null;
+  content: string;
+  createdByName: string;
+  occurredAt: string | null;
+  createdAt: string | null;
+};
+
+type FeedItem = JournalFeedEntry | MediaGroup;
+
+function groupMediaForFeed(items: Array<{
+  id: number;
+  projectId: number;
+  projectName: string;
+  projectRef: string;
+  projectServiceType: string;
+  uploadedByName: string;
+  uploadedByUserId: number | null;
+  createdAt: string | null;
+  signedUrl: string | null;
+  caption: string | null;
+}>): MediaGroup[] {
+  const sorted = [...items].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
+
+  const groups: MediaGroup[] = [];
+  for (const item of sorted) {
+    const ts = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+    const existing = groups.find(g => {
+      const gts = g.date ? new Date(g.date).getTime() : 0;
+      return (
+        g.projectId === item.projectId &&
+        g.authorName === (item.uploadedByName || "—") &&
+        Math.abs(ts - gts) < 30 * 60 * 1000
+      );
+    });
+    if (existing) {
+      existing.photos.push({ id: item.id, signedUrl: item.signedUrl, caption: item.caption });
+    } else {
+      groups.push({
+        kind: "media",
+        id: `media-${item.id}`,
+        projectId: item.projectId,
+        projectName: item.projectName,
+        projectRef: item.projectRef,
+        projectServiceType: item.projectServiceType,
+        authorName: item.uploadedByName || "—",
+        date: item.createdAt,
+        photos: [{ id: item.id, signedUrl: item.signedUrl, caption: item.caption }],
+      });
+    }
+  }
+  return groups;
+}
+
 export function FeedPage() {
-  const feedQuery = trpc.management.projectJournal.listAll.useQuery();
-  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
-  const items = feedQuery.data ?? [];
-  const dynamicTypes = serviceTypesQuery.data ?? [];
+  const journalQuery = trpc.management.projectJournal.listAll.useQuery();
+  const mediaQuery = trpc.management.projectMedia.listAll.useQuery();
+
+  const isLoading = journalQuery.isLoading || mediaQuery.isLoading;
+  const err = journalQuery.error ?? mediaQuery.error;
+
+  const combined: FeedItem[] = useMemo(() => {
+    const journals: JournalFeedEntry[] = (journalQuery.data ?? []).map(e => ({
+      kind: "journal" as const,
+      id: e.id,
+      projectId: e.projectId,
+      projectName: e.projectName ?? "",
+      projectRef: e.projectRef ?? "",
+      projectServiceType: e.projectServiceType ?? "autre",
+      entryType: e.entryType,
+      title: e.title,
+      content: e.content,
+      createdByName: e.createdByName || "—",
+      occurredAt: e.occurredAt,
+      createdAt: e.createdAt,
+    }));
+    const mediaGroups = groupMediaForFeed(mediaQuery.data ?? []);
+    return [...journals, ...mediaGroups].sort((a, b) => {
+      const da = a.kind === "journal" ? (a.occurredAt ?? a.createdAt) : a.date;
+      const db = b.kind === "journal" ? (b.occurredAt ?? b.createdAt) : b.date;
+      return (db ? new Date(db).getTime() : 0) - (da ? new Date(da).getTime() : 0);
+    });
+  }, [journalQuery.data, mediaQuery.data]);
 
   return (
     <AppShell>
       <div className="space-y-5 max-w-2xl mx-auto">
         <PageHeader title="Fil d'actualité" />
-        {feedQuery.isLoading ? (
+        {isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
-        ) : feedQuery.error ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{feedQuery.error.message}</div>
-        ) : items.length === 0 ? (
+        ) : err ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err.message}</div>
+        ) : combined.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-10 text-center">
             <p className="text-sm text-muted-foreground">Aucune publication dans le fil d'actualité.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {items.map(entry => {
-              const entryStyle = ENTRY_TYPE_STYLE[entry.entryType] ?? { label: entry.entryType, tone: "bg-slate-500/10 text-slate-700 border-slate-200", dot: "bg-slate-400" };
-              const authorName = entry.createdByName || "—";
+            {combined.map(item => {
+              if (item.kind === "media") {
+                return (
+                  <LinkedInCard key={item.id} href={`/chantiers/${item.projectId}`}>
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <PostAvatar name={item.authorName} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-foreground">{item.authorName}</span>
+                            <span className="text-xs text-muted-foreground">{fmtRelative(item.date)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <ServiceTypePill type={item.projectServiceType} />
+                            {item.projectName && <span className="text-xs text-muted-foreground truncate">{item.projectName}</span>}
+                          </div>
+                        </div>
+                        <span className="shrink-0 inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                          Photo{item.photos.length > 1 ? `s (${item.photos.length})` : ""}
+                        </span>
+                      </div>
+                      {item.photos.some(p => p.caption) && (
+                        <p className="mt-2 pl-[52px] text-sm text-foreground">{item.photos[0].caption}</p>
+                      )}
+                    </div>
+                    <PhotoGrid photos={item.photos} />
+                    <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">{fmtDt(item.date)}</span>
+                      {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
+                    </div>
+                  </LinkedInCard>
+                );
+              }
+
+              const entryStyle = ENTRY_TYPE_STYLE[item.entryType] ?? { label: item.entryType, tone: "bg-slate-500/10 text-slate-700 border-slate-200", dot: "bg-slate-400" };
               return (
-                <LinkedInCard key={entry.id} href={`/chantiers/${entry.projectId}`}>
+                <LinkedInCard key={`j-${item.id}`} href={`/chantiers/${item.projectId}`}>
                   <div className="p-4">
-                    {/* Header */}
                     <div className="flex items-start gap-3">
-                      <PostAvatar name={authorName} />
+                      <PostAvatar name={item.createdByName} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-foreground">{authorName}</span>
-                          <span className="text-xs text-muted-foreground">{fmtRelative(entry.occurredAt ?? entry.createdAt)}</span>
+                          <span className="font-semibold text-sm text-foreground">{item.createdByName}</span>
+                          <span className="text-xs text-muted-foreground">{fmtRelative(item.occurredAt ?? item.createdAt)}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <ServiceTypePill type={entry.projectServiceType ?? "autre"} dynamicTypes={dynamicTypes} />
-                          {entry.projectName && (
-                            <span className="text-xs text-muted-foreground truncate">{entry.projectName}</span>
-                          )}
+                          <ServiceTypePill type={item.projectServiceType} />
+                          {item.projectName && <span className="text-xs text-muted-foreground truncate">{item.projectName}</span>}
                         </div>
                       </div>
                       <span className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>
@@ -3580,17 +3757,14 @@ export function FeedPage() {
                         {entryStyle.label}
                       </span>
                     </div>
-
-                    {/* Content */}
-                    <div className="mt-3 space-y-1">
-                      {entry.title && <p className="font-semibold text-sm text-foreground">{entry.title}</p>}
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
+                    <div className="mt-3 pl-[52px] space-y-1">
+                      {item.title && <p className="font-semibold text-sm text-foreground">{item.title}</p>}
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
                     </div>
                   </div>
-                  {/* Footer */}
                   <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{fmtDt(entry.occurredAt ?? entry.createdAt)}</span>
-                    {entry.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{entry.projectRef}</span>}
+                    <span className="text-xs text-muted-foreground">{fmtDt(item.occurredAt ?? item.createdAt)}</span>
+                    {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
                   </div>
                 </LinkedInCard>
               );
@@ -3604,9 +3778,7 @@ export function FeedPage() {
 
 export function MemosGlobalPage() {
   const memosQuery = trpc.management.projectMemos.listAll.useQuery();
-  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
   const items = memosQuery.data ?? [];
-  const dynamicTypes = serviceTypesQuery.data ?? [];
 
   return (
     <AppShell>
@@ -3635,7 +3807,7 @@ export function MemosGlobalPage() {
                           <span className="text-xs text-muted-foreground">{fmtRelative(memo.updatedAt ?? memo.createdAt)}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <ServiceTypePill type={memo.projectServiceType ?? "autre"} dynamicTypes={dynamicTypes} />
+                          <ServiceTypePill type={memo.projectServiceType ?? "autre"} />
                           {memo.projectName && <span className="text-xs text-muted-foreground truncate">{memo.projectName}</span>}
                         </div>
                       </div>

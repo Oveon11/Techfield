@@ -57,6 +57,7 @@ import {
   getProjectMediaSignedUrl,
   listAllJournalEntries,
   listAllMemos,
+  listAllProjectMedia,
   listProjectDocuments,
   listProjectJournalEntries,
   listProjectMedia,
@@ -1628,6 +1629,14 @@ export const managementRouter = router({
         return await listProjectMedia(scope, input.projectId);
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur médias." });
+      }
+    }),
+    listAll: protectedProcedure.query(async ({ ctx }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listAllProjectMedia(scope);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur médias fil." });
       }
     }),
     createUploadUrl: protectedProcedure.input(createMediaUploadSchema).mutation(async ({ ctx, input }) => {

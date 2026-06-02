@@ -636,6 +636,64 @@ export async function deleteProjectMedia(scope: AccessScope, mediaId: number) {
   return { ok: true as const };
 }
 
+export async function listAllProjectMedia(scope: AccessScope) {
+  if (scope.user.role === "client") return [];
+  const supabase = createSupabaseAdminClient();
+
+  let projectFilter: number[] | null = null;
+  if (scope.user.role === "technicien" && scope.technicianProfile) {
+    const { data: assignments } = await supabase
+      .from("project_assignments")
+      .select("project_id")
+      .eq("technician_id", scope.technicianProfile.id);
+    const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
+    if (projectIds.length === 0) return [];
+    projectFilter = projectIds;
+  }
+
+  let q = supabase
+    .from("project_media")
+    .select("id, project_id, media_type, caption, file_name, file_key, mime_type, size_bytes, uploaded_by_user_id, created_at")
+    .eq("media_type", "photo")
+    .order("created_at", { ascending: false })
+    .limit(60);
+  if (projectFilter) q = q.in("project_id", projectFilter);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as Record<string, unknown>[];
+
+  const [projectsRes, userMap] = await Promise.all([
+    uniqueIds(rows, "project_id").length > 0
+      ? supabase.from("projects").select("id, title, reference, service_type").in("id", uniqueIds(rows, "project_id"))
+      : { data: [] as unknown[], error: null },
+    fetchUserNameMap(supabase, uniqueIds(rows, "uploaded_by_user_id")),
+  ]);
+  if ((projectsRes as { error: unknown }).error) throw (projectsRes as { error: unknown }).error;
+
+  const projectMap = new Map<number, { name: string; reference: string; serviceType: string }>();
+  for (const p of ((projectsRes.data ?? []) as Record<string, unknown>[])) {
+    projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre") });
+  }
+
+  const enriched = rows.map((row) => {
+    const uid = row.uploaded_by_user_id == null ? null : Number(row.uploaded_by_user_id);
+    return { ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null };
+  });
+
+  const mapped = await Promise.all(enriched.map((row) => mapMediaRow(supabase, row)));
+
+  return mapped.map((item, i) => {
+    const project = projectMap.get(Number(rows[i].project_id)) ?? null;
+    return {
+      ...item,
+      projectName: project?.name ?? "",
+      projectRef: project?.reference ?? "",
+      projectServiceType: project?.serviceType ?? "autre",
+    };
+  });
+}
+
 // ============================================================
 // Documents (réutilise la table documents existante)
 // ============================================================
