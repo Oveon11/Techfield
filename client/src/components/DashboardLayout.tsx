@@ -135,7 +135,7 @@ function UnauthenticatedCard() {
               )}
               <div className="space-y-2">
                 <label htmlFor="login-code" className="text-sm font-medium text-foreground">
-                  Code à 6 chiffres
+                  Code à 4 chiffres
                 </label>
                 <Input
                   id="login-code"
@@ -143,14 +143,14 @@ function UnauthenticatedCard() {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   className="text-center text-2xl tracking-widest font-mono"
-                  placeholder="000000"
-                  maxLength={6}
+                  placeholder="0000"
+                  maxLength={4}
                   value={code}
                   onChange={event => setCode(event.target.value.replace(/\D/g, ""))}
                   autoFocus
                 />
               </div>
-              <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isVerifyingCode || code.length !== 6}>
+              <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isVerifyingCode || code.length !== 4}>
                 {isVerifyingCode ? "Vérification..." : "Se connecter"}
               </Button>
               {error ? (
