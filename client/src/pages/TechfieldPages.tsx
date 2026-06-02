@@ -1253,6 +1253,7 @@ export function ProjectsPage() {
 }
 
 interface FinDeChantierProject {
+  id: number;
   reference: string;
   title: string;
   clientName: string;
@@ -1494,6 +1495,7 @@ function generateFinDeChantierPDF(
   doc.text(`Document généré par Techfield · ${project.reference}`, pageW / 2, 291, { align: "center" });
 
   doc.save(`rapport-fin-chantier-${project.reference}.pdf`);
+  return doc.output("blob");
 }
 
 function SignaturePad({ onchange, label = "Signature société" }: { onchange: (dataUrl: string | null) => void; label?: string }) {
@@ -1606,7 +1608,11 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [clientSignatureDataUrl, setClientSignatureDataUrl] = useState<string | null>(null);
   const [logoInfo, setLogoInfo] = useState<{ dataUrl: string; ratio: number } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const utils = trpc.useUtils();
+  const createUploadUrl = trpc.management.projectDocuments.createUploadUrl.useMutation();
+  const registerDoc = trpc.management.projectDocuments.register.useMutation();
 
   // Preload OVEON logo once — conserve le vrai ratio
   useEffect(() => {
@@ -1637,9 +1643,32 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
 
   const removePhoto = (i: number) => setReservePhotos(prev => prev.filter((_, idx) => idx !== i));
 
-  const handleGenerate = () => {
-    generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl, logoInfo, clientSignatureDataUrl);
-    setOpen(false);
+  const handleGenerate = async () => {
+    setIsSaving(true);
+    try {
+      const blob = generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl, logoInfo, clientSignatureDataUrl);
+      const fileName = `rapport-fin-chantier-${project.reference}.pdf`;
+      const file = new File([blob], fileName, { type: "application/pdf" });
+      const upload = await createUploadUrl.mutateAsync({ projectId: project.id, fileName, mimeType: "application/pdf" });
+      await fetch(upload.signedUrl, { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" } });
+      await registerDoc.mutateAsync({
+        projectId: project.id,
+        title: `Rapport fin de chantier — ${project.reference}`,
+        documentType: "rapport",
+        visibility: "interne",
+        fileName,
+        fileKey: upload.fileKey,
+        mimeType: "application/pdf",
+      });
+      await utils.management.projectDocuments.list.invalidate({ projectId: project.id });
+      toast.success("PDF généré et enregistré dans les documents.");
+      setOpen(false);
+    } catch {
+      toast.error("PDF généré mais l'enregistrement dans les documents a échoué.");
+      setOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -1720,10 +1749,10 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-          <Button onClick={handleGenerate}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isSaving}>Annuler</Button>
+          <Button onClick={handleGenerate} disabled={isSaving}>
             <FileDown className="h-3.5 w-3.5" />
-            Générer le PDF
+            {isSaving ? "Enregistrement…" : "Générer le PDF"}
           </Button>
         </DialogFooter>
       </DialogContent>
