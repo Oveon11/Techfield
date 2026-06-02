@@ -190,6 +190,32 @@ function toIsoOrNull(local: string) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+function fmtRelative(value: string | null | undefined) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "À l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `il y a ${days} j`;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function PostAvatar({ name }: { name: string }) {
+  const initial = (name || "?").charAt(0).toUpperCase();
+  const colors = ["bg-blue-600", "bg-emerald-600", "bg-violet-600", "bg-rose-600", "bg-amber-500", "bg-cyan-600"];
+  const color = colors[initial.charCodeAt(0) % colors.length];
+  return (
+    <div className={`h-10 w-10 shrink-0 rounded-full ${color} flex items-center justify-center text-white text-sm font-bold`}>
+      {initial}
+    </div>
+  );
+}
+
 function isoToLocalDateTime(iso: string | null | undefined) {
   if (!iso) return "";
   try {
@@ -353,112 +379,122 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
           description="Documentez les étapes clés du chantier pour garder une trace consultable par l'équipe."
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {listQuery.data.map(entry => {
-            const tone = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType)?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
-            const typeLabel = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType)?.label ?? entry.entryType;
+            const typeOpt = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType);
+            const tone = typeOpt?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
+            const entryTypeLabel = typeOpt?.label ?? entry.entryType;
+            const authorName = entry.createdByName || "—";
             return (
-              <Card key={entry.id} className="border-white/10 shadow-sm shadow-slate-950/5">
-                <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
-                  <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={`border ${tone}`}>{typeLabel}</Badge>
-                      <span className="text-xs text-muted-foreground">{formatDateTime(entry.occurredAt)}</span>
+              <div key={entry.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                    <PostAvatar name={authorName} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-foreground">{authorName}</span>
+                        <span className="text-xs text-muted-foreground">{fmtRelative(entry.occurredAt ?? entry.createdAt)}</span>
+                      </div>
                     </div>
-                    {entry.title ? <CardTitle className="text-base">{entry.title}</CardTitle> : null}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`}>
+                        {entryTypeLabel}
+                      </span>
+                      {canManage && (
+                        <>
+                          <Dialog open={editId === entry.id} onOpenChange={open => (open ? startEdit(entry) : setEditId(null))}>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(entry)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-xl">
+                              <DialogHeader>
+                                <DialogTitle>Modifier l'entrée</DialogTitle>
+                                <DialogDescription>Mise à jour de l'entrée de journal.</DialogDescription>
+                              </DialogHeader>
+                              <div className="grid gap-4">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <Label>Type</Label>
+                                    <Select value={editForm.entryType} onValueChange={value => setEditForm(prev => ({ ...prev, entryType: value as JournalEntryType }))}>
+                                      <SelectTrigger><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        {JOURNAL_TYPE_OPTIONS.map(opt => (
+                                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Date / heure</Label>
+                                    <Input
+                                      type="datetime-local"
+                                      value={editForm.occurredAt}
+                                      onChange={e => setEditForm(prev => ({ ...prev, occurredAt: e.target.value }))}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Titre</Label>
+                                  <Input value={editForm.title} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Contenu</Label>
+                                  <Textarea rows={5} value={editForm.content} onChange={e => setEditForm(prev => ({ ...prev, content: e.target.value }))} />
+                                </div>
+                              </div>
+                              <DialogFooter>
+                                <Button
+                                  onClick={() => updateMutation.mutate({
+                                    id: entry.id,
+                                    entryType: editForm.entryType,
+                                    title: editForm.title.trim() ? editForm.title.trim() : null,
+                                    content: editForm.content.trim(),
+                                    occurredAt: toIsoOrNull(editForm.occurredAt),
+                                  })}
+                                  disabled={updateMutation.isPending || !editForm.content.trim()}
+                                >
+                                  Enregistrer
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-700 hover:bg-rose-50">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
+                                <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteMutation.mutate({ id: entry.id })}
+                                  className="bg-rose-600 text-white hover:bg-rose-700"
+                                >
+                                  Supprimer
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  {canManage ? (
-                    <div className="flex gap-2">
-                      <Dialog open={editId === entry.id} onOpenChange={open => (open ? startEdit(entry) : setEditId(null))}>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => startEdit(entry)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-xl">
-                          <DialogHeader>
-                            <DialogTitle>Modifier l'entrée</DialogTitle>
-                            <DialogDescription>Mise à jour de l'entrée de journal.</DialogDescription>
-                          </DialogHeader>
-                          <div className="grid gap-4">
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label>Type</Label>
-                                <Select value={editForm.entryType} onValueChange={value => setEditForm(prev => ({ ...prev, entryType: value as JournalEntryType }))}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {JOURNAL_TYPE_OPTIONS.map(opt => (
-                                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Date / heure</Label>
-                                <Input
-                                  type="datetime-local"
-                                  value={editForm.occurredAt}
-                                  onChange={e => setEditForm(prev => ({ ...prev, occurredAt: e.target.value }))}
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Titre</Label>
-                              <Input value={editForm.title} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Contenu</Label>
-                              <Textarea rows={5} value={editForm.content} onChange={e => setEditForm(prev => ({ ...prev, content: e.target.value }))} />
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <Button
-                              onClick={() => updateMutation.mutate({
-                                id: entry.id,
-                                entryType: editForm.entryType,
-                                title: editForm.title.trim() ? editForm.title.trim() : null,
-                                content: editForm.content.trim(),
-                                occurredAt: toIsoOrNull(editForm.occurredAt),
-                              })}
-                              disabled={updateMutation.isPending || !editForm.content.trim()}
-                            >
-                              Enregistrer
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-rose-700 hover:bg-rose-50">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
-                            <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteMutation.mutate({ id: entry.id })}
-                              className="bg-rose-600 text-white hover:bg-rose-700"
-                            >
-                              Supprimer
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  ) : null}
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Par {entry.createdByName || "—"} · ajouté le {formatDateTime(entry.createdAt)}
-                  </p>
-                </CardContent>
-              </Card>
+                  <div className="mt-3 pl-[52px] space-y-1">
+                    {entry.title && <p className="font-semibold text-sm text-foreground">{entry.title}</p>}
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
+                  </div>
+                </div>
+                <div className="border-t border-slate-100 px-4 py-2">
+                  <span className="text-xs text-muted-foreground">{formatDateTime(entry.occurredAt ?? entry.createdAt)}</span>
+                </div>
+              </div>
             );
           })}
         </div>

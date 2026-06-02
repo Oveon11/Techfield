@@ -8,6 +8,7 @@ type CustomerType = "particulier" | "professionnel" | "collectivite";
 type ContactType = "principal" | "technique" | "facturation" | "autre";
 type AvailabilityType = "disponible" | "indisponible" | "conges" | "formation" | "maladie";
 type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule";
+type ProjectServiceType = string;
 type ContractStatus = "brouillon" | "actif" | "renouvellement_proche" | "expire" | "suspendu";
 type ContractFrequency = "mensuelle" | "trimestrielle" | "semestrielle" | "annuelle" | "personnalisee";
 type DocumentType = "rapport" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
@@ -334,31 +335,12 @@ export async function getSupabaseTechnicianAvailability(scope: AccessScope) {
 export async function getSupabaseProjectsList(scope: AccessScope) {
   const supabase = createSupabaseAdminClient();
 
-  let projectIds: number[] | null = null;
-  if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data: assignmentRows, error: assignmentError } = await supabase
-      .from("project_assignments")
-      .select("project_id")
-      .eq("technician_id", scope.technicianProfile.id);
-
-    if (assignmentError) {
-      throw assignmentError;
-    }
-
-    projectIds = (assignmentRows ?? []).map((row: unknown) => Number((row as Record<string, unknown>).project_id)).filter(Boolean);
-    if (!projectIds || projectIds.length === 0) {
-      return [];
-    }
-  }
-
   let query = supabase
     .from("projects")
     .select("id, reference, title, status, progress_percent, service_type, start_date, planned_end_date, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
     .order("created_at", { ascending: false });
 
-  if (projectIds) {
-    query = query.in("id", projectIds);
-  } else if (scope.user.role === "client" && scope.clientContactProfile) {
+  if (scope.user.role === "client" && scope.clientContactProfile) {
     query = query.eq("client_id", scope.clientContactProfile.clientId);
   }
 
@@ -371,14 +353,12 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
     const item = row as Record<string, unknown>;
     return {
       ...mapProjectRow(item),
-      serviceType: ((item.service_type as ProjectServiceType | undefined) ?? "autre") as ProjectServiceType,
+      serviceType: (item.service_type as string | undefined) ?? "autre",
       startDate: (item.start_date as string | null) ?? null,
       plannedEndDate: (item.planned_end_date as string | null) ?? null,
     };
   });
 }
-
-type ProjectServiceType = "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
 
 function mapProjectDetailRow(row: Record<string, unknown>) {
   const client = getSingleRelation(row, "clients");
@@ -401,7 +381,7 @@ function mapProjectDetailRow(row: Record<string, unknown>) {
     clientId: Number(row.client_id ?? 0),
     siteId: row.site_id == null ? null : Number(row.site_id),
     title: String(row.title ?? ""),
-    serviceType: ((row.service_type as ProjectServiceType | undefined) ?? "autre") as ProjectServiceType,
+    serviceType: (row.service_type as string | undefined) ?? "autre",
     description: (row.description as string | null | undefined) ?? null,
     status: ((row.status as ProjectStatus | undefined) ?? "planifie") as ProjectStatus,
     progressPercent: Number(row.progress_percent ?? 0),
@@ -411,10 +391,16 @@ function mapProjectDetailRow(row: Record<string, unknown>) {
     startDate: (row.start_date as string | null | undefined) ?? null,
     plannedEndDate: (row.planned_end_date as string | null | undefined) ?? null,
     actualEndDate: (row.actual_end_date as string | null | undefined) ?? null,
+    actualEndAt: (row.actual_end_at as string | null | undefined) ?? null,
+    quoteNumber: (row.quote_number as string | null | undefined) ?? null,
     createdAt: row.created_at ? new Date(String(row.created_at)) : new Date(0),
     updatedAt: row.updated_at ? new Date(String(row.updated_at)) : new Date(0),
     clientName: String(client?.company_name ?? ""),
+    clientPhone: (client?.phone as string | null | undefined) ?? null,
     siteName: (site?.site_name as string | undefined) ?? null,
+    siteAddress: (site?.address_line_1 as string | null | undefined) ?? null,
+    siteCity: (site?.city as string | null | undefined) ?? null,
+    sitePostalCode: (site?.postal_code as string | null | undefined) ?? null,
     technicianIds,
     assignedTechnicianNames,
   };
@@ -423,26 +409,9 @@ function mapProjectDetailRow(row: Record<string, unknown>) {
 export async function getSupabaseProjectById(scope: AccessScope, projectId: number) {
   const supabase = createSupabaseAdminClient();
 
-  if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data: assignmentRow, error: assignmentError } = await supabase
-      .from("project_assignments")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("technician_id", scope.technicianProfile.id)
-      .maybeSingle();
-
-    if (assignmentError) {
-      throw assignmentError;
-    }
-
-    if (!assignmentRow) {
-      return null;
-    }
-  }
-
   let query = supabase
     .from("projects")
-    .select("id, reference, client_id, site_id, title, service_type, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, created_at, updated_at, clients(company_name), sites(site_name), project_assignments(technician_id, technicians(first_name, last_name))")
+    .select("id, reference, client_id, site_id, title, service_type, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, actual_end_at, quote_number, created_at, updated_at, clients(company_name, phone), sites(site_name, address_line_1, postal_code, city), project_assignments(technician_id, technicians(first_name, last_name))")
     .eq("id", projectId);
 
   if (scope.user.role === "client" && scope.clientContactProfile) {
@@ -476,6 +445,7 @@ type CreateProjectInput = {
   budgetAmount: string;
   startDate: string | null;
   plannedEndDate: string | null;
+  quoteNumber: string | null;
   technicianIds: number[];
   createdByUserId: number;
 };
@@ -499,6 +469,7 @@ export async function createSupabaseProject(input: CreateProjectInput) {
       budget_amount: input.budgetAmount,
       start_date: input.startDate,
       planned_end_date: input.plannedEndDate,
+      quote_number: input.quoteNumber,
       created_by_user_id: input.createdByUserId,
     })
     .select("id")
@@ -542,6 +513,7 @@ type UpdateProjectInput = {
   budgetAmount: string;
   startDate: string | null;
   plannedEndDate: string | null;
+  quoteNumber: string | null;
   technicianIds: number[];
   updatedByUserId: number;
 };
@@ -564,6 +536,7 @@ export async function updateSupabaseProject(input: UpdateProjectInput) {
       budget_amount: input.budgetAmount,
       start_date: input.startDate,
       planned_end_date: input.plannedEndDate,
+      quote_number: input.quoteNumber,
     })
     .eq("id", input.projectId);
 
@@ -624,6 +597,16 @@ export async function deleteSupabaseProject(projectId: number) {
     throw error;
   }
 
+  return { success: true };
+}
+
+export async function closeSupabaseProject(projectId: number, status: "termine" | "bloque", actualEndAt: string) {
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("projects")
+    .update({ status, actual_end_at: actualEndAt })
+    .eq("id", projectId);
+  if (error) throw error;
   return { success: true };
 }
 

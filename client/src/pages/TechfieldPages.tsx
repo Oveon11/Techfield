@@ -70,6 +70,7 @@ import {
   Newspaper,
   Pencil,
   Search,
+  Settings,
   ShieldCheck,
   StickyNote,
   Trash2,
@@ -139,33 +140,54 @@ function MetricCard({ title, value, hint, icon }: { title: string; value: string
   );
 }
 
+const STATUS_CONFIG: Record<string, { tone: string; display: string }> = {
+  planifie:  { tone: "bg-amber-500/10 text-amber-700 border-amber-200", display: "Planifié" },
+  en_cours:  { tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200", display: "En cours" },
+  termine:   { tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200", display: "Terminé" },
+  bloque:    { tone: "bg-rose-500/10 text-rose-700 border-rose-200", display: "Bloqué" },
+  brouillon: { tone: "bg-slate-500/10 text-slate-600 border-slate-200", display: "Brouillon" },
+  annule:    { tone: "bg-slate-500/10 text-slate-600 border-slate-200", display: "Annulé" },
+  actif:     { tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200", display: "Actif" },
+};
+
 function StatusBadge({ value }: { value: string | null | undefined }) {
-  const label = value ?? "non défini";
-  const tone =
-    label.includes("term") || label.includes("actif") || label.includes("cours")
-      ? "bg-emerald-500/10 text-emerald-700 border-emerald-200"
-      : label.includes("urgent") || label.includes("expire") || label.includes("bloqu")
-        ? "bg-rose-500/10 text-rose-700 border-rose-200"
-        : label.includes("planifi") || label.includes("assig")
-          ? "bg-amber-500/10 text-amber-700 border-amber-200"
-          : "bg-slate-500/10 text-slate-700 border-slate-200";
-
-  return <Badge className={`border ${tone}`}>{label.replaceAll("_", " ")}</Badge>;
+  const key = value ?? "";
+  const { tone, display } = STATUS_CONFIG[key] ?? { tone: "bg-slate-500/10 text-slate-600 border-slate-200", display: key.replaceAll("_", " ") };
+  return <Badge className={`border ${tone}`}>{display}</Badge>;
 }
 
-function getServiceStyle(type: string): { bg: string; text: string; label: string } {
-  switch (type) {
-    case "clim": return { bg: "bg-blue-100", text: "text-blue-700", label: "CLIM" };
-    case "pac": return { bg: "bg-red-100", text: "text-red-700", label: "PAC" };
-    case "pv": return { bg: "bg-amber-100", text: "text-amber-700", label: "PV" };
-    case "vmc": return { bg: "bg-green-100", text: "text-green-700", label: "VMC" };
-    case "chauffe_eau": return { bg: "bg-orange-100", text: "text-orange-700", label: "CE" };
-    default: return { bg: "bg-slate-100", text: "text-slate-600", label: "AUTRE" };
+const SERVICE_COLOR_MAP: Record<string, { bg: string; text: string }> = {
+  blue:   { bg: "bg-blue-100", text: "text-blue-700" },
+  red:    { bg: "bg-red-100", text: "text-red-700" },
+  orange: { bg: "bg-orange-100", text: "text-orange-700" },
+  yellow: { bg: "bg-amber-100", text: "text-amber-700" },
+  green:  { bg: "bg-green-100", text: "text-green-700" },
+  cyan:   { bg: "bg-cyan-100", text: "text-cyan-700" },
+  violet: { bg: "bg-violet-100", text: "text-violet-700" },
+  slate:  { bg: "bg-slate-100", text: "text-slate-600" },
+};
+
+const STATIC_SERVICE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  clim:       { bg: "bg-blue-100", text: "text-blue-700", label: "CLIM" },
+  pac:        { bg: "bg-red-100", text: "text-red-700", label: "PAC" },
+  pv:         { bg: "bg-amber-100", text: "text-amber-700", label: "PV" },
+  vmc:        { bg: "bg-green-100", text: "text-green-700", label: "VMC" },
+  chauffe_eau:{ bg: "bg-orange-100", text: "text-orange-700", label: "CE" },
+};
+
+function getServiceStyle(type: string, dynamicTypes?: Array<{ code: string; label: string; color: string }>): { bg: string; text: string; label: string } {
+  if (dynamicTypes) {
+    const found = dynamicTypes.find(t => t.code === type);
+    if (found) {
+      const colors = SERVICE_COLOR_MAP[found.color] ?? SERVICE_COLOR_MAP.slate;
+      return { bg: colors.bg, text: colors.text, label: found.label.toUpperCase() };
+    }
   }
+  return STATIC_SERVICE_STYLE[type] ?? { bg: "bg-slate-100", text: "text-slate-600", label: (type ?? "AUTRE").toUpperCase() };
 }
 
-function ServiceTypePill({ type }: { type: string }) {
-  const { bg, text, label } = getServiceStyle(type);
+function ServiceTypePill({ type, dynamicTypes }: { type: string; dynamicTypes?: Array<{ code: string; label: string; color: string }> }) {
+  const { bg, text, label } = getServiceStyle(type, dynamicTypes);
   return (
     <span className={`inline-flex shrink-0 items-center rounded-md px-2 py-1 text-[10px] font-bold tracking-widest ${bg} ${text}`}>
       {label}
@@ -735,7 +757,7 @@ export function SitesPage() {
   );
 }
 
-type ProjectServiceType = "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
+type ProjectServiceType = string;
 type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule";
 
 type ProjectFormState = {
@@ -751,6 +773,7 @@ type ProjectFormState = {
   budgetAmount: string;
   startDate: string;
   plannedEndDate: string;
+  quoteNumber: string;
   technicianIds: number[];
 };
 
@@ -767,6 +790,7 @@ const INITIAL_PROJECT_FORM: ProjectFormState = {
   budgetAmount: "0.00",
   startDate: "",
   plannedEndDate: "",
+  quoteNumber: "",
   technicianIds: [],
 };
 
@@ -784,6 +808,7 @@ type CreateWithClientFormState = {
   budgetAmount: string;
   startDate: string;
   plannedEndDate: string;
+  quoteNumber: string;
   technicianIds: number[];
 };
 
@@ -801,25 +826,15 @@ const INITIAL_CREATE_FORM: CreateWithClientFormState = {
   budgetAmount: "0.00",
   startDate: "",
   plannedEndDate: "",
+  quoteNumber: "",
   technicianIds: [],
 };
 
-const SERVICE_TYPE_OPTIONS: { value: ProjectServiceType; label: string }[] = [
-  { value: "clim", label: "CLIM" },
-  { value: "pac", label: "PAC" },
-  { value: "chauffe_eau", label: "Chauffe-eau" },
-  { value: "pv", label: "PV" },
-  { value: "vmc", label: "VMC" },
-  { value: "autre", label: "Autre" },
-];
-
 const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
-  { value: "brouillon", label: "Brouillon" },
   { value: "planifie", label: "Planifié" },
   { value: "en_cours", label: "En cours" },
   { value: "bloque", label: "Bloqué" },
   { value: "termine", label: "Terminé" },
-  { value: "annule", label: "Annulé" },
 ];
 
 function ProjectFormFields({
@@ -828,13 +843,26 @@ function ProjectFormFields({
   clients,
   sites,
   technicians,
+  serviceTypes,
 }: {
   form: ProjectFormState;
   setForm: (updater: (prev: ProjectFormState) => ProjectFormState) => void;
   clients: Array<{ id: number; companyName: string }>;
   sites: Array<{ id: number; siteName: string }>;
   technicians: Array<{ id: number; firstName: string; lastName: string }>;
+  serviceTypes?: Array<{ code: string; label: string; color: string }>;
 }) {
+  const stOptions = serviceTypes && serviceTypes.length > 0
+    ? serviceTypes.map(st => ({ value: st.code, label: st.label }))
+    : [
+        { value: "clim", label: "Climatisation" },
+        { value: "pac", label: "PAC" },
+        { value: "chauffe_eau", label: "Chauffe-eau" },
+        { value: "pv", label: "Photovoltaïque" },
+        { value: "vmc", label: "VMC" },
+        { value: "autre", label: "Autre" },
+      ];
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="space-y-2">
@@ -861,11 +889,15 @@ function ProjectFormFields({
         <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
       </div>
       <div className="space-y-2">
+        <Label>N° de devis</Label>
+        <Input placeholder="ex: DEV-2025-001" value={form.quoteNumber} onChange={e => setForm(prev => ({ ...prev, quoteNumber: e.target.value }))} />
+      </div>
+      <div className="space-y-2">
         <Label>Type de service</Label>
-        <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value as ProjectServiceType }))}>
+        <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value }))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {SERVICE_TYPE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+            {stOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -938,6 +970,7 @@ export function ProjectsPage() {
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
+  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
 
   const createWithClient = trpc.management.projects.createWithClient.useMutation({
     onSuccess: async () => {
@@ -986,7 +1019,7 @@ export function ProjectsPage() {
       clientId: String(detail.clientId ?? ""),
       siteId: detail.siteId ? String(detail.siteId) : "",
       title: detail.title ?? "",
-      serviceType: (detail.serviceType ?? "autre") as ProjectServiceType,
+      serviceType: detail.serviceType ?? "autre",
       description: detail.description ?? "",
       status: (detail.status ?? "planifie") as ProjectStatus,
       progressPercent: Number(detail.progressPercent ?? 0),
@@ -995,6 +1028,7 @@ export function ProjectsPage() {
       budgetAmount: String(detail.budgetAmount ?? "0.00"),
       startDate: detail.startDate ? new Date(detail.startDate).toISOString().slice(0, 10) : "",
       plannedEndDate: detail.plannedEndDate ? new Date(detail.plannedEndDate).toISOString().slice(0, 10) : "",
+      quoteNumber: detail.quoteNumber ?? "",
       technicianIds: detail.technicianIds ?? [],
     });
   }, [projectDetailQuery.data, editingId]);
@@ -1054,11 +1088,15 @@ export function ProjectsPage() {
                       <Input placeholder="Installation pompe à chaleur" value={createForm.title} onChange={e => setCreateForm(prev => ({ ...prev, title: e.target.value }))} />
                     </div>
                     <div className="space-y-2">
+                      <Label>N° de devis</Label>
+                      <Input placeholder="ex: DEV-2025-001" value={createForm.quoteNumber} onChange={e => setCreateForm(prev => ({ ...prev, quoteNumber: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
                       <Label>Type de service</Label>
-                      <Select value={createForm.serviceType} onValueChange={value => setCreateForm(prev => ({ ...prev, serviceType: value as ProjectServiceType }))}>
+                      <Select value={createForm.serviceType} onValueChange={value => setCreateForm(prev => ({ ...prev, serviceType: value }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {SERVICE_TYPE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                          {(serviceTypesQuery.data ?? [{ code: "autre", label: "Autre", color: "slate" }]).map(st => <SelectItem key={st.code} value={st.code}>{st.label}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1117,6 +1155,7 @@ export function ProjectsPage() {
                         description: createForm.description || null,
                         startDate: createForm.startDate || null,
                         plannedEndDate: createForm.plannedEndDate || null,
+                        quoteNumber: createForm.quoteNumber || null,
                       })}
                       disabled={createWithClient.isPending || !createForm.clientName.trim() || !createForm.title.trim()}
                     >
@@ -1152,7 +1191,7 @@ export function ProjectsPage() {
                 <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les services</SelectItem>
-                  {SERVICE_TYPE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                  {(serviceTypesQuery.data ?? []).map(st => <SelectItem key={st.code} value={st.code}>{st.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1175,7 +1214,7 @@ export function ProjectsPage() {
                         {projectDetailQuery.isLoading && editingId === project.id ? (
                           <p className="py-6 text-sm text-muted-foreground">Chargement…</p>
                         ) : (
-                          <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} />
+                          <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} serviceTypes={serviceTypesQuery.data} />
                         )}
                         <DialogFooter>
                           <Button
@@ -1184,6 +1223,7 @@ export function ProjectsPage() {
                               projectId: project.id,
                               clientId: Number(editForm.clientId),
                               siteId: editForm.siteId ? Number(editForm.siteId) : null,
+                              quoteNumber: editForm.quoteNumber || null,
                             })}
                             disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
                           >
@@ -1299,6 +1339,8 @@ interface FinDeChantierProject {
   startDate: Date | string | null;
   plannedEndDate: Date | string | null;
   actualEndDate: Date | string | null;
+  actualEndAt: Date | string | null;
+  quoteNumber: string | null;
   progressPercent: number;
   estimatedHours: string;
   actualHours: string;
@@ -1353,7 +1395,7 @@ function generateFinDeChantierPDF(
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
-  doc.text("RAPPORT DE FIN DE CHANTIER", colRight, logoY + 10, { align: "right" });
+  doc.text("PV DE RÉCEPTION", colRight, logoY + 10, { align: "right" });
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 116, 139);
@@ -1396,6 +1438,7 @@ function generateFinDeChantierPDF(
   sectionTitle("Informations chantier");
   y += 2;
   kv("Référence", project.reference);
+  if (project.quoteNumber) kv("N° de devis", project.quoteNumber);
   kv("Intitulé", project.title);
   kv("Client", project.clientName);
   kv("Site", project.siteName ?? "—");
@@ -1403,7 +1446,7 @@ function generateFinDeChantierPDF(
   kv("Statut", statusLabel);
   kv("Heures estimées", `${Number(project.estimatedHours).toFixed(0)} h`);
   kv("Date de début", fmt(project.startDate));
-  kv("Date de fin", fmt(project.plannedEndDate));
+  kv("Date de fin", project.actualEndAt ? new Date(project.actualEndAt).toLocaleString("fr-FR") : fmt(project.plannedEndDate));
   divider();
 
   // Description
@@ -1530,7 +1573,7 @@ function generateFinDeChantierPDF(
   doc.setTextColor(148, 163, 184);
   doc.text(`Document généré par Techfield · ${project.reference}`, pageW / 2, 291, { align: "center" });
 
-  doc.save(`rapport-fin-chantier-${project.reference}.pdf`);
+  doc.save(`pv-reception-${project.reference}.pdf`);
   return doc.output("blob");
 }
 
@@ -1683,13 +1726,13 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
     setIsSaving(true);
     try {
       const blob = generateFinDeChantierPDF(project, avecReserve, reserveText, reservePhotos, serviceLabel, statusLabel, signatureDataUrl, logoInfo, clientSignatureDataUrl);
-      const fileName = `rapport-fin-chantier-${project.reference}.pdf`;
+      const fileName = `pv-reception-${project.reference}.pdf`;
       const file = new File([blob], fileName, { type: "application/pdf" });
       const upload = await createUploadUrl.mutateAsync({ projectId: project.id, fileName, mimeType: "application/pdf" });
       await fetch(upload.signedUrl, { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" } });
       await registerDoc.mutateAsync({
         projectId: project.id,
-        title: `Rapport fin de chantier — ${project.reference}`,
+        title: `PV de réception — ${project.reference}`,
         documentType: "rapport",
         visibility: "interne",
         fileName,
@@ -1712,12 +1755,12 @@ function FinDeChantierDialog({ project, serviceLabel, statusLabel }: {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <FileDown className="h-3.5 w-3.5" />
-          Rapport PDF
+          PV de réception
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Rapport de fin de chantier</DialogTitle>
+          <DialogTitle>PV de réception</DialogTitle>
           <DialogDescription>{project.reference} — {project.title}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -1814,6 +1857,17 @@ export function ProjectDetailPage() {
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
+  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
+
+  const closeProject = trpc.management.projects.close.useMutation({
+    onSuccess: async () => {
+      toast.success("Chantier clôturé.");
+      setCloseOpen(false);
+      await invalidateAll();
+      await projectQuery.refetch();
+    },
+    onError: err => toast.error(err.message),
+  });
 
   const updateProject = trpc.management.projects.update.useMutation({
     onSuccess: async () => {
@@ -1835,6 +1889,10 @@ export function ProjectDetailPage() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDetailOpen, setDeleteDetailOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeStatus, setCloseStatus] = useState<"termine" | "bloque">("termine");
+  const [closeDate, setCloseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [closeTime, setCloseTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
 
   useMemo(() => {
@@ -1844,7 +1902,7 @@ export function ProjectDetailPage() {
       clientId: String(detail.clientId ?? ""),
       siteId: detail.siteId ? String(detail.siteId) : "",
       title: detail.title ?? "",
-      serviceType: (detail.serviceType ?? "autre") as ProjectServiceType,
+      serviceType: detail.serviceType ?? "autre",
       description: detail.description ?? "",
       status: (detail.status ?? "planifie") as ProjectStatus,
       progressPercent: Number(detail.progressPercent ?? 0),
@@ -1853,6 +1911,7 @@ export function ProjectDetailPage() {
       budgetAmount: String(detail.budgetAmount ?? "0.00"),
       startDate: detail.startDate ? new Date(detail.startDate).toISOString().slice(0, 10) : "",
       plannedEndDate: detail.plannedEndDate ? new Date(detail.plannedEndDate).toISOString().slice(0, 10) : "",
+      quoteNumber: detail.quoteNumber ?? "",
       technicianIds: detail.technicianIds ?? [],
     });
   }, [projectQuery.data]);
@@ -1885,8 +1944,9 @@ export function ProjectDetailPage() {
   }
 
   const canManage = !!permissions?.manageProjects;
-  const serviceLabel = SERVICE_TYPE_OPTIONS.find(opt => opt.value === project.serviceType)?.label ?? project.serviceType;
-  const statusLabel = PROJECT_STATUS_OPTIONS.find(opt => opt.value === project.status)?.label ?? project.status;
+  const dynamicServiceTypes = serviceTypesQuery.data ?? [];
+  const serviceLabel = dynamicServiceTypes.find(st => st.code === project.serviceType)?.label ?? project.serviceType;
+  const statusLabel = PROJECT_STATUS_OPTIONS.find(opt => opt.value === project.status)?.label ?? STATUS_CONFIG[project.status]?.display ?? project.status;
 
   return (
     <AppShell>
@@ -1905,6 +1965,7 @@ export function ProjectDetailPage() {
                 clients={clientsQuery.data ?? []}
                 sites={sitesQuery.data ?? []}
                 technicians={techniciansQuery.data ?? []}
+                serviceTypes={serviceTypesQuery.data}
               />
               <DialogFooter>
                 <Button
@@ -1913,6 +1974,7 @@ export function ProjectDetailPage() {
                     projectId: project.id,
                     clientId: Number(editForm.clientId),
                     siteId: editForm.siteId ? Number(editForm.siteId) : null,
+                    quoteNumber: editForm.quoteNumber || null,
                   })}
                   disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
                 >
@@ -1921,6 +1983,51 @@ export function ProjectDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Modal clôture */}
+          <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Clôturer le chantier</DialogTitle>
+                <DialogDescription>Définir le statut final et la date/heure de clôture.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-2">
+                <div className="space-y-2">
+                  <Label>Statut final</Label>
+                  <Select value={closeStatus} onValueChange={v => setCloseStatus(v as "termine" | "bloque")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="termine">Terminé</SelectItem>
+                      <SelectItem value="bloque">Bloqué</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date de clôture</Label>
+                  <Input type="date" value={closeDate} onChange={e => setCloseDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Heure de clôture</Label>
+                  <Input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCloseOpen(false)}>Annuler</Button>
+                <Button
+                  disabled={closeProject.isPending}
+                  className={closeStatus === "bloque" ? "bg-rose-600 hover:bg-rose-700" : ""}
+                  onClick={() => closeProject.mutate({
+                    projectId: project.id,
+                    status: closeStatus,
+                    actualEndAt: `${closeDate}T${closeTime}:00`,
+                  })}
+                >
+                  Clôturer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <AlertDialog open={deleteDetailOpen} onOpenChange={setDeleteDetailOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
@@ -1966,6 +2073,11 @@ export function ProjectDetailPage() {
                     <Pencil className="h-3.5 w-3.5" />
                     Éditer
                   </Button>
+                  {project.status !== "termine" && project.status !== "bloque" && (
+                    <Button size="sm" className="bg-slate-800 text-white hover:bg-slate-700" onClick={() => setCloseOpen(true)}>
+                      Clôturer
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => setDeleteDetailOpen(true)}>
                     <Trash2 className="h-3.5 w-3.5" />
                     Supprimer
@@ -1979,7 +2091,7 @@ export function ProjectDetailPage() {
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{project.title}</h1>
-              <ServiceTypePill type={project.serviceType} />
+              <ServiceTypePill type={project.serviceType} dynamicTypes={dynamicServiceTypes} />
               <StatusBadge value={project.status} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
@@ -2059,13 +2171,25 @@ export function ProjectDetailPage() {
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Statut</p>
                     <StatusBadge value={project.status} />
                   </div>
+                  {project.quoteNumber && (
+                    <div className="sm:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">N° de devis</p>
+                      <p className="font-medium text-foreground">{project.quoteNumber}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Client</p>
                     <p className="font-medium text-foreground">{project.clientName}</p>
+                    {project.clientPhone && <p className="text-sm text-primary mt-0.5">{project.clientPhone}</p>}
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Site</p>
                     <p className="font-medium text-foreground">{project.siteName || "—"}</p>
+                    {project.siteAddress && (
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {project.siteAddress}{project.sitePostalCode ? `, ${project.sitePostalCode}` : ""}{project.siteCity ? ` ${project.siteCity}` : ""}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Type de service</p>
@@ -2075,6 +2199,12 @@ export function ProjectDetailPage() {
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Budget</p>
                     <p className="font-medium text-foreground">{project.budgetAmount ?? "—"} €</p>
                   </div>
+                  {project.actualEndAt && (
+                    <div className="sm:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Date de clôture</p>
+                      <p className="font-medium text-foreground">{new Date(project.actualEndAt).toLocaleString("fr-FR")}</p>
+                    </div>
+                  )}
                 </CardContent>
               </SurfaceCard>
 
@@ -3360,57 +3490,111 @@ function fmtDt(value: string | null | undefined) {
   return isNaN(d.getTime()) ? value : d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtRelative(value: string | null | undefined) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "À l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `il y a ${days} j`;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+const ENTRY_TYPE_STYLE: Record<string, { label: string; tone: string; dot: string }> = {
+  etape:         { label: "Étape",         tone: "bg-blue-500/10 text-blue-700 border-blue-200",     dot: "bg-blue-500" },
+  blocage:       { label: "Blocage",       tone: "bg-rose-500/10 text-rose-700 border-rose-200",     dot: "bg-rose-500" },
+  livraison:     { label: "Livraison",     tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
+  contact_client:{ label: "Contact client",tone: "bg-violet-500/10 text-violet-700 border-violet-200", dot: "bg-violet-500" },
+  note:          { label: "Note",          tone: "bg-slate-500/10 text-slate-700 border-slate-200",  dot: "bg-slate-400" },
+};
+
+function PostAvatar({ name }: { name: string }) {
+  const initial = (name || "?").charAt(0).toUpperCase();
+  const colors = ["bg-blue-600", "bg-emerald-600", "bg-violet-600", "bg-rose-600", "bg-amber-500", "bg-cyan-600"];
+  const color = colors[initial.charCodeAt(0) % colors.length];
+  return (
+    <div className={`h-10 w-10 shrink-0 rounded-full ${color} flex items-center justify-center text-white text-sm font-bold`}>
+      {initial}
+    </div>
+  );
+}
+
+function LinkedInCard({ children, href }: { children: React.ReactNode; href: string }) {
+  return (
+    <Link href={href}>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer overflow-hidden">
+        {children}
+      </div>
+    </Link>
+  );
+}
+
 export function FeedPage() {
   const feedQuery = trpc.management.projectJournal.listAll.useQuery();
+  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
   const items = feedQuery.data ?? [];
+  const dynamicTypes = serviceTypesQuery.data ?? [];
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-5 max-w-2xl mx-auto">
         <PageHeader title="Fil d'actualité" />
         {feedQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
         ) : feedQuery.error ? (
-          <SurfaceCard><CardContent className="py-10 text-center text-sm text-destructive">{feedQuery.error.message}</CardContent></SurfaceCard>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{feedQuery.error.message}</div>
         ) : items.length === 0 ? (
-          <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucune entrée dans le journal.</CardContent></SurfaceCard>
+          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-10 text-center">
+            <p className="text-sm text-muted-foreground">Aucune publication dans le fil d'actualité.</p>
+          </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {items.map(entry => {
-              const ENTRY_TYPE_STYLE: Record<string, { label: string; tone: string }> = {
-                etape: { label: "Étape", tone: "bg-blue-500/10 text-blue-700 border-blue-200" },
-                blocage: { label: "Blocage", tone: "bg-rose-500/10 text-rose-700 border-rose-200" },
-                livraison: { label: "Livraison", tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200" },
-                contact_client: { label: "Contact client", tone: "bg-violet-500/10 text-violet-700 border-violet-200" },
-                note: { label: "Note", tone: "bg-slate-500/10 text-slate-700 border-slate-200" },
-              };
-              const entryStyle = ENTRY_TYPE_STYLE[entry.entryType] ?? { label: entry.entryType, tone: "bg-slate-500/10 text-slate-700 border-slate-200" };
+              const entryStyle = ENTRY_TYPE_STYLE[entry.entryType] ?? { label: entry.entryType, tone: "bg-slate-500/10 text-slate-700 border-slate-200", dot: "bg-slate-400" };
+              const authorName = entry.createdByName || "—";
               return (
-              <SurfaceCard key={entry.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        {entry.pinned && <BookOpen className="h-3 w-3 text-primary" />}
-                        <ServiceTypePill type={entry.projectServiceType ?? "autre"} />
-                        <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>{entryStyle.label}</span>
-                        <span className="text-sm font-semibold text-foreground">{entry.createdByName || "—"}</span>
-                        <span className="text-xs text-muted-foreground">{fmtDt(entry.occurredAt ?? entry.createdAt)}</span>
+                <LinkedInCard key={entry.id} href={`/chantiers/${entry.projectId}`}>
+                  <div className="p-4">
+                    {/* Header */}
+                    <div className="flex items-start gap-3">
+                      <PostAvatar name={authorName} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">{authorName}</span>
+                          <span className="text-xs text-muted-foreground">{fmtRelative(entry.occurredAt ?? entry.createdAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <ServiceTypePill type={entry.projectServiceType ?? "autre"} dynamicTypes={dynamicTypes} />
+                          {entry.projectName && (
+                            <span className="text-xs text-muted-foreground truncate">{entry.projectName}</span>
+                          )}
+                        </div>
                       </div>
-                      {entry.projectName && (
-                        <p className="text-xs font-medium text-muted-foreground mb-1">{entry.projectName}{entry.projectRef ? ` · ${entry.projectRef}` : ""}</p>
-                      )}
-                      {entry.title && <p className="text-sm font-semibold text-foreground mb-0.5">{entry.title}</p>}
+                      <span className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${entryStyle.dot}`} />
+                        {entryStyle.label}
+                      </span>
+                    </div>
+
+                    {/* Content */}
+                    <div className="mt-3 space-y-1">
+                      {entry.title && <p className="font-semibold text-sm text-foreground">{entry.title}</p>}
                       <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
                     </div>
-                    <Link href={`/chantiers/${entry.projectId}`}>
-                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir</Button>
-                    </Link>
                   </div>
-                </CardContent>
-              </SurfaceCard>
-            );})}
-
+                  {/* Footer */}
+                  <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">{fmtDt(entry.occurredAt ?? entry.createdAt)}</span>
+                    {entry.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{entry.projectRef}</span>}
+                  </div>
+                </LinkedInCard>
+              );
+            })}
           </div>
         )}
       </div>
@@ -3420,43 +3604,55 @@ export function FeedPage() {
 
 export function MemosGlobalPage() {
   const memosQuery = trpc.management.projectMemos.listAll.useQuery();
+  const serviceTypesQuery = trpc.management.settings.listServiceTypes.useQuery();
   const items = memosQuery.data ?? [];
+  const dynamicTypes = serviceTypesQuery.data ?? [];
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-5 max-w-2xl mx-auto">
         <PageHeader title="Mémos" />
         {memosQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
         ) : memosQuery.error ? (
-          <SurfaceCard><CardContent className="py-10 text-center text-sm text-destructive">{memosQuery.error.message}</CardContent></SurfaceCard>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{memosQuery.error.message}</div>
         ) : items.length === 0 ? (
-          <SurfaceCard><CardContent className="py-10 text-center text-sm text-muted-foreground">Aucun mémo enregistré.</CardContent></SurfaceCard>
+          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-10 text-center">
+            <p className="text-sm text-muted-foreground">Aucun mémo enregistré.</p>
+          </div>
         ) : (
-          <div className="space-y-3">
-            {items.map(memo => (
-              <SurfaceCard key={memo.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        <ServiceTypePill type={memo.projectServiceType ?? "autre"} />
-                        <span className="text-sm font-semibold text-foreground">{memo.createdByName || "—"}</span>
-                        <span className="text-xs text-muted-foreground">{fmtDt(memo.updatedAt ?? memo.createdAt)}</span>
+          <div className="space-y-4">
+            {items.map(memo => {
+              const authorName = memo.createdByName || "—";
+              return (
+                <LinkedInCard key={memo.id} href={`/chantiers/${memo.projectId}`}>
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <PostAvatar name={authorName} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">{authorName}</span>
+                          <span className="text-xs text-muted-foreground">{fmtRelative(memo.updatedAt ?? memo.createdAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <ServiceTypePill type={memo.projectServiceType ?? "autre"} dynamicTypes={dynamicTypes} />
+                          {memo.projectName && <span className="text-xs text-muted-foreground truncate">{memo.projectName}</span>}
+                        </div>
                       </div>
-                      {memo.projectName && (
-                        <p className="text-xs font-medium text-muted-foreground mb-1">{memo.projectName}{memo.projectRef ? ` · ${memo.projectRef}` : ""}</p>
-                      )}
-                      {memo.title && <p className="text-sm font-semibold text-foreground">{memo.title}</p>}
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground mt-0.5">{memo.content}</p>
+                      <span className="shrink-0 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Mémo</span>
                     </div>
-                    <Link href={`/chantiers/${memo.projectId}`}>
-                      <Button variant="outline" size="sm" className="shrink-0 text-xs">Voir</Button>
-                    </Link>
+                    <div className="mt-3 space-y-1">
+                      {memo.title && <p className="font-semibold text-sm text-foreground">{memo.title}</p>}
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{memo.content}</p>
+                    </div>
                   </div>
-                </CardContent>
-              </SurfaceCard>
-            ))}
+                  <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">{fmtDt(memo.updatedAt ?? memo.createdAt)}</span>
+                    {memo.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{memo.projectRef}</span>}
+                  </div>
+                </LinkedInCard>
+              );
+            })}
           </div>
         )}
       </div>
@@ -3475,4 +3671,5 @@ export const techfieldMenu = [
   { icon: Users, label: "Équipe", path: "/equipe", roles: ["admin"] },
   { icon: CalendarClock, label: "Calendrier", path: "/calendrier", roles: ["admin"] },
   { icon: FileText, label: "Documents", path: "/documents", roles: ["admin", "client"] },
+  { icon: Settings, label: "Réglages", path: "/reglages", roles: ["admin"] },
 ];

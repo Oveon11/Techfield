@@ -18,6 +18,7 @@ import {
 import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getDb, getUserAccessProfile } from "../db";
 import {
+  closeSupabaseProject,
   createSupabaseClientInline,
   createSupabaseProject,
   deleteSupabaseProject,
@@ -37,6 +38,12 @@ import {
   updateSupabaseProject,
   updateSupabaseProjectStatus,
 } from "../integrations/supabase/db/management";
+import {
+  createServiceType,
+  deleteServiceType,
+  listServiceTypes,
+  updateServiceType,
+} from "../integrations/supabase/db/settings";
 import {
   createProjectDocumentUploadUrl,
   createProjectJournalEntry,
@@ -141,7 +148,7 @@ const createProjectSchema = z.object({
   clientId: z.number().int().positive(),
   siteId: z.number().int().positive().optional().nullable(),
   title: z.string().min(3),
-  serviceType: z.enum(["clim", "pac", "chauffe_eau", "pv", "vmc", "autre"]).default("autre"),
+  serviceType: z.string().default("autre"),
   description: z.string().optional().nullable(),
   status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]).default("planifie"),
   progressPercent: z.number().int().min(0).max(100).default(0),
@@ -150,6 +157,7 @@ const createProjectSchema = z.object({
   budgetAmount: z.string().default("0.00"),
   startDate: z.string().optional().nullable(),
   plannedEndDate: z.string().optional().nullable(),
+  quoteNumber: z.string().optional().nullable(),
   technicianIds: z.array(z.number().int().positive()).default([]),
 });
 
@@ -162,7 +170,7 @@ const createProjectWithClientSchema = z.object({
   clientPhone: z.string().optional().nullable(),
   clientAddress: z.string().optional().nullable(),
   title: z.string().min(3),
-  serviceType: z.enum(["clim", "pac", "chauffe_eau", "pv", "vmc", "autre"]).default("autre"),
+  serviceType: z.string().default("autre"),
   description: z.string().optional().nullable(),
   status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]).default("planifie"),
   progressPercent: z.number().int().min(0).max(100).default(0),
@@ -171,6 +179,7 @@ const createProjectWithClientSchema = z.object({
   budgetAmount: z.string().default("0.00"),
   startDate: z.string().optional().nullable(),
   plannedEndDate: z.string().optional().nullable(),
+  quoteNumber: z.string().optional().nullable(),
   technicianIds: z.array(z.number().int().positive()).default([]),
 });
 
@@ -824,6 +833,12 @@ export const managementRouter = router({
 
         return {
           ...project,
+          actualEndAt: project.actualEndDate as string | null,
+          quoteNumber: null as string | null,
+          clientPhone: null as string | null,
+          siteAddress: null as string | null,
+          sitePostalCode: null as string | null,
+          siteCity: null as string | null,
           technicianIds: assignmentRows.map(item => item.technicianId),
           assignedTechnicianNames: assignmentRows.map(item => `${item.firstName} ${item.lastName}`.trim()),
         };
@@ -846,6 +861,7 @@ export const managementRouter = router({
           budgetAmount: input.budgetAmount,
           startDate: input.startDate ?? null,
           plannedEndDate: input.plannedEndDate ?? null,
+          quoteNumber: input.quoteNumber ?? null,
           technicianIds: input.technicianIds,
           createdByUserId: ctx.user.id,
         });
@@ -913,6 +929,7 @@ export const managementRouter = router({
         budgetAmount: input.budgetAmount,
         startDate: input.startDate ?? null,
         plannedEndDate: input.plannedEndDate ?? null,
+        quoteNumber: input.quoteNumber ?? null,
         technicianIds: input.technicianIds,
         createdByUserId: ctx.user.id,
       });
@@ -934,6 +951,7 @@ export const managementRouter = router({
           budgetAmount: input.budgetAmount,
           startDate: input.startDate ?? null,
           plannedEndDate: input.plannedEndDate ?? null,
+          quoteNumber: input.quoteNumber ?? null,
           technicianIds: input.technicianIds,
           updatedByUserId: ctx.user.id,
         });
@@ -1008,6 +1026,60 @@ export const managementRouter = router({
         await logActivity(db, ctx.user.id, "project", input.projectId, "project.updated", `Statut chantier mis à jour: ${input.status}`);
         return { success: true };
       }),
+    close: adminProcedure
+      .input(z.object({
+        projectId: z.number().int().positive(),
+        status: z.enum(["termine", "bloque"]),
+        actualEndAt: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!SUPABASE_ENV.isConfigured || !ctx.supabase) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nécessite Supabase." });
+        }
+        await closeSupabaseProject(input.projectId, input.status, input.actualEndAt);
+        return { success: true };
+      }),
+  }),
+
+  settings: router({
+    listServiceTypes: protectedProcedure.query(async () => {
+      try {
+        return await listServiceTypes();
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." });
+      }
+    }),
+    createServiceType: adminProcedure.input(z.object({
+      code: z.string().min(1).max(32),
+      label: z.string().min(1),
+      color: z.string().default("slate"),
+    })).mutation(async ({ input }) => {
+      try {
+        return await createServiceType(input.code, input.label, input.color);
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." });
+      }
+    }),
+    updateServiceType: adminProcedure.input(z.object({
+      id: z.number().int().positive(),
+      label: z.string().min(1),
+      color: z.string(),
+      isActive: z.boolean(),
+    })).mutation(async ({ input }) => {
+      try {
+        return await updateServiceType(input.id, input.label, input.color, input.isActive);
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." });
+      }
+    }),
+    deleteServiceType: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+      try {
+        await deleteServiceType(input.id);
+        return { success: true };
+      } catch (err) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." });
+      }
+    }),
   }),
 
   contracts: router({
