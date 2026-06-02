@@ -68,7 +68,6 @@ export function useAuth(options?: UseAuthOptions) {
       // (évite le problème de pre-fetch Outlook/Exchange qui consomme les magic links)
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
-        options: { shouldCreateUser: false },
       });
 
       if (error) throw error;
