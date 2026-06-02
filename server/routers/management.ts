@@ -471,6 +471,7 @@ export const managementRouter = router({
         upcomingInterventions,
         expiringContracts,
         overdueProjects: [] as { id: number; reference: string; title: string; plannedEndDate: string; serviceType: string; clientName: string }[],
+        blockedProjects: [] as { id: number; reference: string; title: string; serviceType: string; clientName: string }[],
       };
     }),
   }),

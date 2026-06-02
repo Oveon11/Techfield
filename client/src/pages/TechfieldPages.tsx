@@ -232,6 +232,33 @@ export function DashboardPage() {
           title="Pilotage d'activité"
         />
 
+        {(summary.data?.blockedProjects?.length ?? 0) > 0 && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+              <p className="text-sm font-semibold text-amber-700">
+                {summary.data!.blockedProjects!.length} chantier{summary.data!.blockedProjects!.length > 1 ? "s" : ""} bloqué{summary.data!.blockedProjects!.length > 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="space-y-2">
+              {summary.data!.blockedProjects!.map(p => (
+                <Link key={p.id} href={`/chantiers/${p.id}`}>
+                  <div className="flex flex-col gap-1 rounded-xl border border-amber-100 bg-white px-4 py-3 hover:bg-amber-50 transition-colors cursor-pointer sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ServiceTypePill type={p.serviceType} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{p.title}</p>
+                        <p className="text-xs text-muted-foreground">{p.reference}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-amber-700 font-medium shrink-0 sm:ml-2">{p.clientName}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {(summary.data?.overdueProjects?.length ?? 0) > 0 && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -243,13 +270,15 @@ export function DashboardPage() {
             <div className="space-y-2">
               {summary.data!.overdueProjects!.map(p => (
                 <Link key={p.id} href={`/chantiers/${p.id}`}>
-                  <div className="flex items-center justify-between rounded-xl border border-rose-100 bg-white px-4 py-2.5 hover:bg-rose-50 transition-colors cursor-pointer">
+                  <div className="flex flex-col gap-1 rounded-xl border border-rose-100 bg-white px-4 py-3 hover:bg-rose-50 transition-colors cursor-pointer sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 min-w-0">
                       <ServiceTypePill type={p.serviceType} />
-                      <span className="text-sm font-medium text-foreground truncate">{p.title}</span>
-                      <span className="text-xs text-muted-foreground shrink-0">{p.reference}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{p.title}</p>
+                        <p className="text-xs text-muted-foreground">{p.reference}</p>
+                      </div>
                     </div>
-                    <span className="text-xs text-rose-600 font-medium shrink-0 ml-2">
+                    <span className="text-xs text-rose-600 font-medium shrink-0 sm:ml-2">
                       Échéance dépassée le {new Date(p.plannedEndDate).toLocaleDateString("fr-FR")}
                     </span>
                   </div>

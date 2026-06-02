@@ -667,6 +667,16 @@ export async function getSupabaseDashboardSummary(scope: AccessScope) {
   }
 
   const todayIso = now.toISOString().slice(0, 10);
+
+  let techAssignedIds: number[] | null = null;
+  if (scope.user.role === "technicien" && scope.technicianProfile) {
+    const { data: assigned } = await supabase
+      .from("project_assignments")
+      .select("project_id")
+      .eq("technician_id", scope.technicianProfile.id);
+    techAssignedIds = ((assigned ?? []) as Record<string, unknown>[]).map(r => Number(r.project_id));
+  }
+
   let overdueQuery = supabase
     .from("projects")
     .select("id, reference, title, planned_end_date, service_type, clients(company_name)")
@@ -676,15 +686,21 @@ export async function getSupabaseDashboardSummary(scope: AccessScope) {
     .order("planned_end_date", { ascending: true })
     .limit(10);
   if (scope.user.role === "client") {
-    // clients ne voient pas les alertes retard
     overdueQuery = overdueQuery.eq("id", -1);
-  } else if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data: assigned } = await supabase
-      .from("project_assignments")
-      .select("project_id")
-      .eq("technician_id", scope.technicianProfile.id);
-    const ids = ((assigned ?? []) as Record<string, unknown>[]).map(r => Number(r.project_id));
-    overdueQuery = ids.length > 0 ? overdueQuery.in("id", ids) : overdueQuery.eq("id", -1);
+  } else if (techAssignedIds !== null) {
+    overdueQuery = techAssignedIds.length > 0 ? overdueQuery.in("id", techAssignedIds) : overdueQuery.eq("id", -1);
+  }
+
+  let blockedQuery = supabase
+    .from("projects")
+    .select("id, reference, title, service_type, clients(company_name)")
+    .eq("status", "bloque")
+    .order("updated_at", { ascending: false })
+    .limit(10);
+  if (scope.user.role === "client") {
+    blockedQuery = blockedQuery.eq("id", -1);
+  } else if (techAssignedIds !== null) {
+    blockedQuery = techAssignedIds.length > 0 ? blockedQuery.in("id", techAssignedIds) : blockedQuery.eq("id", -1);
   }
 
   const [
@@ -694,6 +710,7 @@ export async function getSupabaseDashboardSummary(scope: AccessScope) {
     { data: upcomingRows, error: upcomingRowsError },
     { data: expiringRows, error: expiringRowsError },
     { data: overdueRows },
+    { data: blockedRows },
   ] = await Promise.all([
     projectsCountQuery,
     upcomingCountQuery,
@@ -701,6 +718,7 @@ export async function getSupabaseDashboardSummary(scope: AccessScope) {
     upcomingListQuery,
     expiringListQuery,
     overdueQuery,
+    blockedQuery,
   ]);
 
   const firstError = projectsError ?? upcomingCountError ?? expiringCountError ?? upcomingRowsError ?? expiringRowsError;
@@ -725,6 +743,17 @@ export async function getSupabaseDashboardSummary(scope: AccessScope) {
         reference: String(r.reference ?? ""),
         title: String(r.title ?? ""),
         plannedEndDate: String(r.planned_end_date ?? ""),
+        serviceType: String(r.service_type ?? "autre"),
+        clientName: String(client?.company_name ?? ""),
+      };
+    }),
+    blockedProjects: (blockedRows ?? []).map((row: unknown) => {
+      const r = row as Record<string, unknown>;
+      const client = getSingleRelation(r, "clients");
+      return {
+        id: Number(r.id),
+        reference: String(r.reference ?? ""),
+        title: String(r.title ?? ""),
         serviceType: String(r.service_type ?? "autre"),
         clientName: String(client?.company_name ?? ""),
       };
