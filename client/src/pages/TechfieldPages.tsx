@@ -3608,7 +3608,17 @@ type JournalFeedEntry = {
   createdAt: string | null;
 };
 
-type FeedItem = JournalFeedEntry | MediaGroup;
+type CombinedFeedItem = Omit<JournalFeedEntry, "kind"> & {
+  kind: "combined";
+  photos: FeedPhoto[];
+};
+
+type FeedItem = JournalFeedEntry | MediaGroup | CombinedFeedItem;
+
+function getItemDate(item: FeedItem): string | null {
+  if (item.kind === "media") return item.date;
+  return item.occurredAt ?? item.createdAt;
+}
 
 function groupMediaForFeed(items: Array<{
   id: number;
@@ -3658,6 +3668,55 @@ function groupMediaForFeed(items: Array<{
   return groups;
 }
 
+function buildFeed(journals: JournalFeedEntry[], mediaGroups: MediaGroup[]): FeedItem[] {
+  const usedMedia = new Set<string>();
+  const result: FeedItem[] = [];
+
+  const allSorted = [...journals, ...mediaGroups].sort((a, b) =>
+    (getItemDate(b) ? new Date(getItemDate(b)!).getTime() : 0) -
+    (getItemDate(a) ? new Date(getItemDate(a)!).getTime() : 0)
+  );
+
+  for (const item of allSorted) {
+    if (item.kind === "media") {
+      if (!usedMedia.has(item.id)) result.push(item);
+      continue;
+    }
+    // Journal entry — look for a nearby media group (same project + author, ≤15 min)
+    const itemTs = getItemDate(item) ? new Date(getItemDate(item)!).getTime() : 0;
+    const nearbyMedia = mediaGroups.find(mg => {
+      if (usedMedia.has(mg.id)) return false;
+      const mgTs = mg.date ? new Date(mg.date).getTime() : 0;
+      return (
+        mg.projectId === item.projectId &&
+        mg.authorName === item.createdByName &&
+        Math.abs(itemTs - mgTs) <= 15 * 60 * 1000
+      );
+    });
+    if (nearbyMedia) {
+      usedMedia.add(nearbyMedia.id);
+      result.push({
+        kind: "combined",
+        id: item.id,
+        projectId: item.projectId,
+        projectName: item.projectName,
+        projectRef: item.projectRef,
+        projectServiceType: item.projectServiceType,
+        entryType: item.entryType,
+        title: item.title,
+        content: item.content,
+        createdByName: item.createdByName,
+        occurredAt: item.occurredAt,
+        createdAt: item.createdAt,
+        photos: nearbyMedia.photos,
+      });
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 export function FeedPage() {
   const journalQuery = trpc.management.projectJournal.listAll.useQuery();
   const mediaQuery = trpc.management.projectMedia.listAll.useQuery();
@@ -3665,7 +3724,7 @@ export function FeedPage() {
   const isLoading = journalQuery.isLoading || mediaQuery.isLoading;
   const err = journalQuery.error ?? mediaQuery.error;
 
-  const combined: FeedItem[] = useMemo(() => {
+  const feed = useMemo(() => {
     const journals: JournalFeedEntry[] = (journalQuery.data ?? []).map(e => ({
       kind: "journal" as const,
       id: e.id,
@@ -3681,11 +3740,7 @@ export function FeedPage() {
       createdAt: e.createdAt,
     }));
     const mediaGroups = groupMediaForFeed(mediaQuery.data ?? []);
-    return [...journals, ...mediaGroups].sort((a, b) => {
-      const da = a.kind === "journal" ? (a.occurredAt ?? a.createdAt) : a.date;
-      const db = b.kind === "journal" ? (b.occurredAt ?? b.createdAt) : b.date;
-      return (db ? new Date(db).getTime() : 0) - (da ? new Date(da).getTime() : 0);
-    });
+    return buildFeed(journals, mediaGroups);
   }, [journalQuery.data, mediaQuery.data]);
 
   return (
@@ -3696,26 +3751,30 @@ export function FeedPage() {
           <p className="text-sm text-muted-foreground">Chargement…</p>
         ) : err ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err.message}</div>
-        ) : combined.length === 0 ? (
+        ) : feed.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-10 text-center">
             <p className="text-sm text-muted-foreground">Aucune publication dans le fil d'actualité.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {combined.map(item => {
+            {feed.map(item => {
+              const authorName = item.kind === "media" ? item.authorName : item.createdByName;
+              const serviceType = item.projectServiceType;
+              const itemDate = getItemDate(item);
+
               if (item.kind === "media") {
                 return (
                   <LinkedInCard key={item.id} href={`/chantiers/${item.projectId}`}>
                     <div className="p-4">
                       <div className="flex items-start gap-3">
-                        <PostAvatar name={item.authorName} />
+                        <PostAvatar name={authorName} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground">{item.authorName}</span>
-                            <span className="text-xs text-muted-foreground">{fmtRelative(item.date)}</span>
+                            <span className="font-semibold text-sm text-foreground">{authorName}</span>
+                            <span className="text-xs text-muted-foreground">{fmtRelative(itemDate)}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <ServiceTypePill type={item.projectServiceType} />
+                            <ServiceTypePill type={serviceType} />
                             {item.projectName && <span className="text-xs text-muted-foreground truncate">{item.projectName}</span>}
                           </div>
                         </div>
@@ -3729,7 +3788,7 @@ export function FeedPage() {
                     </div>
                     <PhotoGrid photos={item.photos} />
                     <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{fmtDt(item.date)}</span>
+                      <span className="text-xs text-muted-foreground">{fmtDt(itemDate)}</span>
                       {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
                     </div>
                   </LinkedInCard>
@@ -3737,18 +3796,20 @@ export function FeedPage() {
               }
 
               const entryStyle = ENTRY_TYPE_STYLE[item.entryType] ?? { label: item.entryType, tone: "bg-slate-500/10 text-slate-700 border-slate-200", dot: "bg-slate-400" };
+              const photos = item.kind === "combined" ? item.photos : [];
+
               return (
                 <LinkedInCard key={`j-${item.id}`} href={`/chantiers/${item.projectId}`}>
                   <div className="p-4">
                     <div className="flex items-start gap-3">
-                      <PostAvatar name={item.createdByName} />
+                      <PostAvatar name={authorName} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-foreground">{item.createdByName}</span>
-                          <span className="text-xs text-muted-foreground">{fmtRelative(item.occurredAt ?? item.createdAt)}</span>
+                          <span className="font-semibold text-sm text-foreground">{authorName}</span>
+                          <span className="text-xs text-muted-foreground">{fmtRelative(itemDate)}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <ServiceTypePill type={item.projectServiceType} />
+                          <ServiceTypePill type={serviceType} />
                           {item.projectName && <span className="text-xs text-muted-foreground truncate">{item.projectName}</span>}
                         </div>
                       </div>
@@ -3762,8 +3823,9 @@ export function FeedPage() {
                       <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
                     </div>
                   </div>
+                  {photos.length > 0 && <PhotoGrid photos={photos} />}
                   <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{fmtDt(item.occurredAt ?? item.createdAt)}</span>
+                    <span className="text-xs text-muted-foreground">{fmtDt(itemDate)}</span>
                     {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
                   </div>
                 </LinkedInCard>

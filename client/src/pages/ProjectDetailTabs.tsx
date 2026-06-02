@@ -720,47 +720,50 @@ export function ProjectMediaPanel({ projectId, canManage }: { projectId: number;
   });
 
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<[number, number] | null>(null);
   const [caption, setCaption] = useState("");
 
-  const handleFile = async (file: File) => {
-    if (!file) return;
-    const mediaType: MediaType = file.type.startsWith("video/") ? "video" : "photo";
-    const allowed = mediaType === "video" ? MEDIA_VIDEO_MIME : MEDIA_PHOTO_MIME;
-    if (!allowed.includes(file.type)) {
-      toast.error(`Format ${file.type || "inconnu"} non supporté.`);
-      return;
-    }
-    if (file.size > 100 * 1024 * 1024) {
-      toast.error("Fichier trop volumineux (max 100 Mo).");
-      return;
-    }
+  const handleFiles = async (fileList: FileList) => {
+    const allFiles = Array.from(fileList);
+    const allowed = [...MEDIA_PHOTO_MIME, ...MEDIA_VIDEO_MIME];
+    const valid = allFiles.filter(f => {
+      if (!allowed.includes(f.type)) { toast.error(`Format non supporté : ${f.name}`); return false; }
+      if (f.size > 100 * 1024 * 1024) { toast.error(`${f.name} dépasse 100 Mo.`); return false; }
+      return true;
+    });
+    if (valid.length === 0) return;
 
     setUploading(true);
-    try {
-      const upload = await createUploadMutation.mutateAsync({
-        projectId,
-        fileName: file.name,
-        mimeType: file.type,
-        mediaType,
-      });
-      await uploadFileToSignedUrl(upload.signedUrl, file);
-      await registerMutation.mutateAsync({
-        projectId,
-        mediaType,
-        caption: caption.trim() ? caption.trim() : null,
-        fileName: file.name,
-        fileKey: upload.fileKey,
-        mimeType: file.type,
-        sizeBytes: file.size,
-      });
-      toast.success("Média ajouté.");
+    setUploadProgress([0, valid.length]);
+    let done = 0;
+
+    for (const file of valid) {
+      try {
+        const mediaType: MediaType = file.type.startsWith("video/") ? "video" : "photo";
+        const upload = await createUploadMutation.mutateAsync({
+          projectId, fileName: file.name, mimeType: file.type, mediaType,
+        });
+        await uploadFileToSignedUrl(upload.signedUrl, file);
+        await registerMutation.mutateAsync({
+          projectId, mediaType,
+          caption: valid.length === 1 && caption.trim() ? caption.trim() : null,
+          fileName: file.name, fileKey: upload.fileKey,
+          mimeType: file.type, sizeBytes: file.size,
+        });
+        done++;
+        setUploadProgress([done, valid.length]);
+      } catch (error) {
+        toast.error(`Échec : ${file.name}`);
+      }
+    }
+
+    if (done > 0) {
+      toast.success(done === 1 ? "Média ajouté." : `${done} médias ajoutés.`);
       setCaption("");
       await utils.management.projectMedia.list.invalidate({ projectId });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Échec de l'ajout du média.");
-    } finally {
-      setUploading(false);
     }
+    setUploading(false);
+    setUploadProgress(null);
   };
 
   return (
@@ -782,16 +785,19 @@ export function ProjectMediaPanel({ projectId, canManage }: { projectId: number;
               <Button asChild disabled={uploading}>
                 <label className="cursor-pointer">
                   <Upload className="h-4 w-4" />
-                  {uploading ? "Envoi…" : "Ajouter"}
+                  {uploading && uploadProgress
+                    ? `Envoi ${uploadProgress[0]}/${uploadProgress[1]}…`
+                    : uploading ? "Envoi…" : "Ajouter"}
                   <input
                     type="file"
                     accept={[...MEDIA_PHOTO_MIME, ...MEDIA_VIDEO_MIME].join(",")}
                     className="hidden"
+                    multiple
                     disabled={uploading}
                     onChange={e => {
-                      const file = e.target.files?.[0];
+                      const files = e.target.files;
                       e.target.value = "";
-                      if (file) void handleFile(file);
+                      if (files && files.length > 0) void handleFiles(files);
                     }}
                   />
                 </label>
