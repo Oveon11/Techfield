@@ -61,6 +61,12 @@ import {
   updateProjectMemo,
 } from "../integrations/supabase/db/chantier-features";
 import {
+  createTimeEntry,
+  deleteTimeEntry,
+  listTimeEntries,
+  listTechniciansForAdmin,
+} from "../integrations/supabase/db/time-entries";
+import {
   createIntervention,
   createInterventionMediaUploadUrl,
   deleteInterventionMedia,
@@ -454,6 +460,7 @@ export const managementRouter = router({
         },
         upcomingInterventions,
         expiringContracts,
+        overdueProjects: [] as { id: number; reference: string; title: string; plannedEndDate: string; serviceType: string; clientName: string }[],
       };
     }),
   }),
@@ -690,7 +697,7 @@ export const managementRouter = router({
         const projectIds = assignments.map(item => item.projectId);
         if (projectIds.length === 0) return [];
 
-        return db
+        const rows = await db
           .select({
             id: projects.id,
             reference: projects.reference,
@@ -712,9 +719,10 @@ export const managementRouter = router({
           .leftJoin(sites, eq(projects.siteId, sites.id))
           .where(inArray(projects.id, projectIds))
           .orderBy(desc(projects.createdAt));
+        return rows.map(r => ({ ...r, startDate: null as string | null, plannedEndDate: null as string | null }));
       }
 
-      return db
+      const rows = await db
         .select({
           id: projects.id,
           reference: projects.reference,
@@ -736,6 +744,7 @@ export const managementRouter = router({
         .leftJoin(sites, eq(projects.siteId, sites.id))
         .where(scope.user.role === "client" && scope.clientContactProfile ? eq(projects.clientId, scope.clientContactProfile.clientId) : undefined)
         .orderBy(desc(projects.createdAt));
+      return rows.map(r => ({ ...r, startDate: null as string | null, plannedEndDate: null as string | null }));
     }),
     getById: protectedProcedure
       .input(z.object({ projectId: z.number().int().positive() }))
@@ -1640,6 +1649,59 @@ export const managementRouter = router({
         return await deleteProjectDocument(scope, input.id);
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression document." });
+      }
+    }),
+  }),
+
+  timeEntries: router({
+    myTechnicianId: protectedProcedure.query(async ({ ctx }) => {
+      const scope = await getScope(ctx.user.openId);
+      return { technicianId: scope.technicianProfile?.id ?? null };
+    }),
+    listTechnicians: protectedProcedure.query(async ({ ctx }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listTechniciansForAdmin(scope);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur." });
+      }
+    }),
+    list: protectedProcedure.input(z.object({
+      technicianId: z.number().int().positive(),
+      year: z.number().int(),
+      month: z.number().int().min(1).max(12),
+    })).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listTimeEntries(scope, input.technicianId, input.year, input.month);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur." });
+      }
+    }),
+    save: protectedProcedure.input(z.object({
+      technicianId: z.number().int().positive(),
+      date: z.string(),
+      entryType: z.enum(["travail", "conge", "cfa", "maladie", "absence"]),
+      startTime: z.string().nullable(),
+      endTime: z.string().nullable(),
+      breakMinutes: z.number().int().min(0),
+      projectId: z.number().int().positive().nullable(),
+      panier: z.boolean(),
+      note: z.string().nullable(),
+    })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await createTimeEntry(scope, input);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur." });
+      }
+    }),
+    delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await deleteTimeEntry(scope, input.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression." });
       }
     }),
   }),

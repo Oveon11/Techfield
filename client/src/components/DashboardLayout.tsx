@@ -284,7 +284,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
 
             {/* Navigation */}
             <SidebarMenu>
-              {techfieldMenu.map(item => {
+              {techfieldMenu.filter(item => !item.roles || item.roles.includes(user?.role ?? "")).map(item => {
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>

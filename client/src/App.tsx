@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import AuthCallbackPage from "@/pages/AuthCallbackPage";
+import HoursPage from "@/pages/HoursPage";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/chantiers/:id" component={ProjectDetailPage} />
       <Route path="/contrats" component={ContractsPage} />
       <Route path="/interventions" component={InterventionsPage} />
+      <Route path="/heures" component={HoursPage} />
       <Route path="/equipe" component={TeamPage} />
       <Route path="/calendrier" component={CalendarPage} />
       <Route path="/documents" component={DocumentsPage} />
