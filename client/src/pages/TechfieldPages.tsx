@@ -224,6 +224,10 @@ export function DashboardPage() {
   const { role } = useRoleMatrix();
   const summary = trpc.management.dashboard.summary.useQuery();
 
+  if (role === "technicien") {
+    return <FeedPage />;
+  }
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -1077,6 +1081,7 @@ export function ProjectsPage() {
   const sites = sitesQuery.data ?? [];
   const technicians = techniciansQuery.data ?? [];
   const canManage = !!permissions?.manageProjects;
+  const canCreate = canManage || !!permissions?.createProjects;
 
   return (
     <AppShell>
@@ -1084,7 +1089,7 @@ export function ProjectsPage() {
         <PageHeader
           title="Chantiers"
           action={
-            canManage ? (
+            canCreate ? (
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogTrigger asChild>
                   <Button>Nouveau chantier</Button>
@@ -4025,7 +4030,7 @@ export function MemosGlobalPage() {
 }
 
 export const techfieldMenu = [
-  { icon: LayoutDashboard, label: "Tableau de bord", path: "/", roles: ["admin", "technicien", "client"] },
+  { icon: LayoutDashboard, label: "Tableau de bord", path: "/", roles: ["admin", "client"] },
   { icon: Newspaper, label: "Fil d'actualité", path: "/fil-actualite", roles: ["admin", "technicien"] },
   { icon: StickyNote, label: "Mémos", path: "/memos-globaux", roles: ["admin", "technicien"] },
   { icon: BriefcaseBusiness, label: "Chantiers", path: "/chantiers", roles: ["admin", "technicien", "client"] },

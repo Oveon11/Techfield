@@ -34,17 +34,7 @@ async function assertProjectAccess(scope: AccessScope, projectId: number): Promi
 
   const supabase = createSupabaseAdminClient();
 
-  if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data, error } = await supabase
-      .from("project_assignments")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("technician_id", scope.technicianProfile.id)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) {
-      throw new Error("Accès refusé : technicien non assigné à ce chantier.");
-    }
+  if (scope.user.role === "technicien") {
     return;
   }
 
@@ -268,25 +258,13 @@ export async function listAllJournalEntries(scope: AccessScope) {
   if (scope.user.role === "client") return [];
   const supabase = createSupabaseAdminClient();
 
-  let projectFilter: number[] | null = null;
-  if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data: assignments } = await supabase
-      .from("project_assignments")
-      .select("project_id")
-      .eq("technician_id", scope.technicianProfile.id);
-    const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
-    if (projectIds.length === 0) return [];
-    projectFilter = projectIds;
-  }
-
-  let entriesQuery = supabase
+  const entriesQuery = supabase
     .from("project_journal_entries")
     .select("id, project_id, entry_type, title, content, occurred_at, pinned, created_by_user_id, created_at, updated_at")
     .order("pinned", { ascending: false })
     .order("occurred_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(200);
-  if (projectFilter) entriesQuery = entriesQuery.in("project_id", projectFilter);
 
   const { data, error } = await entriesQuery;
   if (error) throw error;
@@ -467,23 +445,11 @@ export async function listAllMemos(scope: AccessScope) {
   if (scope.user.role === "client") return [];
   const supabase = createSupabaseAdminClient();
 
-  let projectFilter: number[] | null = null;
-  if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data: assignments } = await supabase
-      .from("project_assignments")
-      .select("project_id")
-      .eq("technician_id", scope.technicianProfile.id);
-    const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
-    if (projectIds.length === 0) return [];
-    projectFilter = projectIds;
-  }
-
-  let memosQuery = supabase
+  const memosQuery = supabase
     .from("project_memos")
     .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at")
     .order("created_at", { ascending: false })
     .limit(200);
-  if (projectFilter) memosQuery = memosQuery.in("project_id", projectFilter);
 
   const { data, error } = await memosQuery;
   if (error) throw error;
@@ -656,24 +622,12 @@ export async function listAllProjectMedia(scope: AccessScope) {
   if (scope.user.role === "client") return [];
   const supabase = createSupabaseAdminClient();
 
-  let projectFilter: number[] | null = null;
-  if (scope.user.role === "technicien" && scope.technicianProfile) {
-    const { data: assignments } = await supabase
-      .from("project_assignments")
-      .select("project_id")
-      .eq("technician_id", scope.technicianProfile.id);
-    const projectIds = ((assignments ?? []) as Record<string, unknown>[]).map((a) => Number(a.project_id));
-    if (projectIds.length === 0) return [];
-    projectFilter = projectIds;
-  }
-
-  let q = supabase
+  const q = supabase
     .from("project_media")
     .select("id, project_id, media_type, caption, file_name, file_key, mime_type, size_bytes, uploaded_by_user_id, created_at")
     .eq("media_type", "photo")
     .order("created_at", { ascending: false })
     .limit(60);
-  if (projectFilter) q = q.in("project_id", projectFilter);
 
   const { data, error } = await q;
   if (error) throw error;
