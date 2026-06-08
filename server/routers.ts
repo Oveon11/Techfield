@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getUserAccessProfile } from "./db";
 import { managementRouter } from "./routers/management";
+import { planningRouter } from "./routers/planning";
 import { userManagementRouter } from "./routers/userManagement";
 
 type CookieWritableResponse = {
@@ -112,6 +113,7 @@ export const appRouter = router({
 
   management: managementRouter,
   users: userManagementRouter,
+  planning: planningRouter,
 });
 
 export type AppRouter = typeof appRouter;
