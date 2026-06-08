@@ -54,7 +54,7 @@ import { toast } from "sonner";
 // Types & constantes
 // ============================================================
 
-type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note";
+type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note" | "memo";
 type MediaType = "photo" | "video";
 type DocumentCategory = "rapport" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
 type DocumentVisibility = "interne" | "client" | "restreint";
@@ -65,6 +65,7 @@ const JOURNAL_TYPE_OPTIONS: { value: JournalEntryType; label: string; tone: stri
   { value: "livraison", label: "Livraison", tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200" },
   { value: "contact_client", label: "Contact client", tone: "bg-violet-500/10 text-violet-700 border-violet-200" },
   { value: "note", label: "Note", tone: "bg-slate-500/10 text-slate-700 border-slate-200" },
+  { value: "memo", label: "Mémo", tone: "bg-amber-500/10 text-amber-700 border-amber-200" },
 ];
 
 const DOCUMENT_CATEGORY_OPTIONS: { value: DocumentCategory; label: string }[] = [
@@ -418,7 +419,7 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
           {listQuery.data.map(entry => {
             const typeOpt = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType);
             const tone = typeOpt?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
-            const dot = typeOpt?.value === "etape" ? "bg-blue-500" : typeOpt?.value === "blocage" ? "bg-rose-500" : typeOpt?.value === "livraison" ? "bg-emerald-500" : typeOpt?.value === "contact_client" ? "bg-violet-500" : "bg-slate-400";
+            const dot = typeOpt?.value === "etape" ? "bg-blue-500" : typeOpt?.value === "blocage" ? "bg-rose-500" : typeOpt?.value === "livraison" ? "bg-emerald-500" : typeOpt?.value === "contact_client" ? "bg-violet-500" : typeOpt?.value === "memo" ? "bg-amber-400" : "bg-slate-400";
             const entryTypeLabel = typeOpt?.label ?? entry.entryType;
             const authorName = entry.createdByName || "—";
             const entryTs = entry.occurredAt ?? entry.createdAt;

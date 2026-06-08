@@ -15,7 +15,7 @@ type AccessScope = {
   } | null;
 };
 
-export type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note";
+export type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note" | "memo";
 export type MediaType = "photo" | "video";
 export type DocumentCategory = "rapport" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
 

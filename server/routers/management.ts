@@ -281,7 +281,7 @@ const uploadDocumentSchema = z.object({
 // Sprint 2 - Chantier features schemas
 // ============================================================
 
-const journalEntryTypeSchema = z.enum(["etape", "blocage", "livraison", "contact_client", "note"]);
+const journalEntryTypeSchema = z.enum(["etape", "blocage", "livraison", "contact_client", "note", "memo"]);
 const mediaTypeSchema = z.enum(["photo", "video"]);
 const documentCategorySchema = z.enum(["rapport", "photo", "contrat", "bon_intervention", "plan", "autre"]);
 const documentVisibilitySchema = z.enum(["interne", "client", "restreint"]);
@@ -1592,7 +1592,7 @@ export const managementRouter = router({
         });
         await createProjectJournalEntry(scope, {
           projectId: input.projectId,
-          entryType: "note",
+          entryType: "memo",
           title: input.title ?? null,
           content: input.content,
           occurredAt: null,
