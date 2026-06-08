@@ -84,7 +84,6 @@ import { Link, useRoute } from "wouter";
 import {
   ProjectActivityFeedPanel,
   ProjectDocumentsPanel,
-  ProjectInterventionsPanel,
   ProjectJournalPanel,
   ProjectMediaPanel,
   ProjectMemosPanel,
@@ -2165,10 +2164,7 @@ export function ProjectDetailPage() {
               <ImageIcon className="h-3.5 w-3.5" />Médias
             </TabsTrigger>
             <TabsTrigger value="memos" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <StickyNote className="h-3.5 w-3.5" />Mémos
-            </TabsTrigger>
-            <TabsTrigger value="interventions" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <Wrench className="h-3.5 w-3.5" />Interventions
+              <ClipboardCheck className="h-3.5 w-3.5" />Tâches
             </TabsTrigger>
             <TabsTrigger value="documents" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <FileText className="h-3.5 w-3.5" />Documents
@@ -2274,15 +2270,6 @@ export function ProjectDetailPage() {
                 </CardContent>
               </SurfaceCard>
             </SectionGrid>
-          </TabsContent>
-
-          <TabsContent value="interventions" className="mt-6">
-            <ProjectInterventionsPanel
-              projectId={project.id}
-              clientId={project.clientId}
-              siteId={project.siteId ?? null}
-              canManage={canManage}
-            />
           </TabsContent>
 
           <TabsContent value="journal" className="mt-6">
@@ -3647,10 +3634,28 @@ type CombinedFeedItem = Omit<JournalFeedEntry, "kind"> & {
   photos: FeedPhoto[];
 };
 
-type FeedItem = JournalFeedEntry | MediaGroup | CombinedFeedItem;
+type TaskFeedItem = {
+  kind: "task";
+  id: number;
+  projectId: number;
+  projectName: string;
+  projectRef: string;
+  projectServiceType: string;
+  clientName: string;
+  title: string | null;
+  content: string;
+  createdByName: string;
+  urgency: string;
+  status: string;
+  pinned: boolean;
+  createdAt: string | null;
+};
+
+type FeedItem = JournalFeedEntry | MediaGroup | CombinedFeedItem | TaskFeedItem;
 
 function getItemDate(item: FeedItem): string | null {
   if (item.kind === "media") return item.date;
+  if (item.kind === "task") return item.createdAt;
   return item.occurredAt ?? item.createdAt;
 }
 
@@ -3754,12 +3759,26 @@ function buildFeed(journals: JournalFeedEntry[], mediaGroups: MediaGroup[]): Fee
   return result;
 }
 
+const FEED_URGENCY_TONE: Record<string, string> = {
+  urgente: "bg-rose-500/10 text-rose-700 border-rose-200",
+  haute:   "bg-orange-500/10 text-orange-700 border-orange-200",
+  normale: "bg-blue-500/10 text-blue-700 border-blue-200",
+  basse:   "bg-slate-500/10 text-slate-500 border-slate-200",
+};
+const FEED_URGENCY_DOT: Record<string, string> = {
+  urgente: "bg-rose-500",
+  haute:   "bg-orange-400",
+  normale: "bg-blue-400",
+  basse:   "bg-slate-400",
+};
+
 export function FeedPage() {
   const journalQuery = trpc.management.projectJournal.listAll.useQuery();
   const mediaQuery = trpc.management.projectMedia.listAll.useQuery();
+  const memosQuery = trpc.management.projectMemos.listAll.useQuery();
 
-  const isLoading = journalQuery.isLoading || mediaQuery.isLoading;
-  const err = journalQuery.error ?? mediaQuery.error;
+  const isLoading = journalQuery.isLoading || mediaQuery.isLoading || memosQuery.isLoading;
+  const err = journalQuery.error ?? mediaQuery.error ?? memosQuery.error;
 
   const feed = useMemo(() => {
     const journals: JournalFeedEntry[] = (journalQuery.data ?? []).map(e => ({
@@ -3778,8 +3797,33 @@ export function FeedPage() {
       createdAt: e.createdAt,
     }));
     const mediaGroups = groupMediaForFeed(mediaQuery.data ?? []);
-    return buildFeed(journals, mediaGroups);
-  }, [journalQuery.data, mediaQuery.data]);
+    const baseFeed = buildFeed(journals, mediaGroups);
+
+    const tasks: TaskFeedItem[] = (memosQuery.data ?? []).map(m => ({
+      kind: "task" as const,
+      id: m.id,
+      projectId: m.projectId,
+      projectName: (m as Record<string, unknown>).projectName as string ?? "",
+      projectRef: (m as Record<string, unknown>).projectRef as string ?? "",
+      projectServiceType: (m as Record<string, unknown>).projectServiceType as string ?? "autre",
+      clientName: "",
+      title: m.title,
+      content: m.content,
+      createdByName: m.createdByName || "—",
+      urgency: m.urgency,
+      status: m.status,
+      pinned: m.pinned,
+      createdAt: m.createdAt,
+    }));
+
+    const all = [...baseFeed, ...tasks];
+    all.sort((a, b) => {
+      const ta = getItemDate(a) ? new Date(getItemDate(a)!).getTime() : 0;
+      const tb = getItemDate(b) ? new Date(getItemDate(b)!).getTime() : 0;
+      return tb - ta;
+    });
+    return all;
+  }, [journalQuery.data, mediaQuery.data, memosQuery.data]);
 
   return (
     <AppShell>
@@ -3830,6 +3874,50 @@ export function FeedPage() {
                     <PhotoGrid photos={item.photos} />
                     <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">{fmtDt(itemDate)}</span>
+                      {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
+                    </div>
+                  </LinkedInCard>
+                );
+              }
+
+              if (item.kind === "task") {
+                const urgencyTone = FEED_URGENCY_TONE[item.urgency] ?? FEED_URGENCY_TONE.normale;
+                const urgencyDot = FEED_URGENCY_DOT[item.urgency] ?? FEED_URGENCY_DOT.normale;
+                const urgencyLabel = { urgente: "Urgente", haute: "Haute", normale: "Normale", basse: "Basse" }[item.urgency] ?? item.urgency;
+                return (
+                  <LinkedInCard key={`t-${item.id}`} href={`/chantiers/${item.projectId}`}>
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <PostAvatar name={authorName} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-foreground">{authorName}</span>
+                            <span className="text-xs text-muted-foreground">{fmtRelative(itemDate)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <ServiceTypePill type={serviceType} />
+                            {item.projectName && <span className="text-xs font-medium text-foreground truncate">{item.projectName}</span>}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${urgencyTone}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${urgencyDot}`} />
+                            {urgencyLabel}
+                          </span>
+                          {item.status === "done" && (
+                            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Fait</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className={`mt-3 pl-[52px] space-y-1 ${item.status === "done" ? "opacity-60" : ""}`}>
+                        {item.title && <p className={`font-semibold text-sm text-foreground ${item.status === "done" ? "line-through" : ""}`}>{item.title}</p>}
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <ClipboardCheck className="h-3 w-3" />Tâche · {fmtDt(itemDate)}
+                      </span>
                       {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
                     </div>
                   </LinkedInCard>

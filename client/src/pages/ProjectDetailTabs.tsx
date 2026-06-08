@@ -306,14 +306,6 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
   const registerMediaMutation = trpc.management.projectMedia.register.useMutation();
 
   const createMutation = trpc.management.projectJournal.create.useMutation({
-    onSuccess: async () => {
-      toast.success("Entrée de journal ajoutée.");
-      setCreateOpen(false);
-      setForm(INITIAL_JOURNAL_FORM);
-      setAttachedFiles([]);
-      await utils.management.projectJournal.list.invalidate({ projectId });
-      await utils.management.projectMedia.list.invalidate({ projectId });
-    },
     onError: error => toast.error(error.message),
   });
 
@@ -345,25 +337,31 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
 
   const handleSubmitCreate = async () => {
     if (!form.content.trim()) return;
+    const filesToUpload = [...attachedFiles];
     setSubmitting(true);
     try {
-      const entryResult = await createMutation.mutateAsync({
+      await createMutation.mutateAsync({
         projectId,
         entryType: form.entryType,
         title: form.title.trim() ? form.title.trim() : null,
         content: form.content.trim(),
         occurredAt: toIsoOrNull(form.occurredAt),
       });
-      if (attachedFiles.length > 0) {
-        for (const file of attachedFiles) {
-          try {
-            const upload = await createUploadMutation.mutateAsync({ projectId, fileName: file.name, mimeType: file.type, mediaType: "photo" });
-            await fetch(upload.signedUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-            await registerMediaMutation.mutateAsync({ projectId, mediaType: "photo", caption: null, fileName: file.name, fileKey: upload.fileKey, mimeType: file.type, sizeBytes: file.size });
-          } catch { /* skip failed photo */ }
-        }
+      for (const file of filesToUpload) {
+        try {
+          const upload = await createUploadMutation.mutateAsync({ projectId, fileName: file.name, mimeType: file.type, mediaType: "photo" });
+          await fetch(upload.signedUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+          await registerMediaMutation.mutateAsync({ projectId, mediaType: "photo", caption: null, fileName: file.name, fileKey: upload.fileKey, mimeType: file.type, sizeBytes: file.size });
+        } catch { /* skip failed photo */ }
       }
-      void entryResult;
+      toast.success(filesToUpload.length > 0 ? `Entrée + ${filesToUpload.length} photo(s) ajoutées.` : "Entrée de journal ajoutée.");
+      setCreateOpen(false);
+      setForm(INITIAL_JOURNAL_FORM);
+      setAttachedFiles([]);
+      await utils.management.projectJournal.list.invalidate({ projectId });
+      if (filesToUpload.length > 0) await utils.management.projectMedia.list.invalidate({ projectId });
+    } catch {
+      // error shown by mutation onError
     } finally {
       setSubmitting(false);
     }
@@ -618,15 +616,25 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
 type MemoFormState = { title: string; content: string };
 const INITIAL_MEMO_FORM: MemoFormState = { title: "", content: "" };
 
+const URGENCY_OPTIONS = [
+  { value: "urgente", label: "Urgente", tone: "bg-rose-500/10 text-rose-700 border-rose-200" },
+  { value: "haute",   label: "Haute",   tone: "bg-orange-500/10 text-orange-700 border-orange-200" },
+  { value: "normale", label: "Normale", tone: "bg-blue-500/10 text-blue-700 border-blue-200" },
+  { value: "basse",   label: "Basse",   tone: "bg-slate-500/10 text-slate-500 border-slate-200" },
+];
+
+type TaskFormState = { title: string; content: string; urgency: string };
+const INITIAL_TASK_FORM: TaskFormState = { title: "", content: "", urgency: "normale" };
+
 export function ProjectMemosPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectMemos.list.useQuery({ projectId });
 
   const createMutation = trpc.management.projectMemos.create.useMutation({
     onSuccess: async () => {
-      toast.success("Mémo créé.");
+      toast.success("Tâche créée.");
       setCreateOpen(false);
-      setForm(INITIAL_MEMO_FORM);
+      setForm(INITIAL_TASK_FORM);
       await utils.management.projectMemos.list.invalidate({ projectId });
     },
     onError: error => toast.error(error.message),
@@ -634,7 +642,7 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
 
   const updateMutation = trpc.management.projectMemos.update.useMutation({
     onSuccess: async () => {
-      toast.success("Mémo mis à jour.");
+      toast.success("Tâche mise à jour.");
       setEditId(null);
       await utils.management.projectMemos.list.invalidate({ projectId });
     },
@@ -643,62 +651,70 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
 
   const deleteMutation = trpc.management.projectMemos.delete.useMutation({
     onSuccess: async () => {
-      toast.success("Mémo supprimé.");
+      toast.success("Tâche supprimée.");
       await utils.management.projectMemos.list.invalidate({ projectId });
     },
     onError: error => toast.error(error.message),
   });
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState<MemoFormState>(INITIAL_MEMO_FORM);
+  const [form, setForm] = useState<TaskFormState>(INITIAL_TASK_FORM);
   const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<MemoFormState>(INITIAL_MEMO_FORM);
+  const [editForm, setEditForm] = useState<TaskFormState & { status: string }>({ ...INITIAL_TASK_FORM, status: "todo" });
 
-  const startEdit = (memo: NonNullable<typeof listQuery.data>[number]) => {
-    setEditId(memo.id);
-    setEditForm({ title: memo.title ?? "", content: memo.content ?? "" });
+  const startEdit = (task: NonNullable<typeof listQuery.data>[number]) => {
+    setEditId(task.id);
+    setEditForm({ title: task.title ?? "", content: task.content ?? "", urgency: task.urgency ?? "normale", status: task.status ?? "todo" });
   };
+
+  const tasks = listQuery.data ?? [];
+  const sorted = [...tasks].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    const uOrder = ["urgente", "haute", "normale", "basse"];
+    return (uOrder.indexOf(a.urgency ?? "normale")) - (uOrder.indexOf(b.urgency ?? "normale"));
+  });
 
   return (
     <div className="space-y-5">
       <PanelHeader
-        icon={<StickyNote className="h-5 w-5" />}
-        title="Mémos internes"
-        description="Notes et rappels visibles uniquement par l'équipe Oveon (jamais par le client)."
+        icon={<ClipboardList className="h-5 w-5" />}
+        title="Tâches du chantier"
+        description="Actions à réaliser, visibles par tous les membres de l'équipe."
         action={
           canManage ? (
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4" />
-                  Nouveau mémo
-                </Button>
+                <Button><Plus className="h-4 w-4" />Nouvelle tâche</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
-                  <DialogTitle>Nouveau mémo interne</DialogTitle>
-                  <DialogDescription>Note partagée uniquement avec l'équipe interne.</DialogDescription>
+                  <DialogTitle>Nouvelle tâche</DialogTitle>
+                  <DialogDescription>Ajoutez une action à réaliser sur ce chantier.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label>Titre (optionnel)</Label>
-                    <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Contenu</Label>
-                    <Textarea rows={5} value={form.content} onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))} />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Titre (optionnel)</Label>
+                      <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} placeholder="Ex. Poser le groupe extérieur" />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Description</Label>
+                      <Textarea rows={4} value={form.content} onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))} placeholder="Détails de la tâche…" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Urgence</Label>
+                      <Select value={form.urgency} onValueChange={v => setForm(prev => ({ ...prev, urgency: v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {URGENCY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button
-                    onClick={() => createMutation.mutate({
-                      projectId,
-                      title: form.title.trim() ? form.title.trim() : null,
-                      content: form.content.trim(),
-                    })}
-                    disabled={createMutation.isPending || !form.content.trim()}
-                  >
-                    Enregistrer
+                  <Button onClick={() => createMutation.mutate({ projectId, title: form.title.trim() || null, content: form.content.trim(), urgency: form.urgency as "urgente" | "haute" | "normale" | "basse" })} disabled={createMutation.isPending || !form.content.trim()}>
+                    Créer la tâche
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -708,89 +724,97 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
       />
 
       {listQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Chargement des mémos…</p>
-      ) : !listQuery.data || listQuery.data.length === 0 ? (
-        <PanelEmpty
-          title="Aucun mémo interne"
-          description="Ajoutez un mémo pour partager une consigne ou un rappel avec l'équipe sans l'exposer au client."
-        />
+        <p className="text-sm text-muted-foreground">Chargement des tâches…</p>
+      ) : sorted.length === 0 ? (
+        <PanelEmpty title="Aucune tâche" description="Ajoutez des tâches à réaliser sur ce chantier, visibles par toute l'équipe." />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {listQuery.data.map(memo => (
-            <Card key={memo.id} className="border-white/10 shadow-sm shadow-slate-950/5">
-              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-2">
-                <div className="space-y-1">
-                  {memo.title ? <CardTitle className="text-base">{memo.title}</CardTitle> : <CardTitle className="text-base text-muted-foreground">Mémo</CardTitle>}
-                  <CardDescription className="text-xs">
-                    Par {memo.createdByName || "—"} · mis à jour {formatDateTime(memo.updatedAt)}
-                  </CardDescription>
-                </div>
-                {canManage ? (
-                  <div className="flex gap-1">
-                    <Dialog open={editId === memo.id} onOpenChange={open => (open ? startEdit(memo) : setEditId(null))}>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => startEdit(memo)}>
-                          <Pencil className="h-4 w-4" />
+        <div className="space-y-3">
+          {sorted.map(task => {
+            const urgOpt = URGENCY_OPTIONS.find(o => o.value === (task.urgency ?? "normale")) ?? URGENCY_OPTIONS[2];
+            const isDone = task.status === "done";
+            return (
+              <div key={task.id} className={`rounded-2xl border shadow-sm overflow-hidden transition-opacity ${isDone ? "opacity-60" : ""} ${task.pinned ? "border-amber-300 bg-amber-50/40" : "border-slate-200 bg-white"}`}>
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateMutation.mutate({ id: task.id, status: isDone ? "todo" : "done" })}
+                      className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? "border-emerald-500 bg-emerald-500" : "border-slate-300 hover:border-emerald-400"}`}
+                      title={isDone ? "Marquer à faire" : "Marquer comme fait"}
+                    >
+                      {isDone && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      {task.title && <p className={`font-semibold text-sm ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{task.title}</p>}
+                      <p className={`text-sm leading-6 mt-0.5 ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{task.content}</p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${urgOpt.tone}`}>{urgOpt.label}</span>
+                        {isDone && <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Fait</span>}
+                        {task.pinned && <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Épinglé</span>}
+                        <span className="text-[10px] text-muted-foreground">Par {task.createdByName || "—"} · {formatDateTime(task.createdAt)}</span>
+                      </div>
+                    </div>
+                    {canManage && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title={task.pinned ? "Désépingler" : "Épingler"} onClick={() => updateMutation.mutate({ id: task.id, pinned: !task.pinned })}>
+                          <Pin className={`h-3.5 w-3.5 ${task.pinned ? "fill-amber-500 text-amber-500" : ""}`} />
                         </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-xl">
-                        <DialogHeader>
-                          <DialogTitle>Modifier le mémo</DialogTitle>
-                        </DialogHeader>
-                        <div className="grid gap-4">
-                          <div className="space-y-2">
-                            <Label>Titre</Label>
-                            <Input value={editForm.title} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Contenu</Label>
-                            <Textarea rows={5} value={editForm.content} onChange={e => setEditForm(prev => ({ ...prev, content: e.target.value }))} />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={() => updateMutation.mutate({
-                              id: memo.id,
-                              title: editForm.title.trim() ? editForm.title.trim() : null,
-                              content: editForm.content.trim(),
-                            })}
-                            disabled={updateMutation.isPending || !editForm.content.trim()}
-                          >
-                            Enregistrer
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-rose-700 hover:bg-rose-50">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer ce mémo ?</AlertDialogTitle>
-                          <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteMutation.mutate({ id: memo.id })}
-                            className="bg-rose-600 text-white hover:bg-rose-700"
-                          >
-                            Supprimer
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                        <Dialog open={editId === task.id} onOpenChange={open => open ? startEdit(task) : setEditId(null)}>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(task)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-xl">
+                            <DialogHeader><DialogTitle>Modifier la tâche</DialogTitle></DialogHeader>
+                            <div className="grid gap-4">
+                              <div className="space-y-2">
+                                <Label>Titre</Label>
+                                <Input value={editForm.title} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Description</Label>
+                                <Textarea rows={4} value={editForm.content} onChange={e => setEditForm(prev => ({ ...prev, content: e.target.value }))} />
+                              </div>
+                              <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                  <Label>Urgence</Label>
+                                  <Select value={editForm.urgency} onValueChange={v => setEditForm(prev => ({ ...prev, urgency: v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {URGENCY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button onClick={() => updateMutation.mutate({ id: task.id, title: editForm.title.trim() || null, content: editForm.content.trim(), urgency: editForm.urgency as "urgente" | "haute" | "normale" | "basse" })} disabled={updateMutation.isPending || !editForm.content.trim()}>
+                                Enregistrer
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-700 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Supprimer cette tâche ?</AlertDialogTitle>
+                              <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteMutation.mutate({ id: task.id })} className="bg-rose-600 text-white hover:bg-rose-700">Supprimer</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    )}
                   </div>
-                ) : null}
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{memo.content}</p>
-              </CardContent>
-            </Card>
-          ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

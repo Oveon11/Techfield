@@ -304,16 +304,22 @@ const updateJournalSchema = z.object({
   occurredAt: z.string().datetime().optional().nullable(),
 });
 
+const urgencySchema = z.enum(["urgente", "haute", "normale", "basse"]);
+
 const createMemoSchema = z.object({
   projectId: z.number().int().positive(),
   title: z.string().max(200).optional().nullable(),
   content: z.string().min(1),
+  urgency: urgencySchema.default("normale"),
 });
 
 const updateMemoSchema = z.object({
   id: z.number().int().positive(),
   title: z.string().max(200).optional().nullable(),
-  content: z.string().min(1),
+  content: z.string().min(1).optional(),
+  urgency: urgencySchema.optional(),
+  status: z.enum(["todo", "done"]).optional(),
+  pinned: z.boolean().optional(),
 });
 
 const createMediaUploadSchema = z.object({
@@ -1575,31 +1581,35 @@ export const managementRouter = router({
     create: protectedProcedure.input(createMemoSchema).mutation(async ({ ctx, input }) => {
       const scope = await getScope(ctx.user.openId);
       if (scope.user.role === "client") {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Mémos réservés à l'équipe interne." });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Tâches réservées à l'équipe interne." });
       }
       try {
         return await createProjectMemo(scope, {
           projectId: input.projectId,
           title: input.title ?? null,
           content: input.content,
+          urgency: input.urgency,
         });
       } catch (error) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur création mémo." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur création tâche." });
       }
     }),
     update: protectedProcedure.input(updateMemoSchema).mutation(async ({ ctx, input }) => {
       const scope = await getScope(ctx.user.openId);
       if (scope.user.role === "client") {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Mémos réservés à l'équipe interne." });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Tâches réservées à l'équipe interne." });
       }
       try {
         return await updateProjectMemo(scope, {
           id: input.id,
           title: input.title ?? null,
           content: input.content,
+          urgency: input.urgency,
+          status: input.status,
+          pinned: input.pinned,
         });
       } catch (error) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur mise à jour mémo." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur mise à jour tâche." });
       }
     }),
     delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

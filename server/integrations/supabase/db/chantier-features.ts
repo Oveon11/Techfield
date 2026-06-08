@@ -331,6 +331,9 @@ function mapMemoRow(row: Record<string, unknown>) {
     projectId: Number(row.project_id),
     title: (row.title as string | null | undefined) ?? null,
     content: String(row.content ?? ""),
+    urgency: (row.urgency as string | undefined) ?? "normale",
+    status: (row.status as string | undefined) ?? "todo",
+    pinned: Boolean(row.pinned ?? false),
     createdByUserId: row.created_by_user_id == null ? null : Number(row.created_by_user_id),
     createdByName: author ? String(author.name ?? "") : "",
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : null,
@@ -348,9 +351,11 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_memos")
-    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at")
+    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at")
     .eq("project_id", projectId)
-    .order("updated_at", { ascending: false });
+    .order("pinned", { ascending: false })
+    .order("urgency", { ascending: true })
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
   const rows = (data ?? []) as Record<string, unknown>[];
@@ -365,6 +370,7 @@ type CreateMemoInput = {
   projectId: number;
   title: string | null;
   content: string;
+  urgency?: string;
 };
 
 export async function createProjectMemo(scope: AccessScope, input: CreateMemoInput) {
@@ -377,6 +383,7 @@ export async function createProjectMemo(scope: AccessScope, input: CreateMemoInp
       project_id: input.projectId,
       title: input.title,
       content: input.content,
+      urgency: input.urgency ?? "normale",
       created_by_user_id: scope.user.id,
     })
     .select("id")
@@ -388,8 +395,11 @@ export async function createProjectMemo(scope: AccessScope, input: CreateMemoInp
 
 type UpdateMemoInput = {
   id: number;
-  title: string | null;
-  content: string;
+  title?: string | null;
+  content?: string;
+  urgency?: string;
+  status?: string;
+  pinned?: boolean;
 };
 
 export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInput) {
@@ -401,23 +411,27 @@ export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInp
     .eq("id", input.id)
     .maybeSingle();
   if (existingError) throw existingError;
-  if (!existing) throw new Error("Mémo introuvable.");
+  if (!existing) throw new Error("Tâche introuvable.");
 
   const row = existing as Record<string, unknown>;
   await assertProjectAccess(scope, Number(row.project_id));
 
-  if (scope.user.role === "technicien" && Number(row.created_by_user_id) !== scope.user.id) {
-    throw new Error("Seul l'auteur peut modifier ce mémo.");
+  // Techniciens can only update status (mark done)
+  if (scope.user.role === "technicien") {
+    if (input.status === undefined) throw new Error("Action non autorisée.");
+    const { error } = await supabase.from("project_memos").update({ status: input.status }).eq("id", input.id);
+    if (error) throw error;
+    return { ok: true as const };
   }
 
-  const { error } = await supabase
-    .from("project_memos")
-    .update({
-      title: input.title,
-      content: input.content,
-    })
-    .eq("id", input.id);
+  const updates: Record<string, unknown> = {};
+  if (input.title !== undefined) updates.title = input.title;
+  if (input.content !== undefined) updates.content = input.content;
+  if (input.urgency !== undefined) updates.urgency = input.urgency;
+  if (input.status !== undefined) updates.status = input.status;
+  if (input.pinned !== undefined) updates.pinned = input.pinned;
 
+  const { error } = await supabase.from("project_memos").update(updates).eq("id", input.id);
   if (error) throw error;
   return { ok: true as const };
 }
@@ -466,8 +480,8 @@ export async function listAllMemos(scope: AccessScope) {
 
   let memosQuery = supabase
     .from("project_memos")
-    .select("id, project_id, title, content, created_by_user_id, created_at, updated_at")
-    .order("updated_at", { ascending: false })
+    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at")
+    .order("created_at", { ascending: false })
     .limit(200);
   if (projectFilter) memosQuery = memosQuery.in("project_id", projectFilter);
 
