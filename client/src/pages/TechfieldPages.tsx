@@ -4025,6 +4025,7 @@ export const techfieldMenu = [
   { icon: BriefcaseBusiness, label: "Chantiers", path: "/chantiers", roles: ["admin", "technicien", "client"] },
   { icon: ClipboardCheck, label: "Contrats", path: "/contrats", roles: ["admin", "client"] },
   { icon: Clock, label: "Heures", path: "/heures", roles: ["admin", "technicien"] },
+  { icon: StickyNote, label: "Mémos", path: "/memos-globaux", roles: ["admin", "technicien"] },
   { icon: Users, label: "Équipe", path: "/equipe", roles: ["admin"] },
   { icon: CalendarClock, label: "Calendrier", path: "/calendrier", roles: ["admin"] },
   { icon: FileText, label: "Documents", path: "/documents", roles: ["admin", "client"] },

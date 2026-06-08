@@ -1584,12 +1584,20 @@ export const managementRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Tâches réservées à l'équipe interne." });
       }
       try {
-        return await createProjectMemo(scope, {
+        const result = await createProjectMemo(scope, {
           projectId: input.projectId,
           title: input.title ?? null,
           content: input.content,
           urgency: input.urgency,
         });
+        await createProjectJournalEntry(scope, {
+          projectId: input.projectId,
+          entryType: "note",
+          title: input.title ?? null,
+          content: input.content,
+          occurredAt: null,
+        });
+        return result;
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur création tâche." });
       }

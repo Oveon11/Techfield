@@ -14,6 +14,7 @@ import {
   DashboardPage,
   DocumentsPage,
   FeedPage,
+  MemosGlobalPage,
   ProjectDetailPage,
   ProjectsPage,
   TeamPage,
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/chantiers/:id" component={ProjectDetailPage} />
       <Route path="/contrats" component={ContractsPage} />
       <Route path="/heures" component={HoursPage} />
+      <Route path="/memos-globaux" component={MemosGlobalPage} />
       <Route path="/equipe" component={TeamPage} />
       <Route path="/calendrier" component={CalendarPage} />
       <Route path="/documents" component={DocumentsPage} />
