@@ -104,7 +104,7 @@ export const planningRouter = router({
       const projArr = (projRes.data ?? []) as Record<string, unknown>[];
       const clientIds = Array.from(new Set(projArr.filter(p => p.client_id).map(p => p.client_id as number)));
       const clientRes = clientIds.length
-        ? await supabase.from("clients").select("id, name, phone, billing_address, city").in("id", clientIds)
+        ? await supabase.from("clients").select("id, company_name, phone, billing_address, city").in("id", clientIds)
         : { data: [] as Record<string, unknown>[] };
 
       const clientMap = Object.fromEntries(
@@ -118,7 +118,7 @@ export const planningRouter = router({
             ref: p.reference,
             serviceType: p.service_type,
             address: [p.address_line_1, p.city].filter(Boolean).join(", "),
-            clientName: cl?.name ?? null,
+            clientName: cl?.company_name ?? null,
             clientPhone: cl?.phone ?? null,
             clientAddress: cl ? [cl.billing_address, cl.city].filter(Boolean).join(", ") : null,
           }];
