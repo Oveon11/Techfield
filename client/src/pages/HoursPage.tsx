@@ -104,6 +104,24 @@ const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","A
 const DAYS_FR_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const DAYS_FR_SHORT = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
 
+function getCurrentWeekBounds() {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dow);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { monday, sunday };
+}
+
+function isDateEditableByTechnician(dateStr: string): boolean {
+  const { monday, sunday } = getCurrentWeekBounds();
+  const d = new Date(dateStr + "T12:00:00");
+  return d >= monday && d <= sunday;
+}
+
 export default function HoursPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -114,6 +132,9 @@ export default function HoursPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [form, setForm] = useState<SaveForm>(defaultForm());
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
+  const [exportMode, setExportMode] = useState<"mois" | "plage">("mois");
+  const [exportStart, setExportStart] = useState("");
+  const [exportEnd, setExportEnd] = useState("");
 
   const utils = trpc.useUtils();
   const meQuery = trpc.auth.me.useQuery();
@@ -133,6 +154,11 @@ export default function HoursPage() {
   const entriesQuery = trpc.management.timeEntries.list.useQuery(
     { technicianId: myTechId!, year, month },
     { enabled: myTechId != null }
+  );
+
+  const rangeEntriesQuery = trpc.management.timeEntries.listRange.useQuery(
+    { technicianId: myTechId!, startDate: exportStart, endDate: exportEnd },
+    { enabled: exportMode === "plage" && !!myTechId && !!exportStart && !!exportEnd && exportStart <= exportEnd }
   );
 
   const saveMutation = trpc.management.timeEntries.save.useMutation({
@@ -222,20 +248,70 @@ export default function HoursPage() {
           : "Technicien")
       : (meQuery.data?.name ?? "Technicien");
 
+    // Determine entries and days for the chosen mode
+    let pdfEntries: NonNullable<typeof entriesQuery.data>;
+    let pdfDays: Date[];
+    let periodLabel: string;
+    let pdfFileName: string;
+
+    if (exportMode === "plage" && exportStart && exportEnd && rangeEntriesQuery.data) {
+      pdfEntries = rangeEntriesQuery.data;
+      pdfDays = [];
+      const cur = new Date(exportStart + "T12:00:00");
+      const end = new Date(exportEnd + "T12:00:00");
+      while (cur <= end) {
+        pdfDays.push(new Date(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      periodLabel = `${new Date(exportStart + "T12:00:00").toLocaleDateString("fr-FR")} → ${new Date(exportEnd + "T12:00:00").toLocaleDateString("fr-FR")}`;
+      pdfFileName = `heures_${techName.replace(/\s+/g, "_")}_${exportStart}_${exportEnd}.pdf`;
+    } else {
+      pdfEntries = entriesQuery.data ?? [];
+      pdfDays = getDaysInMonth(year, month);
+      periodLabel = `${MONTHS_FR[month - 1]} ${year}`;
+      pdfFileName = `heures_${techName.replace(/\s+/g, "_")}_${year}_${String(month).padStart(2, "0")}.pdf`;
+    }
+
+    // Build entries map for PDF
+    const pdfEntriesByDate = new Map<string, typeof pdfEntries>();
+    pdfEntries.forEach(e => {
+      const existing = pdfEntriesByDate.get(e.date) ?? [];
+      pdfEntriesByDate.set(e.date, [...existing, e]);
+    });
+
+    // Filter out weekends
+    const weekdayDays = pdfDays.filter(d => {
+      const dow = (d.getDay() + 6) % 7;
+      return dow < 5; // Mon=0 … Fri=4
+    });
+
+    const pdfWeeks = getWeeks(weekdayDays);
+
+    // Compute week totals for PDF
+    const pdfWeekTotals = pdfWeeks.map(week =>
+      week.reduce((acc, day) => {
+        const ds = toLocalDateString(day);
+        return acc + (pdfEntriesByDate.get(ds) ?? []).reduce((s, e) => {
+          if (e.entryType === "travail" && e.startTime && e.endTime) s += workedHours(e.startTime, e.endTime, e.breakMinutes);
+          return s;
+        }, 0);
+      }, 0)
+    );
+    const pdfTotal = pdfWeekTotals.reduce((a, b) => a + b, 0);
+
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageW = 297;
     const ML = 12;
-    const colW = [32, 22, 16, 16, 14, 16, 80, 14, 0]; // date, type, start, end, pause, hours, chantier, panier, note
+    const colW = [32, 22, 16, 16, 14, 16, 80, 14, 0];
     const noteW = pageW - ML * 2 - colW.slice(0, 8).reduce((a, b) => a + b, 0);
     colW[8] = noteW;
     const headers = ["Date", "Type", "Début", "Fin", "Pause", "Heures", "Chantier", "Panier", "Note"];
 
     let y = 18;
 
-    // Title
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text(`Feuille de temps — ${MONTHS_FR[month - 1]} ${year}`, ML, y);
+    doc.text(`Feuille de temps — ${periodLabel}`, ML, y);
     y += 7;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
@@ -243,122 +319,101 @@ export default function HoursPage() {
     doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, pageW - ML, y, { align: "right" });
     y += 6;
 
-    // Header row
     doc.setFillColor(37, 99, 235);
     doc.setTextColor(255, 255, 255);
     doc.rect(ML, y, pageW - ML * 2, 6, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7.5);
     let x = ML + 1;
-    headers.forEach((h, i) => {
-      doc.text(h, x, y + 4);
-      x += colW[i];
-    });
+    headers.forEach((h, i) => { doc.text(h, x, y + 4); x += colW[i]; });
     doc.setTextColor(0, 0, 0);
     y += 6;
 
     let totalPaniers = 0;
-    let weekIdx = 0;
 
-    weeks.forEach((week, wi) => {
-      // Week separator
+    pdfWeeks.forEach((week, wi) => {
+      const weekHours = pdfWeekTotals[wi];
+      const weekOver = weekHours > 35;
+
       doc.setFillColor(241, 245, 249);
       doc.rect(ML, y, pageW - ML * 2, 4.5, "F");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Semaine ${wi + 1} — ${fmtH(weekTotals[wi])}`, ML + 1, y + 3);
+      if (weekOver) doc.setTextColor(220, 38, 38); else doc.setTextColor(100, 116, 139);
+      doc.text(`Semaine ${wi + 1} — ${fmtH(weekHours)}${weekOver ? " ⚠ HEURES SUP" : ""}`, ML + 1, y + 3);
       doc.setTextColor(0, 0, 0);
       y += 4.5;
-      weekIdx++;
 
       week.forEach(day => {
         const ds = toLocalDateString(day);
-        const dow = (day.getDay() + 6) % 7;
-        const isWeekend = dow >= 5;
-        const dayEntries = entriesByDate.get(ds) ?? [];
+        const dayEntries = pdfEntriesByDate.get(ds) ?? [];
+        const dayHours = dayEntries.reduce((acc, e) => {
+          if (e.entryType === "travail" && e.startTime && e.endTime) return acc + workedHours(e.startTime, e.endTime, e.breakMinutes);
+          return acc;
+        }, 0);
+        const dayOver = dayHours > 8;
 
         if (dayEntries.length === 0) {
-          if (!isWeekend) {
-            // Empty weekday
-            if (y > 185) { doc.addPage(); y = 15; }
-            doc.setFillColor(isWeekend ? 248 : 255, isWeekend ? 250 : 255, isWeekend ? 252 : 255);
-            doc.rect(ML, y, pageW - ML * 2, 5, "F");
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(7);
-            doc.setTextColor(180, 180, 180);
-            doc.text(`${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(month).padStart(2, "0")}`, ML + 1, y + 3.5);
-            doc.setTextColor(0, 0, 0);
-            y += 5;
-          }
+          if (y > 185) { doc.addPage(); y = 15; }
+          doc.setFillColor(255, 255, 255);
+          doc.rect(ML, y, pageW - ML * 2, 5, "F");
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(200, 200, 200);
+          const m = day.getMonth() + 1;
+          doc.text(`${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(m).padStart(2, "0")}`, ML + 1, y + 3.5);
+          doc.setTextColor(0, 0, 0);
+          y += 5;
           return;
         }
 
         dayEntries.forEach((e, ei) => {
           if (y > 185) { doc.addPage(); y = 15; }
-
           const rowH = 5.5;
-          const bg = ei % 2 === 0 ? (isWeekend ? [248, 250, 252] : [255, 255, 255]) : [250, 251, 253];
+          const bg = ei % 2 === 0 ? [255, 255, 255] : [250, 251, 253];
           doc.setFillColor(bg[0], bg[1], bg[2]);
           doc.rect(ML, y, pageW - ML * 2, rowH, "F");
-
           doc.setFont("helvetica", ei === 0 ? "bold" : "normal");
           doc.setFontSize(7.5);
           x = ML + 1;
 
-          // Date (only on first entry of the day)
           if (ei === 0) {
-            const dateLabel = `${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(month).padStart(2, "0")}`;
-            doc.setTextColor(isWeekend ? 150 : 0, isWeekend ? 150 : 0, isWeekend ? 150 : 0);
-            doc.text(dateLabel, x, y + rowH / 2 + 1.5);
+            const m = day.getMonth() + 1;
+            const dateLabel = `${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(m).padStart(2, "0")}`;
             doc.setTextColor(0, 0, 0);
+            doc.text(dateLabel, x, y + rowH / 2 + 1.5);
           }
           x += colW[0];
 
-          // Type
           doc.setFont("helvetica", "bold");
-          const etLabel = ENTRY_TYPES.find(t => t.value === e.entryType)?.label ?? e.entryType.toUpperCase();
-          doc.text(etLabel, x, y + rowH / 2 + 1.5);
+          doc.setTextColor(0, 0, 0);
+          doc.text(ENTRY_TYPES.find(t => t.value === e.entryType)?.label ?? e.entryType.toUpperCase(), x, y + rowH / 2 + 1.5);
           x += colW[1];
 
           doc.setFont("helvetica", "normal");
-          // Start
-          doc.text(e.startTime ?? "—", x, y + rowH / 2 + 1.5);
-          x += colW[2];
-          // End
-          doc.text(e.endTime ?? "—", x, y + rowH / 2 + 1.5);
-          x += colW[3];
-          // Pause
-          const pauseLabel = e.breakMinutes > 0 ? `${e.breakMinutes}m` : "—";
-          doc.text(pauseLabel, x, y + rowH / 2 + 1.5);
-          x += colW[4];
-          // Hours
-          const h = e.entryType === "travail" && e.startTime && e.endTime
-            ? fmtH(workedHours(e.startTime, e.endTime, e.breakMinutes))
-            : "—";
-          doc.setFont("helvetica", "bold");
-          doc.text(h, x, y + rowH / 2 + 1.5);
-          x += colW[5];
-          doc.setFont("helvetica", "normal");
-          // Chantier
-          const project = (projectsQuery.data ?? []).find(p => p.id === e.projectId);
-          const chantierLabel = project ? `${project.reference} — ${project.title}`.substring(0, 38) : "—";
-          doc.text(chantierLabel, x, y + rowH / 2 + 1.5);
-          x += colW[6];
-          // Panier
-          if (e.panier) totalPaniers++;
-          doc.text(e.panier ? "OUI" : "NON", x, y + rowH / 2 + 1.5);
-          x += colW[7];
-          // Note
-          const noteLabel = (e.note ?? "").substring(0, 40);
-          doc.text(noteLabel, x, y + rowH / 2 + 1.5);
+          doc.text(e.startTime ?? "—", x, y + rowH / 2 + 1.5); x += colW[2];
+          doc.text(e.endTime ?? "—", x, y + rowH / 2 + 1.5); x += colW[3];
+          doc.text(e.breakMinutes > 0 ? `${e.breakMinutes}m` : "—", x, y + rowH / 2 + 1.5); x += colW[4];
 
+          const hVal = e.entryType === "travail" && e.startTime && e.endTime
+            ? workedHours(e.startTime, e.endTime, e.breakMinutes) : null;
+          const hLabel = hVal !== null ? fmtH(hVal) : "—";
+          doc.setFont("helvetica", "bold");
+          if (dayOver && hVal !== null) doc.setTextColor(220, 38, 38); else doc.setTextColor(0, 0, 0);
+          doc.text(hLabel, x, y + rowH / 2 + 1.5); x += colW[5];
+          doc.setTextColor(0, 0, 0);
+
+          doc.setFont("helvetica", "normal");
+          const project = (projectsQuery.data ?? []).find(p => p.id === e.projectId);
+          doc.text(project ? `${project.reference} — ${project.title}`.substring(0, 38) : "—", x, y + rowH / 2 + 1.5); x += colW[6];
+          if (e.panier) totalPaniers++;
+          doc.text(e.panier ? "OUI" : "NON", x, y + rowH / 2 + 1.5); x += colW[7];
+          doc.text((e.note ?? "").substring(0, 40), x, y + rowH / 2 + 1.5);
           y += rowH;
         });
       });
     });
 
-    // Totals
     y += 3;
     if (y > 185) { doc.addPage(); y = 15; }
     doc.setFillColor(37, 99, 235);
@@ -366,12 +421,12 @@ export default function HoursPage() {
     doc.rect(ML, y, pageW - ML * 2, 7, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text(`Total heures travaillées : ${fmtH(monthTotal)}`, ML + 2, y + 4.8);
+    doc.text(`Total heures travaillées : ${fmtH(pdfTotal)}`, ML + 2, y + 4.8);
     doc.text(`Paniers repas : ${totalPaniers}`, pageW / 2, y + 4.8, { align: "center" });
-    if (hasOvertime) doc.text("⚠ Heures supplémentaires ce mois", pageW - ML - 2, y + 4.8, { align: "right" });
+    if (pdfWeekTotals.some(w => w > 35)) doc.text("⚠ Heures supplémentaires", pageW - ML - 2, y + 4.8, { align: "right" });
     doc.setTextColor(0, 0, 0);
 
-    doc.save(`heures_${techName.replace(/\s+/g, "_")}_${year}_${String(month).padStart(2, "0")}.pdf`);
+    doc.save(pdfFileName);
   };
 
   const selectedTech = techniciansQuery.data?.find(t => t.id === selectedTechId);
@@ -393,15 +448,44 @@ export default function HoursPage() {
             Feuille de temps · Saisie quotidienne
           </p>
         </div>
-        <Button
-          variant="outline"
-          className="gap-2"
-          onClick={exportPDF}
-          disabled={!myTechId || !entriesQuery.data}
-        >
-          <FileDown className="h-4 w-4" />
-          Exporter PDF
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => setExportMode("mois")}
+              className={`px-3 py-1.5 transition-colors ${exportMode === "mois" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
+            >
+              Mois
+            </button>
+            <button
+              onClick={() => setExportMode("plage")}
+              className={`px-3 py-1.5 transition-colors ${exportMode === "plage" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
+            >
+              Plage
+            </button>
+          </div>
+          {exportMode === "plage" && (
+            <>
+              <input type="date" value={exportStart} onChange={e => setExportStart(e.target.value)}
+                className="rounded-lg border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary" />
+              <span className="text-xs text-muted-foreground">→</span>
+              <input type="date" value={exportEnd} onChange={e => setExportEnd(e.target.value)}
+                className="rounded-lg border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary" />
+            </>
+          )}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={exportPDF}
+            disabled={
+              !myTechId ||
+              (exportMode === "mois" && !entriesQuery.data) ||
+              (exportMode === "plage" && (!exportStart || !exportEnd || exportStart > exportEnd || !rangeEntriesQuery.data))
+            }
+          >
+            <FileDown className="h-4 w-4" />
+            Exporter PDF
+          </Button>
+        </div>
       </div>
 
       {/* Admin: technician selector */}
@@ -501,7 +585,7 @@ export default function HoursPage() {
                             <span className={`text-[11px] font-medium ${isToday ? "text-primary font-bold" : isWeekend ? "text-slate-400" : "text-slate-700"}`}>
                               {day.getDate()}
                             </span>
-                            {role === "admin" && myTechId && (
+                            {myTechId && (role === "admin" || (role === "technicien" && isDateEditableByTechnician(ds))) && (
                               <button
                                 onClick={e => { e.stopPropagation(); openAdd(ds); }}
                                 className="rounded p-0.5 text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors"
@@ -595,7 +679,7 @@ export default function HoursPage() {
                         <p className="text-xs italic text-muted-foreground">{e.note}</p>
                       )}
                     </div>
-                    {role === "admin" && (
+                    {(role === "admin" || (role === "technicien" && isDateEditableByTechnician(e.date))) && (
                       <button
                         onClick={() => deleteMutation.mutate({ id: e.id })}
                         disabled={deleteMutation.isPending}
@@ -611,7 +695,7 @@ export default function HoursPage() {
             })}
           </div>
           <DialogFooter className="gap-2">
-            {detailDate && role === "admin" && myTechId && (
+            {detailDate && myTechId && (role === "admin" || (role === "technicien" && isDateEditableByTechnician(detailDate))) && (
               <Button
                 variant="outline"
                 onClick={() => { setDetailOpen(false); openAdd(detailDate); }}

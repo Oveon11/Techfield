@@ -3851,7 +3851,7 @@ export function FeedPage() {
   const err = journalQuery.error ?? mediaQuery.error ?? memosQuery.error;
 
   const feed = useMemo(() => {
-    const journals: JournalFeedEntry[] = (journalQuery.data ?? []).map(e => ({
+    const journals: JournalFeedEntry[] = (journalQuery.data ?? []).filter(e => e.entryType !== "memo").map(e => ({
       kind: "journal" as const,
       id: e.id,
       projectId: e.projectId,
@@ -3919,31 +3919,31 @@ export function FeedPage() {
               if (item.kind === "media") {
                 return (
                   <LinkedInCard key={item.id} href={`/chantiers/${item.projectId}`}>
-                    <div className="p-4">
-                      <div className="flex items-start gap-3">
+                    <div className="p-3">
+                      <div className="flex items-start gap-2.5">
                         <PostAvatar name={authorName} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground">{authorName}</span>
-                            <span className="text-xs text-muted-foreground">{fmtRelative(itemDate)}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-sm text-foreground shrink-0">{authorName}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">{fmtRelative(itemDate)}</span>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <ServiceTypePill type={serviceType} />
                             {clientLabel && <span className="text-xs font-medium text-foreground truncate">{clientLabel}</span>}
                             {projectSub && <span className="text-xs text-muted-foreground truncate">{projectSub}</span>}
                           </div>
+                          {item.photos.some(p => p.caption) && (
+                            <p className="mt-1 text-sm text-foreground">{item.photos[0].caption}</p>
+                          )}
                         </div>
                         <span className="shrink-0 inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
                           Photo{item.photos.length > 1 ? `s (${item.photos.length})` : ""}
                         </span>
                       </div>
-                      {item.photos.some(p => p.caption) && (
-                        <p className="mt-2 pl-[52px] text-sm text-foreground">{item.photos[0].caption}</p>
-                      )}
                     </div>
                     <PhotoGrid photos={item.photos} />
-                    <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{fmtDt(itemDate)}</span>
+                    <div className="px-3 py-1.5 flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground">{fmtDt(itemDate)}</span>
                       {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
                     </div>
                   </LinkedInCard>
@@ -3956,38 +3956,31 @@ export function FeedPage() {
                 const urgencyLabel = { urgente: "Urgente", haute: "Haute", normale: "Normale", basse: "Basse" }[item.urgency] ?? item.urgency;
                 return (
                   <LinkedInCard key={`t-${item.id}`} href={`/chantiers/${item.projectId}`}>
-                    <div className="p-4">
-                      <div className="flex items-start gap-3">
+                    <div className="p-3">
+                      <div className="flex items-start gap-2.5">
                         <PostAvatar name={authorName} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground">{authorName}</span>
-                            <span className="text-xs text-muted-foreground">{fmtRelative(itemDate)}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-sm text-foreground shrink-0">{authorName}</span>
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${urgencyTone}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${urgencyDot}`} />Mémo
+                            </span>
+                            {item.status === "done" && <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 shrink-0">Fait</span>}
+                            <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{fmtRelative(itemDate)}</span>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <ServiceTypePill type={serviceType} />
                             {item.projectName && <span className="text-xs font-medium text-foreground truncate">{item.projectName}</span>}
                           </div>
+                          <div className={`mt-1 ${item.status === "done" ? "opacity-60" : ""}`}>
+                            {item.title && <p className={`font-semibold text-sm text-foreground ${item.status === "done" ? "line-through" : ""}`}>{item.title}</p>}
+                            <p className="whitespace-pre-wrap text-sm leading-5 text-foreground">{item.content}</p>
+                          </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${urgencyTone}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${urgencyDot}`} />
-                            {urgencyLabel}
-                          </span>
-                          {item.status === "done" && (
-                            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Fait</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={`mt-3 pl-[52px] space-y-1 ${item.status === "done" ? "opacity-60" : ""}`}>
-                        {item.title && <p className={`font-semibold text-sm text-foreground ${item.status === "done" ? "line-through" : ""}`}>{item.title}</p>}
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
                       </div>
                     </div>
-                    <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <ClipboardCheck className="h-3 w-3" />Tâche · {fmtDt(itemDate)}
-                      </span>
+                    <div className="border-t border-slate-100 px-3 py-1.5 flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground">{fmtDt(itemDate)}</span>
                       {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
                     </div>
                   </LinkedInCard>
@@ -3999,35 +3992,30 @@ export function FeedPage() {
 
               return (
                 <LinkedInCard key={`j-${item.id}`} href={`/chantiers/${item.projectId}`}>
-                  <div className="p-4">
-                    <div className="flex items-start gap-3">
+                  <div className="p-3">
+                    <div className="flex items-start gap-2.5">
                       <PostAvatar name={authorName} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-foreground">{authorName}</span>
-                          <span className="text-xs text-muted-foreground">{fmtRelative(itemDate)}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground shrink-0">{authorName}</span>
+                          <span className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${entryStyle.dot}`} />
+                            {entryStyle.label}
+                          </span>
+                          <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{fmtRelative(itemDate)}</span>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           <ServiceTypePill type={serviceType} />
                           {clientLabel && <span className="text-xs font-medium text-foreground truncate">{clientLabel}</span>}
                           {projectSub && <span className="text-xs text-muted-foreground truncate">{projectSub}</span>}
                         </div>
+                        {item.title && <p className="mt-1 font-semibold text-sm text-foreground">{item.title}</p>}
+                        <p className="mt-0.5 whitespace-pre-wrap text-sm leading-5 text-foreground">{item.content}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">{fmtDt(itemDate)}</p>
                       </div>
-                      <span className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${entryStyle.tone}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${entryStyle.dot}`} />
-                        {entryStyle.label}
-                      </span>
-                    </div>
-                    <div className="mt-3 pl-[52px] space-y-1">
-                      {item.title && <p className="font-semibold text-sm text-foreground">{item.title}</p>}
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
                     </div>
                   </div>
                   {photos.length > 0 && <PhotoGrid photos={photos} />}
-                  <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{fmtDt(itemDate)}</span>
-                    {item.projectRef && <span className="text-[10px] font-mono text-muted-foreground">{item.projectRef}</span>}
-                  </div>
                 </LinkedInCard>
               );
             })}

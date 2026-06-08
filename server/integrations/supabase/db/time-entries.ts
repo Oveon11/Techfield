@@ -98,6 +98,21 @@ export async function deleteTimeEntry(scope: AccessScope, id: number) {
   if (error) throw error;
 }
 
+export async function listTimeEntriesRange(scope: AccessScope, technicianId: number, startDate: string, endDate: string) {
+  if (scope.user.role === "client") return [];
+  if (scope.user.role === "technicien" && scope.technicianProfile?.id !== technicianId) return [];
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select("*")
+    .eq("technician_id", technicianId)
+    .gte("date", startDate)
+    .lte("date", endDate)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(r => mapRow(r as Record<string, unknown>));
+}
+
 export async function listTechniciansForAdmin(scope: AccessScope) {
   if (scope.user.role !== "admin") return [];
   const supabase = createSupabaseAdminClient();

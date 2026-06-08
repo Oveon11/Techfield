@@ -72,6 +72,7 @@ import {
   createTimeEntry,
   deleteTimeEntry,
   listTimeEntries,
+  listTimeEntriesRange,
   listTechniciansForAdmin,
 } from "../integrations/supabase/db/time-entries";
 import {
@@ -1592,13 +1593,6 @@ export const managementRouter = router({
           content: input.content,
           urgency: input.urgency,
         });
-        await createProjectJournalEntry(scope, {
-          projectId: input.projectId,
-          entryType: "memo",
-          title: input.title ?? null,
-          content: input.content,
-          occurredAt: null,
-        });
         return result;
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur création tâche." });
@@ -1806,6 +1800,18 @@ export const managementRouter = router({
         return await deleteTimeEntry(scope, input.id);
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur suppression." });
+      }
+    }),
+    listRange: protectedProcedure.input(z.object({
+      technicianId: z.number().int().positive(),
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const scope = await getScope(ctx.user.openId);
+      try {
+        return await listTimeEntriesRange(scope, input.technicianId, input.startDate, input.endDate);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur." });
       }
     }),
   }),
