@@ -177,6 +177,8 @@ const plugins = [
     workbox: {
       globPatterns: ["**/*.{js,css,html,svg,woff2}"],
       navigateFallback: "/index.html",
+      skipWaiting: true,
+      clientsClaim: true,
     },
   }),
   ...(!isVercelTarget ? [vitePluginManusRuntime(), vitePluginManusDebugCollector()] : []),
