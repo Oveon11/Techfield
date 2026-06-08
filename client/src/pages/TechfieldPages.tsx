@@ -1880,10 +1880,6 @@ export function ProjectDetailPage() {
     { projectId },
     { enabled: validId },
   );
-  const interventionsQuery = trpc.management.interventions.history.useQuery(
-    { projectId },
-    { enabled: validId },
-  );
   const clientsQuery = trpc.management.clients.list.useQuery();
   const sitesQuery = trpc.management.sites.list.useQuery();
   const techniciansQuery = trpc.management.technicians.list.useQuery(undefined, { enabled: !!permissions?.manageTechnicians });
@@ -1944,8 +1940,6 @@ export function ProjectDetailPage() {
       technicianIds: detail.technicianIds ?? [],
     });
   }, [projectQuery.data]);
-
-  const linkedInterventions = interventionsQuery.data ?? [];
 
   if (!validId) {
     return (
@@ -2152,10 +2146,6 @@ export function ProjectDetailPage() {
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Avancement</p>
                 <p className="mt-0.5 text-lg font-bold text-foreground">{project.progressPercent ?? 0} %</p>
               </div>
-              <div className="hidden sm:block">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Interventions</p>
-                <p className="mt-0.5 text-lg font-bold text-foreground">{linkedInterventions.length}</p>
-              </div>
             </div>
           </div>
         </div>
@@ -2169,7 +2159,7 @@ export function ProjectDetailPage() {
               <ImageIcon className="h-3.5 w-3.5" />Médias
             </TabsTrigger>
             <TabsTrigger value="memos" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
-              <ClipboardCheck className="h-3.5 w-3.5" />Tâches
+              <StickyNote className="h-3.5 w-3.5" />Mémos
             </TabsTrigger>
             <TabsTrigger value="documents" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">
               <FileText className="h-3.5 w-3.5" />Documents
