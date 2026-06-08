@@ -281,7 +281,7 @@ export default function PlanningPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Supprimer ce créneau ?</AlertDialogTitle>
-              <AlertDialogDescription>{slotLabel(deleteSlot!)??"Créneau sans chantier"} — {deleteSlot?.slotDate} {deleteSlot?.startTime}–{deleteSlot?.endTime}</AlertDialogDescription>
+              <AlertDialogDescription>{(deleteSlot ? slotLabel(deleteSlot) : null)??"Créneau sans chantier"} — {deleteSlot?.slotDate} {deleteSlot?.startTime}–{deleteSlot?.endTime}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Annuler</AlertDialogCancel>
