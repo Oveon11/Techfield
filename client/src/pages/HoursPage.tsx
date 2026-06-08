@@ -10,12 +10,15 @@ import {
   ChevronRight,
   Clock,
   Coffee,
+  FileDown,
   GraduationCap,
   HeartPulse,
+  Trash2,
   UserX,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { jsPDF } from "jspdf";
 
 type EntryType = "travail" | "conge" | "cfa" | "maladie" | "absence";
 
@@ -69,7 +72,7 @@ function getWeeks(days: Date[]): Date[][] {
   const weeks: Date[][] = [];
   let week: Date[] = [];
   days.forEach(day => {
-    const dow = (day.getDay() + 6) % 7; // 0=lun
+    const dow = (day.getDay() + 6) % 7;
     if (dow === 0 && week.length > 0) { weeks.push(week); week = []; }
     week.push(day);
   });
@@ -97,12 +100,18 @@ const defaultForm = (): SaveForm => ({
   note: "",
 });
 
+const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const DAYS_FR_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+const DAYS_FR_SHORT = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
+
 export default function HoursPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [detailDate, setDetailDate] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [form, setForm] = useState<SaveForm>(defaultForm());
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
 
@@ -130,7 +139,7 @@ export default function HoursPage() {
     onSuccess: async () => {
       toast.success("Heures enregistrées.");
       await utils.management.timeEntries.list.invalidate({ technicianId: myTechId!, year, month });
-      setDialogOpen(false);
+      setAddOpen(false);
     },
     onError: e => toast.error(e.message),
   });
@@ -143,7 +152,6 @@ export default function HoursPage() {
     onError: e => toast.error(e.message),
   });
 
-  // Auto-select first technician for admin
   useEffect(() => {
     if (role === "admin" && !selectedTechId && techniciansQuery.data?.length) {
       setSelectedTechId(techniciansQuery.data[0].id);
@@ -154,7 +162,7 @@ export default function HoursPage() {
   const weeks = getWeeks(days);
 
   const entriesByDate = useMemo(() => {
-    const map = new Map<string, typeof entriesQuery.data>();
+    const map = new Map<string, NonNullable<typeof entriesQuery.data>[number][]>();
     (entriesQuery.data ?? []).forEach(e => {
       const existing = map.get(e.date) ?? [];
       map.set(e.date, [...existing, e]);
@@ -162,12 +170,11 @@ export default function HoursPage() {
     return map;
   }, [entriesQuery.data]);
 
-  // Weekly hour totals
   const weekTotals = useMemo(() => weeks.map(week => {
     let total = 0;
     week.forEach(day => {
       const ds = toLocalDateString(day);
-      (entriesByDate.get(ds) ?? [])?.forEach(e => {
+      (entriesByDate.get(ds) ?? []).forEach(e => {
         if (e.entryType === "travail" && e.startTime && e.endTime) {
           total += workedHours(e.startTime, e.endTime, e.breakMinutes);
         }
@@ -185,7 +192,12 @@ export default function HoursPage() {
   const openAdd = (dateStr: string) => {
     setSelectedDate(dateStr);
     setForm(defaultForm());
-    setDialogOpen(true);
+    setAddOpen(true);
+  };
+
+  const openDetail = (dateStr: string) => {
+    setDetailDate(dateStr);
+    setDetailOpen(true);
   };
 
   const handleSave = () => {
@@ -203,10 +215,168 @@ export default function HoursPage() {
     });
   };
 
-  const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-  const DAYS_FR = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
+  const exportPDF = () => {
+    const techName = role === "admin"
+      ? (techniciansQuery.data?.find(t => t.id === selectedTechId)
+          ? `${techniciansQuery.data!.find(t => t.id === selectedTechId)!.firstName} ${techniciansQuery.data!.find(t => t.id === selectedTechId)!.lastName}`.trim()
+          : "Technicien")
+      : (meQuery.data?.name ?? "Technicien");
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageW = 297;
+    const ML = 12;
+    const colW = [32, 22, 16, 16, 14, 16, 80, 14, 0]; // date, type, start, end, pause, hours, chantier, panier, note
+    const noteW = pageW - ML * 2 - colW.slice(0, 8).reduce((a, b) => a + b, 0);
+    colW[8] = noteW;
+    const headers = ["Date", "Type", "Début", "Fin", "Pause", "Heures", "Chantier", "Panier", "Note"];
+
+    let y = 18;
+
+    // Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(`Feuille de temps — ${MONTHS_FR[month - 1]} ${year}`, ML, y);
+    y += 7;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Technicien : ${techName}`, ML, y);
+    doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, pageW - ML, y, { align: "right" });
+    y += 6;
+
+    // Header row
+    doc.setFillColor(37, 99, 235);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(ML, y, pageW - ML * 2, 6, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    let x = ML + 1;
+    headers.forEach((h, i) => {
+      doc.text(h, x, y + 4);
+      x += colW[i];
+    });
+    doc.setTextColor(0, 0, 0);
+    y += 6;
+
+    let totalPaniers = 0;
+    let weekIdx = 0;
+
+    weeks.forEach((week, wi) => {
+      // Week separator
+      doc.setFillColor(241, 245, 249);
+      doc.rect(ML, y, pageW - ML * 2, 4.5, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Semaine ${wi + 1} — ${fmtH(weekTotals[wi])}`, ML + 1, y + 3);
+      doc.setTextColor(0, 0, 0);
+      y += 4.5;
+      weekIdx++;
+
+      week.forEach(day => {
+        const ds = toLocalDateString(day);
+        const dow = (day.getDay() + 6) % 7;
+        const isWeekend = dow >= 5;
+        const dayEntries = entriesByDate.get(ds) ?? [];
+
+        if (dayEntries.length === 0) {
+          if (!isWeekend) {
+            // Empty weekday
+            if (y > 185) { doc.addPage(); y = 15; }
+            doc.setFillColor(isWeekend ? 248 : 255, isWeekend ? 250 : 255, isWeekend ? 252 : 255);
+            doc.rect(ML, y, pageW - ML * 2, 5, "F");
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7);
+            doc.setTextColor(180, 180, 180);
+            doc.text(`${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(month).padStart(2, "0")}`, ML + 1, y + 3.5);
+            doc.setTextColor(0, 0, 0);
+            y += 5;
+          }
+          return;
+        }
+
+        dayEntries.forEach((e, ei) => {
+          if (y > 185) { doc.addPage(); y = 15; }
+
+          const rowH = 5.5;
+          const bg = ei % 2 === 0 ? (isWeekend ? [248, 250, 252] : [255, 255, 255]) : [250, 251, 253];
+          doc.setFillColor(bg[0], bg[1], bg[2]);
+          doc.rect(ML, y, pageW - ML * 2, rowH, "F");
+
+          doc.setFont("helvetica", ei === 0 ? "bold" : "normal");
+          doc.setFontSize(7.5);
+          x = ML + 1;
+
+          // Date (only on first entry of the day)
+          if (ei === 0) {
+            const dateLabel = `${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(month).padStart(2, "0")}`;
+            doc.setTextColor(isWeekend ? 150 : 0, isWeekend ? 150 : 0, isWeekend ? 150 : 0);
+            doc.text(dateLabel, x, y + rowH / 2 + 1.5);
+            doc.setTextColor(0, 0, 0);
+          }
+          x += colW[0];
+
+          // Type
+          doc.setFont("helvetica", "bold");
+          const etLabel = ENTRY_TYPES.find(t => t.value === e.entryType)?.label ?? e.entryType.toUpperCase();
+          doc.text(etLabel, x, y + rowH / 2 + 1.5);
+          x += colW[1];
+
+          doc.setFont("helvetica", "normal");
+          // Start
+          doc.text(e.startTime ?? "—", x, y + rowH / 2 + 1.5);
+          x += colW[2];
+          // End
+          doc.text(e.endTime ?? "—", x, y + rowH / 2 + 1.5);
+          x += colW[3];
+          // Pause
+          const pauseLabel = e.breakMinutes > 0 ? `${e.breakMinutes}m` : "—";
+          doc.text(pauseLabel, x, y + rowH / 2 + 1.5);
+          x += colW[4];
+          // Hours
+          const h = e.entryType === "travail" && e.startTime && e.endTime
+            ? fmtH(workedHours(e.startTime, e.endTime, e.breakMinutes))
+            : "—";
+          doc.setFont("helvetica", "bold");
+          doc.text(h, x, y + rowH / 2 + 1.5);
+          x += colW[5];
+          doc.setFont("helvetica", "normal");
+          // Chantier
+          const project = (projectsQuery.data ?? []).find(p => p.id === e.projectId);
+          const chantierLabel = project ? `${project.reference} — ${project.title}`.substring(0, 38) : "—";
+          doc.text(chantierLabel, x, y + rowH / 2 + 1.5);
+          x += colW[6];
+          // Panier
+          if (e.panier) totalPaniers++;
+          doc.text(e.panier ? "OUI" : "NON", x, y + rowH / 2 + 1.5);
+          x += colW[7];
+          // Note
+          const noteLabel = (e.note ?? "").substring(0, 40);
+          doc.text(noteLabel, x, y + rowH / 2 + 1.5);
+
+          y += rowH;
+        });
+      });
+    });
+
+    // Totals
+    y += 3;
+    if (y > 185) { doc.addPage(); y = 15; }
+    doc.setFillColor(37, 99, 235);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(ML, y, pageW - ML * 2, 7, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(`Total heures travaillées : ${fmtH(monthTotal)}`, ML + 2, y + 4.8);
+    doc.text(`Paniers repas : ${totalPaniers}`, pageW / 2, y + 4.8, { align: "center" });
+    if (hasOvertime) doc.text("⚠ Heures supplémentaires ce mois", pageW - ML - 2, y + 4.8, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+
+    doc.save(`heures_${techName.replace(/\s+/g, "_")}_${year}_${String(month).padStart(2, "0")}.pdf`);
+  };
 
   const selectedTech = techniciansQuery.data?.find(t => t.id === selectedTechId);
+  const detailEntries = detailDate ? (entriesByDate.get(detailDate) ?? []) : [];
+  const detailDay = detailDate ? new Date(detailDate + "T12:00:00") : null;
 
   if (role === "client") return null;
 
@@ -223,6 +393,15 @@ export default function HoursPage() {
             Feuille de temps · Saisie quotidienne
           </p>
         </div>
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={exportPDF}
+          disabled={!myTechId || !entriesQuery.data}
+        >
+          <FileDown className="h-4 w-4" />
+          Exporter PDF
+        </Button>
       </div>
 
       {/* Admin: technician selector */}
@@ -276,7 +455,7 @@ export default function HoursPage() {
           <table className="w-full table-fixed border-collapse">
             <thead>
               <tr>
-                {DAYS_FR.map(d => (
+                {DAYS_FR_SHORT.map(d => (
                   <th key={d} className={`py-2 text-center text-[10px] font-bold uppercase tracking-wider ${d === "SAM" || d === "DIM" ? "text-muted-foreground/50" : "text-muted-foreground"}`}>
                     {d}
                   </th>
@@ -290,7 +469,6 @@ export default function HoursPage() {
               {weeks.map((week, wi) => {
                 const weekTotal = weekTotals[wi];
                 const isOver35 = weekTotal > 35;
-                // Pad week to 7 days
                 const padded = Array.from({ length: 7 }, (_, i) => {
                   const dayOfWeek = week[0] ? (week[0].getDay() + 6) % 7 : 0;
                   const offset = i - dayOfWeek;
@@ -315,7 +493,9 @@ export default function HoursPage() {
                       return (
                         <td
                           key={di}
-                          className={`relative h-16 border-r border-slate-100 align-top p-1 text-xs ${isWeekend ? "bg-slate-50/60" : "bg-white"} ${isToday ? "ring-2 ring-inset ring-primary" : ""}`}
+                          className={`relative h-16 border-r border-slate-100 align-top p-1 text-xs ${isWeekend ? "bg-slate-50/60" : "bg-white"} ${isToday ? "ring-2 ring-inset ring-primary" : ""} ${dayEntries.length > 0 ? "cursor-pointer hover:bg-primary/5 transition-colors" : ""}`}
+                          onClick={() => dayEntries.length > 0 && openDetail(ds)}
+                          title={dayEntries.length > 0 ? "Cliquer pour voir le détail" : undefined}
                         >
                           <div className="flex items-start justify-between">
                             <span className={`text-[11px] font-medium ${isToday ? "text-primary font-bold" : isWeekend ? "text-slate-400" : "text-slate-700"}`}>
@@ -323,7 +503,7 @@ export default function HoursPage() {
                             </span>
                             {!isWeekend && myTechId && (
                               <button
-                                onClick={() => openAdd(ds)}
+                                onClick={e => { e.stopPropagation(); openAdd(ds); }}
                                 className="rounded p-0.5 text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors"
                               >
                                 <span className="text-base leading-none">+</span>
@@ -339,9 +519,7 @@ export default function HoursPage() {
                               return (
                                 <div
                                   key={e.id}
-                                  className={`flex items-center justify-between rounded px-1 py-0.5 text-[9px] font-semibold border ${et?.color ?? ""} cursor-pointer`}
-                                  onClick={() => deleteMutation.mutate({ id: e.id })}
-                                  title="Cliquer pour supprimer"
+                                  className={`flex items-center justify-between rounded px-1 py-0.5 text-[9px] font-semibold border ${et?.color ?? ""}`}
                                 >
                                   <span>{et?.label}</span>
                                   {h !== null && <span>{fmtH(h)}</span>}
@@ -372,8 +550,80 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Dialog saisie */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Detail dialog */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              {detailDay?.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            {detailEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Aucune entrée pour ce jour.</p>
+            ) : detailEntries.map(e => {
+              const et = ENTRY_TYPES.find(t => t.value === e.entryType);
+              const h = e.entryType === "travail" && e.startTime && e.endTime
+                ? workedHours(e.startTime, e.endTime, e.breakMinutes)
+                : null;
+              const project = (projectsQuery.data ?? []).find(p => p.id === e.projectId);
+              return (
+                <div key={e.id} className={`rounded-xl border-2 p-3 ${et?.color ?? "border-slate-200"}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        {et && <et.icon className="h-4 w-4" />}
+                        <span className="text-sm font-bold">{et?.label}</span>
+                        {h !== null && (
+                          <span className="ml-auto text-sm font-bold">{fmtH(h)}</span>
+                        )}
+                      </div>
+                      {e.entryType === "travail" && e.startTime && e.endTime && (
+                        <p className="text-xs text-muted-foreground">
+                          {e.startTime} → {e.endTime}
+                          {e.breakMinutes > 0 && ` · Pause ${e.breakMinutes}m`}
+                        </p>
+                      )}
+                      {project && (
+                        <p className="text-xs font-medium">{project.reference} — {project.title}</p>
+                      )}
+                      {e.entryType === "travail" && (
+                        <p className="text-xs text-muted-foreground">Panier : {e.panier ? "OUI" : "NON"}</p>
+                      )}
+                      {e.note && (
+                        <p className="text-xs italic text-muted-foreground">{e.note}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => deleteMutation.mutate({ id: e.id })}
+                      disabled={deleteMutation.isPending}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                      title="Supprimer cette entrée"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="gap-2">
+            {detailDate && myTechId && (
+              <Button
+                variant="outline"
+                onClick={() => { setDetailOpen(false); openAdd(detailDate); }}
+              >
+                + Ajouter une entrée
+              </Button>
+            )}
+            <Button onClick={() => setDetailOpen(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -498,7 +748,7 @@ export default function HoursPage() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Fermer</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Fermer</Button>
             <Button onClick={handleSave} disabled={saveMutation.isPending} className="bg-foreground text-background hover:bg-foreground/90">
               {saveMutation.isPending ? "Enregistrement…" : "Valider"}
             </Button>
