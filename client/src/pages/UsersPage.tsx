@@ -240,7 +240,7 @@ function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
 
 // ─── Reset password dialog ───────────────────────────────────────────────────
 
-function ResetPasswordDialog({ user }: { user: { openId: string; name: string | null; username: string | null } }) {
+function ResetPasswordDialog({ user }: { user: { openId: string; name: string | null; username: string | null; email: string | null } }) {
   const [open, setOpen] = useState(false);
   const [newPassword, setNewPassword] = useState(() => generatePassword());
 
@@ -252,10 +252,16 @@ function ResetPasswordDialog({ user }: { user: { openId: string; name: string | 
     onError: (err) => toast.error(err.message),
   });
 
+  const canReset = Boolean(user.openId && user.openId.length > 10);
+
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) setNewPassword(generatePassword()); }}>
       <DialogTrigger asChild>
-        <button className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground">
+        <button
+          className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          disabled={!canReset}
+          title={canReset ? "Réinitialiser le mot de passe" : "Compte legacy — réinitialiser depuis le dashboard Supabase"}
+        >
           <KeyRound className="h-3.5 w-3.5" /> Réinitialiser
         </button>
       </DialogTrigger>
@@ -265,7 +271,7 @@ function ResetPasswordDialog({ user }: { user: { openId: string; name: string | 
         </DialogHeader>
         <div className="space-y-4 py-2">
           <p className="text-sm text-muted-foreground">
-            Utilisateur : <span className="font-medium text-foreground">{user.name ?? user.username}</span>
+            Utilisateur : <span className="font-medium text-foreground">{user.name ?? user.username ?? user.email}</span>
           </p>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -380,7 +386,11 @@ export default function UsersPage() {
                           {u.username}
                           <CopyButton value={u.username} />
                         </span>
-                      ) : <span className="text-muted-foreground">—</span>}
+                      ) : u.email ? (
+                        <span className="text-xs text-muted-foreground">{u.email}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
 
                     <TableCell>
@@ -413,7 +423,7 @@ export default function UsersPage() {
 
                     <TableCell className="pr-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <ResetPasswordDialog user={u} />
+                        <ResetPasswordDialog user={{ openId: u.openId, name: u.name, username: u.username, email: u.email }} />
                         <button
                           className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground"
                           title={u.accountStatus === "suspended" ? "Activer" : "Suspendre"}

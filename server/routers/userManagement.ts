@@ -21,6 +21,7 @@ function mapUserRow(row: Record<string, unknown>) {
     id: Number(row.id),
     openId: String(row.open_id ?? ""),
     name: (row.name as string | null) ?? null,
+    email,
     username: usernameFromEmail(email),
     role: (row.role as "admin" | "technicien" | "client") ?? "client",
     accountStatus: (row.account_status as "active" | "invited" | "suspended") ?? "active",
@@ -86,9 +87,12 @@ export const userManagementRouter = router({
   }),
 
   resetPassword: adminProcedure.input(z.object({
-    openId: z.string().uuid(),
+    openId: z.string().min(1),
     password: z.string().length(6).regex(/^\d{6}$/),
   })).mutation(async ({ input }) => {
+    if (!input.openId || input.openId === "undefined") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Identifiant utilisateur manquant. Ce compte ne peut pas être réinitialisé depuis l'interface." });
+    }
     const supabase = createSupabaseAdminClient();
     const { error } = await supabase.auth.admin.updateUserById(input.openId, {
       password: input.password,
