@@ -53,6 +53,8 @@ import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   BookOpen,
   BriefcaseBusiness,
   Building2,
@@ -147,7 +149,17 @@ const STATUS_CONFIG: Record<string, { tone: string; display: string }> = {
   brouillon: { tone: "bg-slate-500/10 text-slate-600 border-slate-200", display: "Brouillon" },
   annule:    { tone: "bg-slate-500/10 text-slate-600 border-slate-200", display: "Annulé" },
   actif:     { tone: "bg-emerald-500/10 text-emerald-700 border-emerald-200", display: "Actif" },
+  archive:   { tone: "bg-slate-200/80 text-slate-500 border-slate-300", display: "Archivé" },
 };
+
+const SERVICE_BORDER: Record<string, string> = {
+  clim:        "border-l-blue-400",
+  pac:         "border-l-red-400",
+  pv:          "border-l-amber-400",
+  vmc:         "border-l-green-400",
+  chauffe_eau: "border-l-orange-400",
+};
+function serviceBorder(type: string) { return SERVICE_BORDER[type] ?? "border-l-slate-300"; }
 
 function StatusBadge({ value }: { value: string | null | undefined }) {
   const key = value ?? "";
@@ -790,7 +802,7 @@ export function SitesPage() {
 }
 
 type ProjectServiceType = string;
-type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule";
+type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule" | "archive";
 
 type ProjectFormState = {
   clientId: string;
@@ -1026,12 +1038,22 @@ export function ProjectsPage() {
     onError: error => toast.error(error.message),
   });
 
+  const archiveProject = trpc.management.projects.updateStatus.useMutation({
+    onSuccess: async () => { toast.success("Chantier archivé."); await invalidateAll(); },
+    onError: e => toast.error(e.message),
+  });
+  const unarchiveProject = trpc.management.projects.updateStatus.useMutation({
+    onSuccess: async () => { toast.success("Chantier réactivé."); await invalidateAll(); },
+    onError: e => toast.error(e.message),
+  });
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState<CreateWithClientFormState>(INITIAL_CREATE_FORM);
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
   const [search, setSearch] = useState("");
+  const [archiveTab, setArchiveTab] = useState<"actifs" | "archives">("actifs");
   const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
   const [serviceFilter, setServiceFilter] = useState<"all" | ProjectServiceType>("all");
 
@@ -1066,6 +1088,8 @@ export function ProjectsPage() {
     const list = projectsQuery.data ?? [];
     const needle = search.trim().toLowerCase();
     return list.filter(project => {
+      if (archiveTab === "archives") return project.status === "archive";
+      if (project.status === "archive") return false;
       if (statusFilter !== "all" && project.status !== statusFilter) return false;
       if (serviceFilter !== "all" && project.serviceType !== serviceFilter) return false;
       if (!needle) return true;
@@ -1075,7 +1099,7 @@ export function ProjectsPage() {
         .toLowerCase();
       return haystack.includes(needle);
     });
-  }, [projectsQuery.data, search, statusFilter, serviceFilter]);
+  }, [projectsQuery.data, search, statusFilter, serviceFilter, archiveTab]);
 
   const clients = clientsQuery.data ?? [];
   const sites = sitesQuery.data ?? [];
@@ -1083,9 +1107,12 @@ export function ProjectsPage() {
   const canManage = !!permissions?.manageProjects;
   const canCreate = canManage || !!permissions?.createProjects;
 
+  const archivedCount = (projectsQuery.data ?? []).filter(p => p.status === "archive").length;
+  const activeCount = (projectsQuery.data ?? []).filter(p => p.status !== "archive").length;
+
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         <PageHeader
           title="Chantiers"
           action={
@@ -1198,6 +1225,27 @@ export function ProjectsPage() {
           }
         />
 
+        {/* Archive tabs */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setArchiveTab("actifs")}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${archiveTab === "actifs" ? "bg-primary text-white shadow-sm" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"}`}
+          >
+            <BriefcaseBusiness className="h-4 w-4" />
+            Actifs
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${archiveTab === "actifs" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{activeCount}</span>
+          </button>
+          <button
+            onClick={() => setArchiveTab("archives")}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${archiveTab === "archives" ? "bg-slate-700 text-white shadow-sm" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"}`}
+          >
+            <Archive className="h-4 w-4" />
+            Archives
+            {archivedCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${archiveTab === "archives" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{archivedCount}</span>}
+          </button>
+        </div>
+
+        {archiveTab === "actifs" && (
         <SurfaceCard>
           <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
             <div className="relative flex-1">
@@ -1227,11 +1275,12 @@ export function ProjectsPage() {
             </div>
           </CardContent>
         </SurfaceCard>
+        )}
 
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredProjects.length ? (
             filteredProjects.map(project => (
-              <div key={project.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:border-slate-200 hover:shadow-md">
+              <div key={project.id} className={`flex flex-col gap-3 rounded-2xl border border-slate-100 border-l-4 ${serviceBorder(project.serviceType)} bg-white p-5 shadow-sm transition-all hover:border-slate-200 hover:shadow-md`}>
                 {/* Hidden dialogs — triggered by state */}
                 {canManage && (
                   <>
@@ -1296,10 +1345,23 @@ export function ProjectsPage() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => setEditingId(project.id)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Éditer
-                        </DropdownMenuItem>
+                        {archiveTab === "actifs" && (
+                          <DropdownMenuItem onSelect={() => setEditingId(project.id)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Éditer
+                          </DropdownMenuItem>
+                        )}
+                        {archiveTab === "actifs" ? (
+                          <DropdownMenuItem onSelect={() => archiveProject.mutate({ projectId: project.id, status: "archive", progressPercent: project.progressPercent ?? 0 })}>
+                            <Archive className="mr-2 h-4 w-4" />
+                            Archiver
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onSelect={() => unarchiveProject.mutate({ projectId: project.id, status: "planifie", progressPercent: project.progressPercent ?? 0 })}>
+                            <ArchiveRestore className="mr-2 h-4 w-4" />
+                            Réactiver
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onSelect={() => setDeletingId(project.id)} className="text-rose-600 focus:text-rose-600">
                           <Trash2 className="mr-2 h-4 w-4" />
                           Supprimer
@@ -2094,9 +2156,22 @@ export function ProjectDetailPage() {
                     <Pencil className="h-3.5 w-3.5" />
                     Éditer
                   </Button>
-                  {project.status !== "termine" && project.status !== "bloque" && (
+                  {project.status !== "termine" && project.status !== "bloque" && project.status !== "archive" && (
                     <Button size="sm" className="bg-slate-800 text-white hover:bg-slate-700" onClick={() => setCloseOpen(true)}>
                       Clôturer
+                    </Button>
+                  )}
+                  {project.status !== "archive" ? (
+                    <Button variant="outline" size="sm" className="text-slate-600 hover:bg-slate-50"
+                      onClick={() => updateProject.mutate({ ...editForm, projectId: project.id, clientId: Number(editForm.clientId), siteId: editForm.siteId ? Number(editForm.siteId) : null, quoteNumber: editForm.quoteNumber || null, status: "archive" })}>
+                      <Archive className="h-3.5 w-3.5" />
+                      Archiver
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" className="text-emerald-700 hover:bg-emerald-50"
+                      onClick={() => updateProject.mutate({ ...editForm, projectId: project.id, clientId: Number(editForm.clientId), siteId: editForm.siteId ? Number(editForm.siteId) : null, quoteNumber: editForm.quoteNumber || null, status: "planifie" })}>
+                      <ArchiveRestore className="h-3.5 w-3.5" />
+                      Réactiver
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => setDeleteDetailOpen(true)}>

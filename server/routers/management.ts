@@ -151,7 +151,7 @@ const createProjectSchema = z.object({
   title: z.string().min(3),
   serviceType: z.string().default("autre"),
   description: z.string().optional().nullable(),
-  status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]).default("planifie"),
+  status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule", "archive"]).default("planifie"),
   progressPercent: z.number().int().min(0).max(100).default(0),
   estimatedHours: z.string().default("0.00"),
   actualHours: z.string().default("0.00"),
@@ -173,7 +173,7 @@ const createProjectWithClientSchema = z.object({
   title: z.string().min(3),
   serviceType: z.string().default("autre"),
   description: z.string().optional().nullable(),
-  status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]).default("planifie"),
+  status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule", "archive"]).default("planifie"),
   progressPercent: z.number().int().min(0).max(100).default(0),
   estimatedHours: z.string().default("0.00"),
   actualHours: z.string().default("0.00"),
@@ -1018,7 +1018,7 @@ export const managementRouter = router({
         return { success: true };
       }),
     updateStatus: adminProcedure
-      .input(z.object({ projectId: z.number().int().positive(), status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule"]), progressPercent: z.number().int().min(0).max(100) }))
+      .input(z.object({ projectId: z.number().int().positive(), status: z.enum(["brouillon", "planifie", "en_cours", "bloque", "termine", "annule", "archive"]), progressPercent: z.number().int().min(0).max(100) }))
       .mutation(async ({ ctx, input }) => {
         if (SUPABASE_ENV.isConfigured && ctx.supabase) {
           await updateSupabaseProjectStatus(input.projectId, input.status, input.progressPercent);
@@ -1028,7 +1028,7 @@ export const managementRouter = router({
         const db = await requireDb();
         await db
           .update(projects)
-          .set({ status: input.status, progressPercent: input.progressPercent })
+          .set({ status: input.status as "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule", progressPercent: input.progressPercent })
           .where(eq(projects.id, input.projectId));
 
         await logActivity(db, ctx.user.id, "project", input.projectId, "project.updated", `Statut chantier mis à jour: ${input.status}`);

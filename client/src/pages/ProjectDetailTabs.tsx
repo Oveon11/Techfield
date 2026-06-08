@@ -202,9 +202,11 @@ function PhotoGrid({ photos, onZoom }: { photos: LocalPhoto[]; onZoom: (url: str
 
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
-      <button className="absolute top-4 right-4 text-white/80 hover:text-white" onClick={onClose}><X className="h-6 w-6" /></button>
-      <img src={src} className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg" onClick={e => e.stopPropagation()} />
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
+      <button className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white/80 hover:bg-white/20 hover:text-white transition-colors" onClick={onClose}>
+        <X className="h-6 w-6" />
+      </button>
+      <img src={src} className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
     </div>
   );
 }
