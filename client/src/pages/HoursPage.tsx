@@ -414,14 +414,14 @@ export default function HoursPage() {
                     <Briefcase className="h-3 w-3" /> Chantier (optionnel)
                   </label>
                   <Select
-                    value={form.projectId?.toString() ?? ""}
-                    onValueChange={v => setForm(f => ({ ...f, projectId: v ? Number(v) : null }))}
+                    value={form.projectId?.toString() ?? "none"}
+                    onValueChange={v => setForm(f => ({ ...f, projectId: v === "none" ? null : Number(v) }))}
                   >
                     <SelectTrigger className="text-sm">
                       <SelectValue placeholder="Aucun chantier spécifique" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Aucun chantier spécifique</SelectItem>
+                      <SelectItem value="none">Aucun chantier spécifique</SelectItem>
                       {(projectsQuery.data ?? []).map(p => (
                         <SelectItem key={p.id} value={p.id.toString()}>
                           {p.reference} — {p.title}
