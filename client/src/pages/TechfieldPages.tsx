@@ -4022,10 +4022,8 @@ export function MemosGlobalPage() {
 export const techfieldMenu = [
   { icon: LayoutDashboard, label: "Tableau de bord", path: "/", roles: ["admin", "client"] },
   { icon: Newspaper, label: "Fil d'actualité", path: "/fil-actualite", roles: ["admin", "technicien"] },
-  { icon: StickyNote, label: "Mémos", path: "/memos-globaux", roles: ["admin", "technicien"] },
   { icon: BriefcaseBusiness, label: "Chantiers", path: "/chantiers", roles: ["admin", "technicien", "client"] },
   { icon: ClipboardCheck, label: "Contrats", path: "/contrats", roles: ["admin", "client"] },
-  { icon: Wrench, label: "Interventions", path: "/interventions", roles: ["admin", "technicien"] },
   { icon: Clock, label: "Heures", path: "/heures", roles: ["admin", "technicien"] },
   { icon: Users, label: "Équipe", path: "/equipe", roles: ["admin"] },
   { icon: CalendarClock, label: "Calendrier", path: "/calendrier", roles: ["admin"] },

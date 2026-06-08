@@ -14,8 +14,6 @@ import {
   DashboardPage,
   DocumentsPage,
   FeedPage,
-  InterventionsPage,
-  MemosGlobalPage,
   ProjectDetailPage,
   ProjectsPage,
   TeamPage,
@@ -26,12 +24,10 @@ function Router() {
     <Switch>
       <Route path="/" component={DashboardPage} />
       <Route path="/fil-actualite" component={FeedPage} />
-      <Route path="/memos-globaux" component={MemosGlobalPage} />
       <Route path="/clients" component={ClientsPage} />
       <Route path="/chantiers" component={ProjectsPage} />
       <Route path="/chantiers/:id" component={ProjectDetailPage} />
       <Route path="/contrats" component={ContractsPage} />
-      <Route path="/interventions" component={InterventionsPage} />
       <Route path="/heures" component={HoursPage} />
       <Route path="/equipe" component={TeamPage} />
       <Route path="/calendrier" component={CalendarPage} />
