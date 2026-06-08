@@ -1,3 +1,4 @@
+import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,6 +36,10 @@ const BREAK_OPTIONS = [
   { value: 75, label: "1h15" },
   { value: 90, label: "1h30" },
 ];
+
+function toLocalDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function workedHours(start: string, end: string, breakMin: number): number {
   if (!start || !end) return 0;
@@ -161,7 +166,7 @@ export default function HoursPage() {
   const weekTotals = useMemo(() => weeks.map(week => {
     let total = 0;
     week.forEach(day => {
-      const ds = day.toISOString().slice(0, 10);
+      const ds = toLocalDateString(day);
       (entriesByDate.get(ds) ?? [])?.forEach(e => {
         if (e.entryType === "travail" && e.startTime && e.endTime) {
           total += workedHours(e.startTime, e.endTime, e.breakMinutes);
@@ -206,6 +211,7 @@ export default function HoursPage() {
   if (role === "client") return null;
 
   return (
+    <DashboardLayout>
     <div className="space-y-6 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -295,8 +301,8 @@ export default function HoursPage() {
                   <tr key={wi} className="border-t border-slate-100">
                     {padded.map((day, di) => {
                       if (!day) return <td key={di} className="h-16 border-r border-slate-100 bg-slate-50/40" />;
-                      const ds = day.toISOString().slice(0, 10);
-                      const isToday = ds === new Date().toISOString().slice(0, 10);
+                      const ds = toLocalDateString(day);
+                      const isToday = ds === toLocalDateString(new Date());
                       const dayEntries = entriesByDate.get(ds) ?? [];
                       const isWeekend = di >= 5;
                       const dayHours = dayEntries.reduce((acc, e) => {
@@ -500,5 +506,6 @@ export default function HoursPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </DashboardLayout>
   );
 }
