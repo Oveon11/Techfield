@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
 import { techfieldMenu } from "@/pages/TechfieldPages";
-import { Building2, Mail, PanelLeft } from "lucide-react";
+import { Building2, Eye, EyeOff, KeyRound, PanelLeft, User } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -59,23 +59,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 
 function UnauthenticatedCard() {
-  const { authAvailable, authMessage, error, isRequestingMagicLink, isVerifyingCode, pendingEmail, requestMagicLink, verifyCode } = useAuth();
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const { authAvailable, error, isSigningIn, signIn } = useAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmitEmail = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
-      await requestMagicLink(email);
-    } catch {
-      // message géré par le hook
-    }
-  };
-
-  const handleSubmitCode = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      await verifyCode(code);
+      await signIn(username, password);
     } catch {
       // message géré par le hook
     }
@@ -83,95 +75,94 @@ function UnauthenticatedCard() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.14),_transparent_40%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] px-6">
-      <div className="w-full max-w-lg rounded-[2rem] border border-white/60 bg-white/90 p-10 shadow-2xl shadow-slate-950/10 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-            <Building2 className="h-6 w-6" />
+      <div className="w-full max-w-md rounded-[2rem] border border-white/60 bg-white/90 p-10 shadow-2xl shadow-slate-950/10 backdrop-blur">
+        {/* Logo + titre */}
+        <div className="mb-8 flex flex-col items-center gap-3 text-center">
+          <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+            <Building2 className="h-8 w-8" />
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Techfield</p>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Accédez à votre espace opérationnel</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Oveon · Techfield</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">Connexion</h1>
           </div>
         </div>
-        <p className="mt-6 text-sm leading-7 text-muted-foreground">
-          La plateforme centralise les chantiers, contrats d’entretien, interventions et informations terrain. Connectez-vous avec un lien sécurisé envoyé par e-mail via Supabase Auth.
-        </p>
 
         {authAvailable ? (
-          !pendingEmail ? (
-            <form className="mt-8 space-y-4" onSubmit={handleSubmitEmail}>
-              <div className="space-y-2">
-                <label htmlFor="login-email" className="text-sm font-medium text-foreground">
-                  Adresse e-mail professionnelle
-                </label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="login-email"
-                    type="email"
-                    autoComplete="email"
-                    className="pl-9"
-                    placeholder="nom@entreprise.fr"
-                    value={email}
-                    onChange={event => setEmail(event.target.value)}
-                  />
-                </div>
-              </div>
-              <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isRequestingMagicLink}>
-                {isRequestingMagicLink ? "Envoi en cours..." : "Recevoir mon code de connexion"}
-              </Button>
-              {error ? (
-                <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                  {error.message}
-                </p>
-              ) : null}
-            </form>
-          ) : (
-            <form className="mt-8 space-y-4" onSubmit={handleSubmitCode}>
-              {authMessage && (
-                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {authMessage}
-                </p>
-              )}
-              <div className="space-y-2">
-                <label htmlFor="login-code" className="text-sm font-medium text-foreground">
-                  Code à 6 chiffres
-                </label>
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2">
+              <label htmlFor="login-username" className="text-sm font-medium text-foreground">
+                Identifiant
+              </label>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  id="login-code"
+                  id="login-username"
                   type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  className="text-center text-2xl tracking-widest font-mono"
-                  placeholder="000000"
-                  maxLength={6}
-                  value={code}
-                  onChange={event => setCode(event.target.value.replace(/\D/g, ""))}
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className="pl-9 font-mono"
+                  placeholder="ex : leo03"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
                   autoFocus
                 />
               </div>
-              <Button type="submit" size="lg" className="w-full shadow-lg shadow-primary/20" disabled={isVerifyingCode || code.length !== 6}>
-                {isVerifyingCode ? "Vérification..." : "Se connecter"}
-              </Button>
-              {error ? (
-                <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                  {error.message}
-                </p>
-              ) : null}
-              <button
-                type="button"
-                className="w-full text-xs text-muted-foreground hover:text-foreground underline"
-                onClick={() => { /* reset géré par pendingEmail dans le hook */ window.location.reload(); }}
-              >
-                Utiliser une autre adresse e-mail
-              </button>
-            </form>
-          )
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="login-password" className="text-sm font-medium text-foreground">
+                Mot de passe
+              </label>
+              <div className="relative">
+                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  inputMode="numeric"
+                  className="pl-9 pr-10 font-mono tracking-widest text-lg"
+                  placeholder="••••••"
+                  maxLength={6}
+                  value={password}
+                  onChange={e => setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword(v => !v)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full shadow-lg shadow-primary/20"
+              disabled={isSigningIn || !username.trim() || password.length !== 6}
+            >
+              {isSigningIn ? "Connexion en cours…" : "Se connecter"}
+            </Button>
+
+            {error ? (
+              <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {error.message}
+              </p>
+            ) : null}
+          </form>
         ) : (
-          <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
-            L’authentification Supabase côté navigateur n’est pas encore configurée. Ajoutez <code>VITE_SUPABASE_URL</code> et <code>VITE_SUPABASE_ANON_KEY</code> dans l’environnement de déploiement pour activer la connexion.
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
+            L’authentification Supabase côté navigateur n’est pas encore configurée.
+            Ajoutez <code>VITE_SUPABASE_URL</code> et <code>VITE_SUPABASE_ANON_KEY</code> dans l’environnement de déploiement.
           </div>
         )}
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Identifiant et mot de passe fournis par votre administrateur
+        </p>
       </div>
     </div>
   );

@@ -9,14 +9,17 @@ type UseAuthOptions = {
   redirectPath?: string;
 };
 
+const INTERNAL_DOMAIN = "techfield.local";
+
+function toInternalEmail(username: string): string {
+  return `${username.toLowerCase().trim()}@${INTERNAL_DOMAIN}`;
+}
+
 export function useAuth(options?: UseAuthOptions) {
   const { redirectOnUnauthenticated = false, redirectPath = getAuthRedirectPath() } = options ?? {};
   const utils = trpc.useUtils();
-  const [isRequestingMagicLink, setIsRequestingMagicLink] = useState(false);
-  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const supabaseConfig = useMemo(() => resolveSupabasePublicConfig(import.meta.env), []);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
@@ -33,85 +36,45 @@ export function useAuth(options?: UseAuthOptions) {
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      return;
-    }
+    if (!supabase) return;
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async () => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async () => {
       setAuthError(null);
       await utils.auth.me.invalidate();
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => { subscription.unsubscribe(); };
   }, [utils.auth.me]);
 
-  const requestMagicLink = useCallback(async (email: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) {
-      throw new Error("Veuillez saisir une adresse e-mail.");
-    }
-
+  const signIn = useCallback(async (username: string, password: string) => {
     const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      throw new Error("L’authentification Supabase n’est pas configurée côté navigateur. Ajoutez VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.");
-    }
+    if (!supabase) throw new Error("Authentification non configurée. Contactez votre administrateur.");
 
-    setIsRequestingMagicLink(true);
-    setAuthError(null);
-    setAuthMessage(null);
-
-    try {
-      // Pas de emailRedirectTo → Supabase envoie un code à 6 chiffres
-      // (évite le problème de pre-fetch Outlook/Exchange qui consomme les magic links)
-      const { error } = await supabase.auth.signInWithOtp({
-        email: normalizedEmail,
-      });
-
-      if (error) throw error;
-
-      setPendingEmail(normalizedEmail);
-      setAuthMessage("Un code de connexion à 6 chiffres a été envoyé à votre adresse e-mail.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Impossible d’envoyer le code de connexion.";
-      setAuthError(message);
-      throw error;
-    } finally {
-      setIsRequestingMagicLink(false);
-    }
-  }, []);
-
-  const verifyCode = useCallback(async (token: string) => {
-    const email = pendingEmail;
-    if (!email) throw new Error("Veuillez d’abord saisir votre adresse e-mail.");
-
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) throw new Error("Authentification Supabase non configurée.");
-
-    setIsVerifyingCode(true);
+    setIsSigningIn(true);
     setAuthError(null);
 
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: token.trim(),
-        type: "email",
+      const { error } = await supabase.auth.signInWithPassword({
+        email: toInternalEmail(username),
+        password,
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = error.message.includes("Invalid login credentials")
+          ? "Identifiant ou mot de passe incorrect."
+          : error.message;
+        throw new Error(msg);
+      }
 
       await utils.auth.me.invalidate();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Code invalide ou expiré.";
+      const message = error instanceof Error ? error.message : "Erreur de connexion.";
       setAuthError(message);
       throw error;
     } finally {
-      setIsVerifyingCode(false);
+      setIsSigningIn(false);
     }
-  }, [pendingEmail, utils]);
+  }, [utils]);
 
   const logout = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -119,19 +82,11 @@ export function useAuth(options?: UseAuthOptions) {
     try {
       if (supabase) {
         const { error } = await supabase.auth.signOut();
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
       }
-
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {
-      if (
-        error instanceof TRPCClientError &&
-        error.data?.code === "UNAUTHORIZED"
-      ) {
-        return;
-      }
+      if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") return;
       throw error;
     } finally {
       utils.auth.me.setData(undefined, null);
@@ -140,10 +95,7 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
+    localStorage.setItem("manus-runtime-user-info", JSON.stringify(meQuery.data));
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
@@ -165,26 +117,15 @@ export function useAuth(options?: UseAuthOptions) {
     if (state.user) return;
     if (typeof window === "undefined") return;
     if (window.location.pathname === redirectPath) return;
-
     window.location.replace(redirectPath);
-  }, [
-    redirectOnUnauthenticated,
-    redirectPath,
-    logoutMutation.isPending,
-    meQuery.isLoading,
-    state.user,
-  ]);
+  }, [redirectOnUnauthenticated, redirectPath, logoutMutation.isPending, meQuery.isLoading, state.user]);
 
   return {
     ...state,
     authAvailable: supabaseConfig.isConfigured,
-    authMessage,
-    isRequestingMagicLink,
-    isVerifyingCode,
-    pendingEmail,
+    isSigningIn,
     refresh: () => meQuery.refetch(),
-    requestMagicLink,
-    verifyCode,
+    signIn,
     logout,
   };
 }

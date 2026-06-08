@@ -76,6 +76,7 @@ import {
   ShieldCheck,
   StickyNote,
   Trash2,
+  UserCog,
   Users,
   Wrench,
 } from "lucide-react";
@@ -4194,6 +4195,7 @@ export const techfieldMenu = [
   { icon: ClipboardCheck, label: "Contrats", path: "/contrats", roles: ["admin", "client"] },
   { icon: Clock, label: "Heures", path: "/heures", roles: ["admin", "technicien"] },
   { icon: Users, label: "Équipe", path: "/equipe", roles: ["admin"] },
+  { icon: UserCog, label: "Utilisateurs", path: "/utilisateurs", roles: ["admin"] },
   { icon: CalendarClock, label: "Calendrier", path: "/calendrier", roles: ["admin"] },
   { icon: FileText, label: "Documents", path: "/documents", roles: ["admin", "client"] },
   { icon: Settings, label: "Réglages", path: "/reglages", roles: ["admin"] },

@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import AuthCallbackPage from "@/pages/AuthCallbackPage";
 import HoursPage from "@/pages/HoursPage";
 import SettingsPage from "@/pages/SettingsPage";
+import UsersPage from "@/pages/UsersPage";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/heures" component={HoursPage} />
       <Route path="/memos-globaux" component={MemosGlobalPage} />
       <Route path="/equipe" component={TeamPage} />
+      <Route path="/utilisateurs" component={UsersPage} />
       <Route path="/calendrier" component={CalendarPage} />
       <Route path="/documents" component={DocumentsPage} />
       <Route path="/reglages" component={SettingsPage} />
