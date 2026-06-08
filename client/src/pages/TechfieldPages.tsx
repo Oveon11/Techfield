@@ -3909,7 +3909,7 @@ export function FeedPage() {
             <p className="text-sm text-muted-foreground">Aucune publication dans le fil d'actualité.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {feed.map(item => {
               const authorName = item.kind === "media" ? item.authorName : item.createdByName;
               const serviceType = item.projectServiceType;

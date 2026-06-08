@@ -68,7 +68,7 @@ export const userManagementRouter = router({
     const openId = authData.user.id;
     const fullName = `${input.firstName} ${input.lastName}`.trim();
 
-    const { error: dbError } = await supabase.from("users").insert({
+    const { data: userInserted, error: dbError } = await supabase.from("users").insert({
       open_id: openId,
       name: fullName,
       email,
@@ -76,11 +76,29 @@ export const userManagementRouter = router({
       account_status: "active",
       login_method: "password",
       last_signed_in: new Date().toISOString(),
-    });
+    }).select("id").single();
 
     if (dbError) {
       await supabase.auth.admin.deleteUser(openId).catch(() => {});
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: dbError.message });
+    }
+
+    // Pour les techniciens, créer aussi la ligne dans la table technicians
+    // afin que myTechnicianId puisse retourner leur ID pour la saisie des heures
+    if (input.role === "technicien" && userInserted) {
+      const userId = (userInserted as Record<string, unknown>).id as number;
+      const { error: techError } = await supabase.from("technicians").insert({
+        user_id: userId,
+        first_name: input.firstName,
+        last_name: input.lastName,
+        email,
+        is_active: true,
+      });
+      if (techError) {
+        await supabase.auth.admin.deleteUser(openId).catch(() => {});
+        await supabase.from("users").delete().eq("open_id", openId);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: techError.message });
+      }
     }
 
     return { success: true, username: input.username };

@@ -102,7 +102,7 @@ const defaultForm = (): SaveForm => ({
 
 const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const DAYS_FR_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
-const DAYS_FR_SHORT = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
+const DAYS_FR_SHORT = ["LUN", "MAR", "MER", "JEU", "VEN"];
 
 function getCurrentWeekBounds() {
   const now = new Date();
@@ -540,7 +540,7 @@ export default function HoursPage() {
             <thead>
               <tr>
                 {DAYS_FR_SHORT.map(d => (
-                  <th key={d} className={`py-2 text-center text-[10px] font-bold uppercase tracking-wider ${d === "SAM" || d === "DIM" ? "text-muted-foreground/50" : "text-muted-foreground"}`}>
+                  <th key={d} className="py-2 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     {d}
                   </th>
                 ))}
@@ -553,12 +553,10 @@ export default function HoursPage() {
               {weeks.map((week, wi) => {
                 const weekTotal = weekTotals[wi];
                 const isOver35 = weekTotal > 35;
-                const padded = Array.from({ length: 7 }, (_, i) => {
-                  const dayOfWeek = week[0] ? (week[0].getDay() + 6) % 7 : 0;
-                  const offset = i - dayOfWeek;
-                  if (offset < 0 || offset >= week.length) return null;
-                  return week[offset] ?? null;
-                });
+                // 5 columns: Mon(0)..Fri(4) — weekends excluded
+                const padded = Array.from({ length: 5 }, (_, i) =>
+                  week.find(d => (d.getDay() + 6) % 7 === i) ?? null
+                );
                 return (
                   <tr key={wi} className="border-t border-slate-100">
                     {padded.map((day, di) => {
@@ -566,7 +564,6 @@ export default function HoursPage() {
                       const ds = toLocalDateString(day);
                       const isToday = ds === toLocalDateString(new Date());
                       const dayEntries = entriesByDate.get(ds) ?? [];
-                      const isWeekend = di >= 5;
                       const dayHours = dayEntries.reduce((acc, e) => {
                         if (e.entryType === "travail" && e.startTime && e.endTime) {
                           return acc + workedHours(e.startTime, e.endTime, e.breakMinutes);
@@ -577,12 +574,12 @@ export default function HoursPage() {
                       return (
                         <td
                           key={di}
-                          className={`relative h-16 border-r border-slate-100 align-top p-1 text-xs ${isWeekend ? "bg-slate-50/60" : "bg-white"} ${isToday ? "ring-2 ring-inset ring-primary" : ""} ${dayEntries.length > 0 ? "cursor-pointer hover:bg-primary/5 transition-colors" : ""}`}
+                          className={`relative h-16 border-r border-slate-100 align-top p-1 text-xs bg-white ${isToday ? "ring-2 ring-inset ring-primary" : ""} ${dayEntries.length > 0 ? "cursor-pointer hover:bg-primary/5 transition-colors" : ""}`}
                           onClick={() => dayEntries.length > 0 && openDetail(ds)}
                           title={dayEntries.length > 0 ? "Cliquer pour voir le détail" : undefined}
                         >
                           <div className="flex items-start justify-between">
-                            <span className={`text-[11px] font-medium ${isToday ? "text-primary font-bold" : isWeekend ? "text-slate-400" : "text-slate-700"}`}>
+                            <span className={`text-[11px] font-medium ${isToday ? "text-primary font-bold" : "text-slate-700"}`}>
                               {day.getDate()}
                             </span>
                             {myTechId && (role === "admin" || (role === "technicien" && isDateEditableByTechnician(ds))) && (
