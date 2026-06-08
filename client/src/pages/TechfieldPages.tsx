@@ -3607,7 +3607,7 @@ function PostAvatar({ name }: { name: string }) {
 
 function LinkedInCard({ children, href }: { children: React.ReactNode; href: string }) {
   return (
-    <Link href={href}>
+    <Link href={href} className="block">
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer overflow-hidden">
         {children}
       </div>
@@ -3898,7 +3898,7 @@ export function FeedPage() {
 
   return (
     <AppShell>
-      <div className="space-y-5 max-w-2xl mx-auto">
+      <div className="flex flex-col gap-5 max-w-2xl mx-auto">
         <PageHeader title="Fil d'actualité" />
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement…</p>
@@ -3909,7 +3909,7 @@ export function FeedPage() {
             <p className="text-sm text-muted-foreground">Aucune publication dans le fil d'actualité.</p>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="flex flex-col gap-5">
             {feed.map(item => {
               const authorName = item.kind === "media" ? item.authorName : item.createdByName;
               const serviceType = item.projectServiceType;

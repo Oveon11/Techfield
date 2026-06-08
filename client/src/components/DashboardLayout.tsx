@@ -241,8 +241,8 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
                 <div className="min-w-0 flex items-center">
                   <img src="/oveon-logo.png" alt="Oveon" className="h-8 w-8 rounded-lg object-contain" />
                   <div className="ml-2">
-                    <span className="block truncate text-sm font-bold tracking-tight text-white">Techfield</span>
-                    <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">Gestion terrain</p>
+                    <span className="block truncate text-base font-extrabold tracking-tight text-white">Techfield</span>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">Gestion terrain</p>
                   </div>
                 </div>
               ) : null}
@@ -251,23 +251,23 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
 
           <SidebarContent className="gap-0 px-2 py-3">
             {/* User Profile Card */}
-            <div className="mb-3 rounded-xl border border-white/8 bg-white/5 p-3 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2">
+            <div className="mb-3 rounded-xl border border-white/12 bg-white/8 p-3 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2">
               <div className="flex items-center gap-3 group-data-[collapsible=icon]:gap-0">
-                <Avatar className="h-9 w-9 shrink-0">
+                <Avatar className="h-9 w-9 shrink-0 ring-2 ring-white/20">
                   <AvatarFallback className="bg-primary text-sm font-bold text-white">
                     {user?.name?.charAt(0).toUpperCase() || "T"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                  <p className="truncate text-sm font-semibold text-white">{user?.name || "Utilisateur"}</p>
-                  <span className="mt-0.5 inline-block rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-300">
+                  <p className="truncate text-sm font-bold text-white drop-shadow-sm">{user?.name || "Utilisateur"}</p>
+                  <span className="mt-0.5 inline-block rounded bg-primary/30 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary-foreground/90">
                     {roleLabel}
                   </span>
                 </div>
               </div>
               <button
                 onClick={logout}
-                className="mt-2.5 w-full text-left text-[11px] font-medium text-rose-400 transition-colors hover:text-rose-300 group-data-[collapsible=icon]:hidden"
+                className="mt-2.5 w-full text-left text-[11px] font-semibold text-rose-400 transition-colors hover:text-rose-300 group-data-[collapsible=icon]:hidden"
               >
                 Déconnexion
               </button>
@@ -283,13 +283,13 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
                       isActive={isActive}
                       onClick={() => { setLocation(item.path); if (isMobile) setOpenMobile(false); }}
                       tooltip={item.label}
-                      className={`h-10 rounded-xl px-3 font-medium transition-all ${
+                      className={`h-10 rounded-xl px-3 font-semibold transition-all ${
                         isActive
                           ? "bg-primary text-white shadow-sm shadow-primary/40 hover:bg-primary/90"
-                          : "text-slate-400 hover:bg-white/5 hover:text-white"
+                          : "text-slate-200 hover:bg-white/10 hover:text-white"
                       }`}
                     >
-                      <item.icon className={`h-4 w-4 ${isActive ? "text-white" : "text-slate-500"}`} />
+                      <item.icon className={`h-4 w-4 ${isActive ? "text-white" : "text-slate-300"}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

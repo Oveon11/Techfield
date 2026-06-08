@@ -574,20 +574,20 @@ export default function HoursPage() {
                       return (
                         <td
                           key={di}
-                          className={`relative h-16 border-r border-slate-100 align-top p-1 text-xs bg-white ${isToday ? "ring-2 ring-inset ring-primary" : ""} ${dayEntries.length > 0 ? "cursor-pointer hover:bg-primary/5 transition-colors" : ""}`}
+                          className={`relative h-12 md:h-16 border-r border-slate-100 align-top p-1 text-xs bg-white ${isToday ? "ring-2 ring-inset ring-primary" : ""} ${dayEntries.length > 0 ? "cursor-pointer hover:bg-primary/5 transition-colors" : ""}`}
                           onClick={() => dayEntries.length > 0 && openDetail(ds)}
-                          title={dayEntries.length > 0 ? "Cliquer pour voir le détail" : undefined}
+                          title={dayEntries.length > 0 ? "Voir le détail" : undefined}
                         >
                           <div className="flex items-start justify-between">
-                            <span className={`text-[11px] font-medium ${isToday ? "text-primary font-bold" : "text-slate-700"}`}>
+                            <span className={`text-[11px] font-medium leading-none ${isToday ? "text-primary font-bold" : "text-slate-700"}`}>
                               {day.getDate()}
                             </span>
                             {myTechId && (role === "admin" || (role === "technicien" && isDateEditableByTechnician(ds))) && (
                               <button
                                 onClick={e => { e.stopPropagation(); openAdd(ds); }}
-                                className="rounded p-0.5 text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors"
+                                className="rounded p-0.5 text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors leading-none"
                               >
-                                <span className="text-base leading-none">+</span>
+                                <span className="text-sm leading-none">+</span>
                               </button>
                             )}
                           </div>
@@ -597,19 +597,17 @@ export default function HoursPage() {
                               const h = e.entryType === "travail" && e.startTime && e.endTime
                                 ? workedHours(e.startTime, e.endTime, e.breakMinutes)
                                 : null;
+                              const shortLabel = { travail: "TRV", conge: "CGÉ", cfa: "CFA", maladie: "MAL", absence: "ABS" }[e.entryType] ?? e.entryType.slice(0, 3).toUpperCase();
                               return (
                                 <div
                                   key={e.id}
-                                  className={`flex items-center justify-between rounded px-1 py-0.5 text-[9px] font-semibold border ${et?.color ?? ""}`}
+                                  className={`flex items-center justify-between rounded px-0.5 py-0.5 text-[8px] font-bold border ${et?.color ?? ""}`}
                                 >
-                                  <span>{et?.label}</span>
-                                  {h !== null && <span>{fmtH(h)}</span>}
+                                  <span className="truncate">{shortLabel}</span>
+                                  {h !== null && <span className="shrink-0 ml-0.5">{fmtH(h)}</span>}
                                 </div>
                               );
                             })}
-                            {dayHours > 0 && dayEntries.length > 0 && (
-                              <div className="text-[9px] text-right text-slate-400">{fmtH(dayHours)}</div>
-                            )}
                           </div>
                         </td>
                       );
@@ -767,21 +765,22 @@ export default function HoursPage() {
                 {/* Début / Fin */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Début</label>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Début</label>
                     <input
                       type="time"
                       value={form.startTime}
                       onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-center text-xl font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-xl border border-border bg-background px-2 py-3 text-center text-lg font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fin</label>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fin <span className="text-rose-500">*</span></label>
                     <input
                       type="time"
                       value={form.endTime}
                       onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-center text-xl font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-xl border-2 border-rose-300 bg-rose-50 px-2 py-3 text-center text-lg font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="--:--"
                     />
                   </div>
                 </div>
