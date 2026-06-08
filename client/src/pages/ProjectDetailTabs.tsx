@@ -417,11 +417,12 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
           description="Documentez les étapes clés du chantier pour garder une trace consultable par l'équipe."
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {listQuery.data.map(entry => {
             const typeOpt = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType);
             const tone = typeOpt?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
             const dot = typeOpt?.value === "etape" ? "bg-blue-500" : typeOpt?.value === "blocage" ? "bg-rose-500" : typeOpt?.value === "livraison" ? "bg-emerald-500" : typeOpt?.value === "contact_client" ? "bg-violet-500" : typeOpt?.value === "memo" ? "bg-amber-400" : "bg-slate-400";
+            const leftBorder = typeOpt?.value === "etape" ? "border-l-blue-400" : typeOpt?.value === "blocage" ? "border-l-rose-400" : typeOpt?.value === "livraison" ? "border-l-emerald-400" : typeOpt?.value === "contact_client" ? "border-l-violet-400" : typeOpt?.value === "memo" ? "border-l-amber-400" : "border-l-slate-300";
             const entryTypeLabel = typeOpt?.label ?? entry.entryType;
             const authorName = entry.createdByName || "—";
             const entryTs = entry.occurredAt ?? entry.createdAt;
@@ -432,116 +433,110 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
               return m.uploadedByUserId === entry.createdByUserId && Math.abs(mTs - eTs) <= 10 * 60 * 1000;
             }).map(m => ({ id: m.id, signedUrl: m.signedUrl, caption: m.caption }));
             return (
-              <div key={entry.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
+              <div key={entry.id} className={`bg-white rounded-xl border border-l-4 ${leftBorder} border-slate-200 shadow-sm overflow-hidden`}>
+                <div className="p-3">
+                  <div className="flex items-start gap-2.5">
                     <PostAvatar name={authorName} />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-foreground">{authorName}</span>
-                        <span className="text-xs text-muted-foreground">{fmtRelative(entry.occurredAt ?? entry.createdAt)}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-sm text-foreground shrink-0">{authorName}</span>
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${tone}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                          {entryTypeLabel}
+                        </span>
+                        <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{fmtRelative(entryTs)}</span>
                       </div>
+                      {entry.title && <p className="mt-1 font-semibold text-sm text-foreground">{entry.title}</p>}
+                      <p className="mt-0.5 whitespace-pre-wrap text-sm leading-5 text-foreground">{entry.content}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{formatDateTime(entryTs)}</p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-                        {entryTypeLabel}
-                      </span>
-                      {canManage && (
-                        <>
-                          <Dialog open={editId === entry.id} onOpenChange={open => (open ? startEdit(entry) : setEditId(null))}>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(entry)}>
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-xl">
-                              <DialogHeader>
-                                <DialogTitle>Modifier l'entrée</DialogTitle>
-                                <DialogDescription>Mise à jour de l'entrée de journal.</DialogDescription>
-                              </DialogHeader>
-                              <div className="grid gap-4">
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                  <div className="space-y-2">
-                                    <Label>Type</Label>
-                                    <Select value={editForm.entryType} onValueChange={value => setEditForm(prev => ({ ...prev, entryType: value as JournalEntryType }))}>
-                                      <SelectTrigger><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        {JOURNAL_TYPE_OPTIONS.map(opt => (
-                                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>Date / heure</Label>
-                                    <Input
-                                      type="datetime-local"
-                                      value={editForm.occurredAt}
-                                      onChange={e => setEditForm(prev => ({ ...prev, occurredAt: e.target.value }))}
-                                    />
-                                  </div>
+                    {canManage && (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <Dialog open={editId === entry.id} onOpenChange={open => (open ? startEdit(entry) : setEditId(null))}>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(entry)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-xl">
+                            <DialogHeader>
+                              <DialogTitle>Modifier l'entrée</DialogTitle>
+                              <DialogDescription>Mise à jour de l'entrée de journal.</DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4">
+                              <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                  <Label>Type</Label>
+                                  <Select value={editForm.entryType} onValueChange={value => setEditForm(prev => ({ ...prev, entryType: value as JournalEntryType }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {JOURNAL_TYPE_OPTIONS.map(opt => (
+                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>Titre</Label>
-                                  <Input value={editForm.title} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Contenu</Label>
-                                  <Textarea rows={5} value={editForm.content} onChange={e => setEditForm(prev => ({ ...prev, content: e.target.value }))} />
+                                  <Label>Date / heure</Label>
+                                  <Input
+                                    type="datetime-local"
+                                    value={editForm.occurredAt}
+                                    onChange={e => setEditForm(prev => ({ ...prev, occurredAt: e.target.value }))}
+                                  />
                                 </div>
                               </div>
-                              <DialogFooter>
-                                <Button
-                                  onClick={() => updateMutation.mutate({
-                                    id: entry.id,
-                                    entryType: editForm.entryType,
-                                    title: editForm.title.trim() ? editForm.title.trim() : null,
-                                    content: editForm.content.trim(),
-                                    occurredAt: toIsoOrNull(editForm.occurredAt),
-                                  })}
-                                  disabled={updateMutation.isPending || !editForm.content.trim()}
-                                >
-                                  Enregistrer
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-700 hover:bg-rose-50">
-                                <Trash2 className="h-3.5 w-3.5" />
+                              <div className="space-y-2">
+                                <Label>Titre</Label>
+                                <Input value={editForm.title} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Contenu</Label>
+                                <Textarea rows={5} value={editForm.content} onChange={e => setEditForm(prev => ({ ...prev, content: e.target.value }))} />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button
+                                onClick={() => updateMutation.mutate({
+                                  id: entry.id,
+                                  entryType: editForm.entryType,
+                                  title: editForm.title.trim() ? editForm.title.trim() : null,
+                                  content: editForm.content.trim(),
+                                  occurredAt: toIsoOrNull(editForm.occurredAt),
+                                })}
+                                disabled={updateMutation.isPending || !editForm.content.trim()}
+                              >
+                                Enregistrer
                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
-                                <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteMutation.mutate({ id: entry.id })}
-                                  className="bg-rose-600 text-white hover:bg-rose-700"
-                                >
-                                  Supprimer
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 pl-[52px] space-y-1">
-                    {entry.title && <p className="font-semibold text-sm text-foreground">{entry.title}</p>}
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{entry.content}</p>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-700 hover:bg-rose-50">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Supprimer cette entrée ?</AlertDialogTitle>
+                              <AlertDialogDescription>L'action est définitive.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteMutation.mutate({ id: entry.id })}
+                                className="bg-rose-600 text-white hover:bg-rose-700"
+                              >
+                                Supprimer
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {matchedPhotos.length > 0 && <PhotoGrid photos={matchedPhotos} onZoom={setLightboxSrc} />}
-                <div className="border-t border-slate-100 px-4 py-2">
-                  <span className="text-xs text-muted-foreground">{formatDateTime(entryTs)}</span>
-                </div>
               </div>
             );
           })}
@@ -596,10 +591,47 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
     onError: error => toast.error(error.message),
   });
 
+  const createUploadMutation = trpc.management.projectMedia.createUploadUrl.useMutation();
+
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<TaskFormState>(INITIAL_TASK_FORM);
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<TaskFormState & { status: string }>({ ...INITIAL_TASK_FORM, status: "todo" });
+  const [validationTargetId, setValidationTargetId] = useState<number | null>(null);
+  const [validationComment, setValidationComment] = useState("");
+  const [validationPhotoFile, setValidationPhotoFile] = useState<File | null>(null);
+  const [validating, setValidating] = useState(false);
+
+  const handleValidateMemo = async () => {
+    if (!validationTargetId || !validationComment.trim()) return;
+    setValidating(true);
+    try {
+      let photoKey: string | null = null;
+      if (validationPhotoFile) {
+        const upload = await createUploadMutation.mutateAsync({
+          projectId,
+          fileName: validationPhotoFile.name,
+          mimeType: validationPhotoFile.type,
+          mediaType: "photo",
+        });
+        await fetch(upload.signedUrl, { method: "PUT", body: validationPhotoFile, headers: { "Content-Type": validationPhotoFile.type } });
+        photoKey = upload.fileKey;
+      }
+      await updateMutation.mutateAsync({
+        id: validationTargetId,
+        status: "done",
+        validationComment: validationComment.trim(),
+        validationPhotoKey: photoKey,
+      });
+      setValidationTargetId(null);
+      setValidationComment("");
+      setValidationPhotoFile(null);
+    } catch {
+      // error shown by mutation onError
+    } finally {
+      setValidating(false);
+    }
+  };
 
   const startEdit = (task: NonNullable<typeof listQuery.data>[number]) => {
     setEditId(task.id);
@@ -662,6 +694,43 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
         }
       />
 
+      {/* Validation dialog */}
+      <Dialog open={validationTargetId !== null} onOpenChange={open => { if (!open) { setValidationTargetId(null); setValidationComment(""); setValidationPhotoFile(null); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Valider la tâche</DialogTitle>
+            <DialogDescription>Renseignez un commentaire de clôture pour valider cette tâche.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label>Commentaire de validation <span className="text-rose-500">*</span></Label>
+              <Textarea rows={3} value={validationComment} onChange={e => setValidationComment(e.target.value)} placeholder="Décrivez comment la tâche a été réalisée…" autoFocus />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Photo (optionnelle)</Label>
+              {validationPhotoFile ? (
+                <div className="flex items-center gap-2">
+                  <img src={URL.createObjectURL(validationPhotoFile)} className="h-16 w-16 rounded-lg object-cover border" />
+                  <button type="button" className="text-xs text-rose-600 hover:underline" onClick={() => setValidationPhotoFile(null)}>Retirer</button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 cursor-pointer rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500 hover:border-primary hover:text-primary transition-colors">
+                  <Camera className="h-4 w-4" />
+                  Ajouter une photo
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setValidationPhotoFile(f); e.target.value = ""; }} />
+                </label>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setValidationTargetId(null); setValidationComment(""); setValidationPhotoFile(null); }}>Annuler</Button>
+            <Button onClick={handleValidateMemo} disabled={validating || !validationComment.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {validating ? "Validation…" : "Valider la tâche"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {listQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement des tâches…</p>
       ) : sorted.length === 0 ? (
@@ -677,15 +746,23 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
                   <div className="flex items-start gap-3">
                     <button
                       type="button"
-                      onClick={() => updateMutation.mutate({ id: task.id, status: isDone ? "todo" : "done" })}
+                      onClick={() => isDone ? updateMutation.mutate({ id: task.id, status: "todo" }) : setValidationTargetId(task.id)}
                       className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? "border-emerald-500 bg-emerald-500" : "border-slate-300 hover:border-emerald-400"}`}
-                      title={isDone ? "Marquer à faire" : "Marquer comme fait"}
+                      title={isDone ? "Marquer à faire" : "Valider (commentaire requis)"}
                     >
                       {isDone && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </button>
                     <div className="flex-1 min-w-0">
                       {task.title && <p className={`font-semibold text-sm ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{task.title}</p>}
                       <p className={`text-sm leading-6 mt-0.5 ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{task.content}</p>
+                      {isDone && task.validationComment && (
+                        <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
+                          <p className="text-xs text-emerald-700"><span className="font-semibold">Validation :</span> {task.validationComment}</p>
+                          {task.validationPhotoSignedUrl && (
+                            <img src={task.validationPhotoSignedUrl} className="mt-2 h-20 w-20 object-cover rounded-lg cursor-zoom-in" onClick={() => window.open(task.validationPhotoSignedUrl!, "_blank")} />
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${urgOpt.tone}`}>{urgOpt.label}</span>
                         {isDone && <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Fait</span>}

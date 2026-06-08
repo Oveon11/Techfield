@@ -316,7 +316,27 @@ function mapMemoRow(row: Record<string, unknown>) {
     createdByName: author ? String(author.name ?? "") : "",
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : null,
     updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : null,
+    validationComment: (row.validation_comment as string | null | undefined) ?? null,
+    validationPhotoKey: (row.validation_photo_key as string | null | undefined) ?? null,
   };
+}
+
+async function enrichMemosWithPhotoUrls<T extends ReturnType<typeof mapMemoRow>>(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  memos: T[],
+): Promise<(T & { validationPhotoSignedUrl: string | null })[]> {
+  return Promise.all(
+    memos.map(async (memo) => {
+      let validationPhotoSignedUrl: string | null = null;
+      if (memo.validationPhotoKey) {
+        const { data } = await supabase.storage
+          .from(MEDIA_BUCKET)
+          .createSignedUrl(memo.validationPhotoKey, SIGNED_URL_TTL);
+        validationPhotoSignedUrl = data?.signedUrl ?? null;
+      }
+      return { ...memo, validationPhotoSignedUrl };
+    }),
+  );
 }
 
 export async function listProjectMemos(scope: AccessScope, projectId: number) {
@@ -329,7 +349,7 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_memos")
-    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at")
+    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at, validation_comment, validation_photo_key")
     .eq("project_id", projectId)
     .order("pinned", { ascending: false })
     .order("urgency", { ascending: true })
@@ -338,10 +358,11 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
   if (error) throw error;
   const rows = (data ?? []) as Record<string, unknown>[];
   const userMap = await fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id"));
-  return rows.map((row) => {
+  const memos = rows.map((row) => {
     const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
     return mapMemoRow({ ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null });
   });
+  return enrichMemosWithPhotoUrls(supabase, memos);
 }
 
 type CreateMemoInput = {
@@ -378,6 +399,8 @@ type UpdateMemoInput = {
   urgency?: string;
   status?: string;
   pinned?: boolean;
+  validationComment?: string | null;
+  validationPhotoKey?: string | null;
 };
 
 export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInput) {
@@ -394,10 +417,13 @@ export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInp
   const row = existing as Record<string, unknown>;
   await assertProjectAccess(scope, Number(row.project_id));
 
-  // Techniciens can only update status (mark done)
+  // Techniciens can only update status + validation fields
   if (scope.user.role === "technicien") {
     if (input.status === undefined) throw new Error("Action non autorisée.");
-    const { error } = await supabase.from("project_memos").update({ status: input.status }).eq("id", input.id);
+    const upd: Record<string, unknown> = { status: input.status };
+    if (input.validationComment !== undefined) upd.validation_comment = input.validationComment;
+    if (input.validationPhotoKey !== undefined) upd.validation_photo_key = input.validationPhotoKey;
+    const { error } = await supabase.from("project_memos").update(upd).eq("id", input.id);
     if (error) throw error;
     return { ok: true as const };
   }
@@ -408,6 +434,8 @@ export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInp
   if (input.urgency !== undefined) updates.urgency = input.urgency;
   if (input.status !== undefined) updates.status = input.status;
   if (input.pinned !== undefined) updates.pinned = input.pinned;
+  if (input.validationComment !== undefined) updates.validation_comment = input.validationComment;
+  if (input.validationPhotoKey !== undefined) updates.validation_photo_key = input.validationPhotoKey;
 
   const { error } = await supabase.from("project_memos").update(updates).eq("id", input.id);
   if (error) throw error;
@@ -447,7 +475,7 @@ export async function listAllMemos(scope: AccessScope) {
 
   const memosQuery = supabase
     .from("project_memos")
-    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at")
+    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at, validation_comment, validation_photo_key")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -468,7 +496,7 @@ export async function listAllMemos(scope: AccessScope) {
     projectMap.set(Number(p.id), { name: String(p.title ?? ""), reference: String(p.reference ?? ""), serviceType: String(p.service_type ?? "autre") });
   }
 
-  return rows.map((row) => {
+  const baseMemos = rows.map((row) => {
     const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
     const enriched = { ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null };
     const project = projectMap.get(Number(row.project_id)) ?? null;
@@ -479,6 +507,7 @@ export async function listAllMemos(scope: AccessScope) {
       projectServiceType: project?.serviceType ?? "autre",
     };
   });
+  return enrichMemosWithPhotoUrls(supabase, baseMemos);
 }
 
 // ============================================================

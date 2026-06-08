@@ -4045,12 +4045,83 @@ export function MemosGlobalPage() {
     onSuccess: async () => { await utils.management.projectMemos.listAll.invalidate(); },
     onError: e => toast.error(e.message),
   });
+  const createUploadMutation = trpc.management.projectMedia.createUploadUrl.useMutation();
+  const [validationTargetId, setValidationTargetId] = useState<number | null>(null);
+  const [validationProjectId, setValidationProjectId] = useState<number | null>(null);
+  const [validationComment, setValidationComment] = useState("");
+  const [validationPhotoFile, setValidationPhotoFile] = useState<File | null>(null);
+  const [validating, setValidating] = useState(false);
+
+  const handleValidateMemo = async () => {
+    if (!validationTargetId || !validationComment.trim()) return;
+    setValidating(true);
+    try {
+      let photoKey: string | null = null;
+      if (validationPhotoFile && validationProjectId) {
+        const upload = await createUploadMutation.mutateAsync({
+          projectId: validationProjectId,
+          fileName: validationPhotoFile.name,
+          mimeType: validationPhotoFile.type,
+          mediaType: "photo",
+        });
+        await fetch(upload.signedUrl, { method: "PUT", body: validationPhotoFile, headers: { "Content-Type": validationPhotoFile.type } });
+        photoKey = upload.fileKey;
+      }
+      await updateMutation.mutateAsync({ id: validationTargetId, status: "done", validationComment: validationComment.trim(), validationPhotoKey: photoKey });
+      setValidationTargetId(null);
+      setValidationProjectId(null);
+      setValidationComment("");
+      setValidationPhotoFile(null);
+    } catch {
+      // error shown by mutation onError
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const items = memosQuery.data ?? [];
   const todo = items.filter(m => m.status !== "done");
   const done = items.filter(m => m.status === "done");
 
   return (
     <AppShell>
+      {/* Validation dialog */}
+      <Dialog open={validationTargetId !== null} onOpenChange={open => { if (!open) { setValidationTargetId(null); setValidationProjectId(null); setValidationComment(""); setValidationPhotoFile(null); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Valider le mémo</DialogTitle>
+            <DialogDescription>Renseignez un commentaire de clôture pour valider ce mémo.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label>Commentaire de validation <span className="text-rose-500">*</span></Label>
+              <Textarea rows={3} value={validationComment} onChange={e => setValidationComment(e.target.value)} placeholder="Décrivez comment c'est résolu…" autoFocus />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Photo (optionnelle)</Label>
+              {validationPhotoFile ? (
+                <div className="flex items-center gap-2">
+                  <img src={URL.createObjectURL(validationPhotoFile)} className="h-16 w-16 rounded-lg object-cover border" />
+                  <button type="button" className="text-xs text-rose-600 hover:underline" onClick={() => setValidationPhotoFile(null)}>Retirer</button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 cursor-pointer rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500 hover:border-primary hover:text-primary transition-colors">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  Ajouter une photo
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setValidationPhotoFile(f); e.target.value = ""; }} />
+                </label>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setValidationTargetId(null); setValidationProjectId(null); setValidationComment(""); setValidationPhotoFile(null); }}>Annuler</Button>
+            <Button onClick={handleValidateMemo} disabled={validating || !validationComment.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {validating ? "Validation…" : "Valider"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-5 max-w-2xl mx-auto">
         <PageHeader title="Mémos" description={`${todo.length} à faire · ${done.length} terminé${done.length > 1 ? "s" : ""}`} />
         {memosQuery.isLoading ? (
@@ -4072,10 +4143,13 @@ export function MemosGlobalPage() {
                     <div className="flex items-start gap-3">
                       <button
                         type="button"
-                        onClick={() => updateMutation.mutate({ id: memo.id, status: isDone ? "todo" : "done" })}
+                        onClick={() => isDone
+                          ? updateMutation.mutate({ id: memo.id, status: "todo" })
+                          : (() => { setValidationTargetId(memo.id); setValidationProjectId(memo.projectId); })()
+                        }
                         disabled={updateMutation.isPending}
                         className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? "border-emerald-500 bg-emerald-500" : "border-slate-300 hover:border-emerald-400"}`}
-                        title={isDone ? "Marquer à faire" : "Marquer comme fait"}
+                        title={isDone ? "Marquer à faire" : "Valider (commentaire requis)"}
                       >
                         {isDone && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                       </button>
@@ -4100,6 +4174,14 @@ export function MemosGlobalPage() {
                     <div className="mt-3 space-y-1 ml-8">
                       {memo.title && <p className={`font-semibold text-sm ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{memo.title}</p>}
                       <p className={`whitespace-pre-wrap text-sm leading-6 ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{memo.content}</p>
+                      {isDone && memo.validationComment && (
+                        <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
+                          <p className="text-xs text-emerald-700"><span className="font-semibold">Validation :</span> {memo.validationComment}</p>
+                          {memo.validationPhotoSignedUrl && (
+                            <img src={memo.validationPhotoSignedUrl} className="mt-2 h-20 w-20 object-cover rounded-lg cursor-zoom-in" onClick={() => window.open(memo.validationPhotoSignedUrl!, "_blank")} />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between">

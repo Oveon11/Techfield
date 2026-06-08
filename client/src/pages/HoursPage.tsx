@@ -93,8 +93,8 @@ interface SaveForm {
 const defaultForm = (): SaveForm => ({
   entryType: "travail",
   startTime: "08:00",
-  endTime: "17:00",
-  breakMinutes: 60,
+  endTime: "",
+  breakMinutes: 30,
   projectId: null,
   panier: true,
   note: "",
@@ -207,7 +207,7 @@ export default function HoursPage() {
       date: selectedDate,
       entryType: form.entryType,
       startTime: form.entryType === "travail" ? form.startTime : null,
-      endTime: form.entryType === "travail" ? form.endTime : null,
+      endTime: form.entryType === "travail" ? (form.endTime || null) : null,
       breakMinutes: form.entryType === "travail" ? form.breakMinutes : 0,
       projectId: form.projectId,
       panier: form.panier,
@@ -501,7 +501,7 @@ export default function HoursPage() {
                             <span className={`text-[11px] font-medium ${isToday ? "text-primary font-bold" : isWeekend ? "text-slate-400" : "text-slate-700"}`}>
                               {day.getDate()}
                             </span>
-                            {!isWeekend && myTechId && (
+                            {role === "admin" && myTechId && (
                               <button
                                 onClick={e => { e.stopPropagation(); openAdd(ds); }}
                                 className="rounded p-0.5 text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors"
@@ -595,21 +595,23 @@ export default function HoursPage() {
                         <p className="text-xs italic text-muted-foreground">{e.note}</p>
                       )}
                     </div>
-                    <button
-                      onClick={() => deleteMutation.mutate({ id: e.id })}
-                      disabled={deleteMutation.isPending}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                      title="Supprimer cette entrée"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {role === "admin" && (
+                      <button
+                        onClick={() => deleteMutation.mutate({ id: e.id })}
+                        disabled={deleteMutation.isPending}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                        title="Supprimer cette entrée"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
           <DialogFooter className="gap-2">
-            {detailDate && myTechId && (
+            {detailDate && role === "admin" && myTechId && (
               <Button
                 variant="outline"
                 onClick={() => { setDetailOpen(false); openAdd(detailDate); }}
@@ -745,6 +747,20 @@ export default function HoursPage() {
                 </div>
               </>
             )}
+          </div>
+
+          {/* Commentaire */}
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Commentaire (optionnel)
+            </label>
+            <textarea
+              value={form.note}
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+              rows={2}
+              placeholder="Notes sur cette journée…"
+            />
           </div>
 
           <DialogFooter className="gap-2">

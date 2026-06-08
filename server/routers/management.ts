@@ -320,6 +320,8 @@ const updateMemoSchema = z.object({
   urgency: urgencySchema.optional(),
   status: z.enum(["todo", "done"]).optional(),
   pinned: z.boolean().optional(),
+  validationComment: z.string().max(1000).nullable().optional(),
+  validationPhotoKey: z.string().max(500).nullable().optional(),
 });
 
 const createMediaUploadSchema = z.object({
@@ -1615,6 +1617,8 @@ export const managementRouter = router({
           urgency: input.urgency,
           status: input.status,
           pinned: input.pinned,
+          validationComment: input.validationComment,
+          validationPhotoKey: input.validationPhotoKey,
         });
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur mise à jour tâche." });
