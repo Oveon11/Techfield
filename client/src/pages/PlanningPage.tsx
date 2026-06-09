@@ -15,7 +15,7 @@ import {
   X, Phone, User, Building2, FileText, ExternalLink, Pencil, Trash2,
   ZoomIn, ZoomOut, ArrowUpRight,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -334,10 +334,9 @@ type GridProps = {
 function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 148;
-  // fixed pixel column width scales with zoom → visible horizontal zoom + scroll
-  const COL_W = dayColumns.length === 1
-    ? undefined  // day view: fill available width
-    : Math.round(150 * zoom);
+  // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
+  // zoom>1 → largeur fixe en px, déclenche le scroll horizontal
+  const COL_W = zoom > 1.05 ? Math.round(150 * zoom) : undefined;
   const today = toDateStr(new Date());
 
   // Drag / resize
@@ -411,6 +410,11 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
   const colUnit = COL_W ? `${COL_W}px` : "1fr";
   const colTemplate = `${LABEL_W}px repeat(${dayColumns.length},${colUnit})`;
+  // helper pour positionner les labels de graduation sans débordement
+  const rulerLabelStyle = (i: number): React.CSSProperties =>
+    i === 0          ? {left: "2px"} :
+    i === H_TOTAL    ? {right: "2px"} :
+    {left:`${i/H_TOTAL*100}%`, transform:"translateX(-50%)"};
 
   return (
     <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
@@ -437,7 +441,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
           <div key={d} className="border-l border-border/40 relative h-6 overflow-hidden">
             {Array.from({length:H_TOTAL+1},(_,i)=>(
               (i % 3 === 0 || i === H_TOTAL) ? (
-                <span key={i} className="absolute top-1 text-[9px] font-medium text-muted-foreground" style={{left:`${i/H_TOTAL*100}%`,transform:"translateX(-50%)"}}>
+                <span key={i} className="absolute top-1 text-[9px] font-medium text-muted-foreground" style={rulerLabelStyle(i)}>
                   {(H_START+i).toString().padStart(2,"0")}h
                 </span>
               ) : null
