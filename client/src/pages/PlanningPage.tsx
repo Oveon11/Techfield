@@ -31,7 +31,12 @@ function getMondayOf(d: Date): Date {
   r.setDate(r.getDate() + (day === 0 ? -6 : 1 - day)); r.setHours(0,0,0,0); return r;
 }
 function getMonthStart(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function toDateStr(d: Date) { return d.toISOString().slice(0,10); }
+function toDateStr(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
 function addMonths(d: Date, n: number) { const r = new Date(d); r.setMonth(r.getMonth()+n); return r; }
 function timeToMin(t: string) { const [h,m]=t.split(":").map(Number); return h*60+m; }
