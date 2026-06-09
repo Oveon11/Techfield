@@ -80,7 +80,7 @@ type Slot = {
   prevDate:string|null; prevStartTime:string|null; prevEndTime:string|null;
 };
 type Technician = {id:number;name:string;firstName:string;lastName:string;email:string|null};
-type ViewMode = "semaine"|"jour"|"mois"|"attribution";
+type ViewMode = "semaine"|"jour"|"mois";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -94,7 +94,6 @@ export default function PlanningPage() {
   const [selDay, setSelDay]       = useState<string>(() => toDateStr(new Date()));
   const [monthRef, setMonthRef]   = useState<Date>(() => getMonthStart(new Date()));
   const [zoom, setZoom]           = useState(1);
-  const [attrSubView, setAttrSubView] = useState<"semaine"|"jour">("semaine");
 
   // Compute weekStart from view context
   const weekStart = view === "jour"
@@ -130,27 +129,16 @@ export default function PlanningPage() {
       return `Sem. ${getISOWeek(new Date(weekStart+"T00:00:00"))}  ·  ${mo} – ${fri2}`;
     }
     if (view==="jour") return formatDateFr(selDay);
-    if (view==="mois") return `${MONTHS_FR[monthRef.getMonth()]} ${monthRef.getFullYear()}`;
-    if (view==="attribution"&&attrSubView==="jour") return formatDateFr(selDay);
-    const fri2 = addDays(new Date(weekStart+"T00:00:00"),4);
-    return `${new Date(weekStart+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short"})} – ${fri2.toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})}`;
+    return `${MONTHS_FR[monthRef.getMonth()]} ${monthRef.getFullYear()}`;
   };
 
   const goNext = () => {
     if (view==="semaine") setMonday(d=>addDays(d,7));
-    if (view==="attribution") {
-      if (attrSubView==="semaine") setMonday(d=>addDays(d,7));
-      else setSelDay(d=>toDateStr(addDays(new Date(d+"T00:00:00"),1)));
-    }
     if (view==="jour") setSelDay(d=>toDateStr(addDays(new Date(d+"T00:00:00"),1)));
     if (view==="mois") setMonthRef(d=>addMonths(d,1));
   };
   const goPrev = () => {
     if (view==="semaine") setMonday(d=>addDays(d,-7));
-    if (view==="attribution") {
-      if (attrSubView==="semaine") setMonday(d=>addDays(d,-7));
-      else setSelDay(d=>toDateStr(addDays(new Date(d+"T00:00:00"),-1)));
-    }
     if (view==="jour") setSelDay(d=>toDateStr(addDays(new Date(d+"T00:00:00"),-1)));
     if (view==="mois") setMonthRef(d=>addMonths(d,-1));
   };
@@ -204,7 +192,6 @@ export default function PlanningPage() {
     {key:"semaine",label:"Semaine"},
     {key:"jour",label:"Jour"},
     {key:"mois",label:"Mois"},
-    {key:"attribution",label:"Attribution"},
   ];
 
   return (
@@ -233,17 +220,6 @@ export default function PlanningPage() {
                 </button>
               ))}
             </div>
-            {/* Sous-vue Attribution */}
-            {view==="attribution"&&(
-              <div className="flex rounded-xl border border-border bg-white shadow-sm overflow-hidden">
-                {(["semaine","jour"] as const).map(k=>(
-                  <button key={k} onClick={()=>setAttrSubView(k)}
-                    className={`px-3 py-1.5 text-sm font-medium transition-colors capitalize ${attrSubView===k?"bg-primary/10 text-primary":"text-muted-foreground hover:bg-muted"}`}>
-                    {k==="semaine"?"Semaine":"Jour"}
-                  </button>
-                ))}
-              </div>
-            )}
             {/* Zoom (semaine/jour only) */}
             {(view==="semaine"||view==="jour") && (
               <div className="flex items-center gap-1 rounded-xl border border-border bg-white px-1 py-1 shadow-sm">
@@ -273,13 +249,10 @@ export default function PlanningPage() {
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev)=>moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev})}
           />
-        ) : view==="mois" ? (
+        ) : (
           <MonthView slots={slots} monthRef={monthRef}
             onDayClick={d=>{setSelDay(d);setView("jour");}}
           />
-        ) : (
-          <AttributionView slots={slots} technicians={technicians} dayDates={dayDates}
-            selDay={selDay} subView={attrSubView} canManage={canManage} onClickSlot={setDetailSlot}/>
         )}
 
         {createOpen&&(
@@ -384,9 +357,9 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   const slotsRef = useRef(slots);
   useEffect(()=>{ slotsRef.current = slots; },[slots]);
 
-  // Rows dépliables
-  const [expandedTechs,setExpandedTechs]=useState<Set<number>>(new Set());
-  const toggleExpand=(id:number)=>setExpandedTechs(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+  // Focus technicien (un seul à la fois — masque les autres)
+  const [focusedTech,setFocusedTech]=useState<number|null>(null);
+  const toggleFocus=(id:number)=>setFocusedTech(p=>p===id?null:id);
 
   const clearInteraction = useCallback(()=>{
     if(dragRef.current){
@@ -517,18 +490,16 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       </div>
 
       {/* ── Tech rows ── */}
-      {technicians.map(tech=>{
+      {(focusedTech!==null ? technicians.filter(t=>t.id===focusedTech) : technicians).map(tech=>{
         const ml=maxLanes(tech.id);
         const rowH=ml*LANE_H+8;
-        const isExp=expandedTechs.has(tech.id);
-        const techSlots=slots.filter(s=>s.technicianId===tech.id&&dayColumns.includes(s.slotDate))
-          .sort((a,b)=>a.slotDate.localeCompare(b.slotDate)||timeToMin(a.startTime)-timeToMin(b.startTime));
+        const isExp=focusedTech===tech.id;
         return(
           <div key={tech.id} className="border-b border-border/20 last:border-b-0">
           <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
             <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 bg-slate-50/70 border-r border-border/40">
-              <button onClick={()=>toggleExpand(tech.id)}
+              <button onClick={()=>toggleFocus(tech.id)}
                 className="mt-0.5 h-4 w-4 shrink-0 rounded flex items-center justify-center hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors">
                 {isExp?<ChevronDown className="h-3 w-3"/>:<ChevronRightIcon className="h-3 w-3"/>}
               </button>
@@ -617,30 +588,57 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
             })}
           </div>
           {isExp&&(
-            <div className="border-t border-border/10 bg-slate-50/30 px-3 py-2">
-              {techSlots.length===0
-                ? <p className="py-2 text-center text-xs text-muted-foreground">Aucun créneau cette semaine</p>
-                : <div className="flex flex-col gap-1 py-1">
-                    {techSlots.map(slot=>(
-                      <div key={slot.id} onClick={()=>onClickSlot(slot)}
-                        className={`flex items-center gap-3 rounded-lg ${slotColor(slot.projectServiceType)} text-white px-3 py-2 cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity`}>
-                        <div className="text-[10px] text-white/80 font-medium shrink-0 w-36">
-                          {new Date(slot.slotDate+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})} · {slot.startTime}–{slot.endTime}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-semibold truncate">{slotLabel(slot)??"Sans chantier"}</div>
-                          {slot.clientName&&<div className="text-[10px] text-white/70 truncate">{slot.clientName}</div>}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {slot.hasLocationChange&&<MapPin className="h-2.5 w-2.5 text-white/70"/>}
-                          {slot.hasTimeChange&&<Clock className="h-2.5 w-2.5 text-white/70"/>}
-                          {slot.hasDiscount&&<Tag className="h-2.5 w-2.5 text-white/70"/>}
-                        </div>
-                        <StatusBadge status={slot.status}/>
-                      </div>
-                    ))}
+            <div className="border-t border-border/20 bg-white"
+              style={{display:"grid",gridTemplateColumns:colTemplate}}>
+              {/* Cellule label vide */}
+              <div className="bg-slate-50/70 border-r border-border/40 p-2 flex items-center justify-center">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/50">Détail</span>
+              </div>
+              {/* Une colonne par jour */}
+              {dayColumns.map(d=>{
+                const isToday=d===today;
+                const daySlotsFull=slots
+                  .filter(s=>s.technicianId===tech.id&&s.slotDate===d)
+                  .sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
+                return(
+                  <div key={d} className={`border-l border-border/20 p-2 flex flex-col gap-2 min-h-[80px] ${isToday?"bg-primary/[0.02]":""}`}>
+                    {daySlotsFull.length===0
+                      ? <div className="flex-1 flex items-center justify-center"><span className="text-[11px] text-muted-foreground/25">—</span></div>
+                      : daySlotsFull.map(slot=>(
+                          <div key={slot.id} onClick={()=>onClickSlot(slot)}
+                            className="rounded-xl border border-border/50 bg-white hover:bg-muted/20 cursor-pointer transition-colors overflow-hidden shadow-sm">
+                            {/* Barre couleur en haut */}
+                            <div className={`h-1 w-full ${slotColor(slot.projectServiceType)}`}/>
+                            <div className="p-2.5 flex flex-col gap-1.5">
+                              {/* Horaire */}
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[11px] font-bold text-foreground tabular-nums">{slot.startTime} – {slot.endTime}</span>
+                                <StatusBadge status={slot.status}/>
+                              </div>
+                              {/* Chantier */}
+                              <p className="text-xs font-semibold text-foreground leading-snug">{slotLabel(slot)??"Sans chantier"}</p>
+                              {/* Client */}
+                              {slot.clientName&&<p className="text-[10px] text-muted-foreground leading-snug">{slot.clientName}</p>}
+                              {/* Type de service + alertes */}
+                              <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                {slot.projectServiceType&&(
+                                  <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full text-white ${slotColor(slot.projectServiceType)}`}>
+                                    {SERVICE_LABELS[slot.projectServiceType]??slot.projectServiceType}
+                                  </span>
+                                )}
+                                {slot.hasLocationChange&&<MapPin className="h-3 w-3 text-amber-500"/>}
+                                {slot.hasTimeChange&&<Clock className="h-3 w-3 text-amber-500"/>}
+                                {slot.hasDiscount&&<Tag className="h-3 w-3 text-amber-500"/>}
+                              </div>
+                              {/* Notes */}
+                              {slot.notes&&<p className="text-[10px] text-muted-foreground italic leading-snug line-clamp-2">{slot.notes}</p>}
+                            </div>
+                          </div>
+                        ))
+                    }
                   </div>
-              }
+                );
+              })}
             </div>
           )}
           </div>
@@ -720,93 +718,6 @@ function MonthView({slots,monthRef,onDayClick}:{slots:Slot[];monthRef:Date;onDay
           );
         })}
       </div>
-    </div>
-  );
-}
-
-// ─── Attribution View ─────────────────────────────────────────────────────────
-
-function AttributionView({slots,technicians,dayDates,selDay,subView,canManage:_c,onClickSlot}:{
-  slots:Slot[];technicians:Technician[];dayDates:string[];selDay:string;
-  subView:"semaine"|"jour";canManage:boolean;onClickSlot:(s:Slot)=>void;
-}){
-  const today=toDateStr(new Date());
-  const LABEL_W=180;
-  const columns = subView==="jour" ? [selDay] : dayDates;
-
-  return(
-    <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
-      {/* ── En-tête colonnes ── */}
-      <div className="border-b border-border/60 bg-slate-50/80" style={{display:"grid",gridTemplateColumns:`${LABEL_W}px repeat(${columns.length},1fr)`}}>
-        <div className="px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Technicien</div>
-        {columns.map((d,i)=>{
-          const date=new Date(d+"T00:00:00");
-          const isToday=d===today;
-          return(
-            <div key={d} className={`border-l border-border/40 px-2 py-3 text-center ${isToday?"bg-primary/5":""}`}>
-              {subView==="jour"
-                ? <p className="text-sm font-semibold text-foreground">{date.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</p>
-                : <>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{WEEK_DAYS_FR[i]}</p>
-                    <p className={`text-lg font-bold leading-none mt-0.5 ${isToday?"text-primary":"text-foreground"}`}>{date.getDate()}</p>
-                  </>
-              }
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── Lignes techniciens ── */}
-      {technicians.map(tech=>{
-        const cellSlots = columns.map(d=>
-          slots.filter(s=>s.technicianId===tech.id&&s.slotDate===d)
-               .sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime))
-        );
-        const isEmpty = cellSlots.every(arr=>arr.length===0);
-        return(
-          <div key={tech.id} className="border-b border-border/20 last:border-b-0"
-            style={{display:"grid",gridTemplateColumns:`${LABEL_W}px repeat(${columns.length},1fr)`}}>
-            {/* Label technicien */}
-            <div className="flex items-center gap-2.5 px-3 py-3 bg-slate-50/60 border-r border-border/30 min-h-[56px]">
-              <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center text-[11px] font-bold text-primary shrink-0">
-                {tech.firstName[0]}{tech.lastName[0]}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground leading-tight truncate">{tech.name}</p>
-                <p className="text-[10px] text-muted-foreground">Technicien</p>
-              </div>
-            </div>
-            {/* Cellules par jour — cartes empilées proprement */}
-            {cellSlots.map((arr,di)=>{
-              const isToday=columns[di]===today;
-              return(
-                <div key={columns[di]} className={`border-l border-border/20 p-1.5 flex flex-col gap-1 min-h-[56px] ${isToday?"bg-primary/[0.02]":""}`}>
-                  {arr.length===0
-                    ? <div className="flex-1 flex items-center justify-center"><span className="text-[10px] text-muted-foreground/25">—</span></div>
-                    : arr.map(slot=>(
-                        <button key={slot.id} onClick={()=>onClickSlot(slot)}
-                          className={`w-full text-left rounded-lg ${slotColor(slot.projectServiceType)} text-white px-2 py-1.5 hover:opacity-90 active:opacity-80 transition-opacity cursor-pointer`}>
-                          <div className="text-[10px] text-white/80 font-medium leading-none mb-0.5">{slot.startTime} – {slot.endTime}</div>
-                          <div className="text-[11px] font-semibold leading-tight truncate">{slotLabel(slot)??"Sans chantier"}</div>
-                          {slot.clientName&&<div className="text-[10px] text-white/70 leading-tight truncate mt-0.5">{slot.clientName}</div>}
-                          {(slot.hasLocationChange||slot.hasTimeChange||slot.hasDiscount)&&(
-                            <div className="flex gap-0.5 mt-1">
-                              {slot.hasLocationChange&&<MapPin className="h-2.5 w-2.5 text-white/70"/>}
-                              {slot.hasTimeChange&&<Clock className="h-2.5 w-2.5 text-white/70"/>}
-                              {slot.hasDiscount&&<Tag className="h-2.5 w-2.5 text-white/70"/>}
-                            </div>
-                          )}
-                        </button>
-                      ))
-                  }
-                </div>
-              );
-            })}
-          </div>
-        );
-        void isEmpty;
-      })}
-      {technicians.length===0&&<div className="py-16 text-center text-sm text-muted-foreground">Aucun technicien actif.</div>}
     </div>
   );
 }
