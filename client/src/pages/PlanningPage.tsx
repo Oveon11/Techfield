@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, MapPin, Clock, Tag,
@@ -53,8 +54,8 @@ const WEEK_DAYS_FR = ["Lun","Mar","Mer","Jeu","Ven"];
 const WEEK_DAYS_FULL = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const H_START = 7;
-const H_END   = 19;
-const H_TOTAL = H_END - H_START;
+const H_END   = 18;
+const H_TOTAL = H_END - H_START; // 11
 
 const SERVICE_COLORS: Record<string,string> = {
   clim:"bg-sky-500",pac:"bg-violet-500",chauffe_eau:"bg-orange-500",
@@ -333,10 +334,10 @@ type GridProps = {
 function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 148;
-  // min column width drives horizontal zoom; wider = more pixels per hour → readable
-  const MIN_COL_W = Math.round(110 * zoom);
-  // show hour labels every 1h when zoomed in, every 2h otherwise
-  const hourStep = zoom >= 1.3 ? 1 : 2;
+  // fixed pixel column width scales with zoom → visible horizontal zoom + scroll
+  const COL_W = dayColumns.length === 1
+    ? undefined  // day view: fill available width
+    : Math.round(150 * zoom);
   const today = toDateStr(new Date());
 
   // Drag / resize
@@ -408,7 +409,8 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   });
   const maxLanes=(techId:number)=>Math.max(1,...dayColumns.map(d=>(laneMap.get(`${techId}-${d}`)??[]).reduce((m,s)=>Math.max(m,s.totalLanes),1)));
 
-  const colTemplate = `${LABEL_W}px repeat(${dayColumns.length},minmax(${MIN_COL_W}px,1fr))`;
+  const colUnit = COL_W ? `${COL_W}px` : "1fr";
+  const colTemplate = `${LABEL_W}px repeat(${dayColumns.length},${colUnit})`;
 
   return (
     <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
@@ -434,7 +436,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
         {dayColumns.map(d=>(
           <div key={d} className="border-l border-border/40 relative h-6 overflow-hidden">
             {Array.from({length:H_TOTAL+1},(_,i)=>(
-              i % hourStep === 0 ? (
+              (i % 3 === 0 || i === H_TOTAL) ? (
                 <span key={i} className="absolute top-1 text-[9px] font-medium text-muted-foreground" style={{left:`${i/H_TOTAL*100}%`,transform:"translateX(-50%)"}}>
                   {(H_START+i).toString().padStart(2,"0")}h
                 </span>
@@ -486,33 +488,41 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     const label=slotLabel(slot)??"Sans chantier";
                     const isDragging=draggingId===slot.id;
                     return(
-                      <div key={slot.id}
-                        style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
-                        className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
-                        onClick={()=>onClickSlot(slot)}
-                        onMouseDown={canManage?e=>{
-                          e.preventDefault();
-                          const colEl=dayColRefs.current[`${tech.id}-${d}`];
-                          dragRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX};
-                          setDraggingId(slot.id);
-                        }:undefined}
-                      >
-                        <div className="font-semibold leading-tight truncate">{label}</div>
-                        {zoom>=0.8&&<div className="text-white/80 text-[9px] leading-tight">{slot.startTime}–{slot.endTime}</div>}
-                        {zoom>=1&&slot.clientName&&slot.projectName&&<div className="text-white/70 text-[9px] leading-tight truncate">{slot.clientName}</div>}
-                        <div className="flex gap-0.5 mt-auto">
-                          {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
-                          {slot.hasTimeChange&&<Clock className="h-2 w-2 text-white/80"/>}
-                          {slot.hasDiscount&&<Tag className="h-2 w-2 text-white/80"/>}
-                        </div>
-                        {/* Resize handles */}
-                        {canManage&&(
-                          <>
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
-                            <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
-                          </>
-                        )}
-                      </div>
+                      <Tooltip key={slot.id} delayDuration={400}>
+                        <TooltipTrigger asChild>
+                          <div
+                            style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
+                            className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
+                            onClick={()=>onClickSlot(slot)}
+                            onMouseDown={canManage?e=>{
+                              e.preventDefault();
+                              const colEl=dayColRefs.current[`${tech.id}-${d}`];
+                              dragRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX};
+                              setDraggingId(slot.id);
+                            }:undefined}
+                          >
+                            <div className="font-semibold leading-tight truncate">{label}</div>
+                            {zoom>=0.8&&<div className="text-white/80 text-[9px] leading-tight">{slot.startTime}–{slot.endTime}</div>}
+                            {zoom>=1&&slot.clientName&&slot.projectName&&<div className="text-white/70 text-[9px] leading-tight truncate">{slot.clientName}</div>}
+                            <div className="flex gap-0.5 mt-auto">
+                              {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
+                              {slot.hasTimeChange&&<Clock className="h-2 w-2 text-white/80"/>}
+                              {slot.hasDiscount&&<Tag className="h-2 w-2 text-white/80"/>}
+                            </div>
+                            {canManage&&(
+                              <>
+                                <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
+                                <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
+                              </>
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="flex flex-col gap-0.5">
+                          <p className="font-semibold text-xs">{slot.clientName??slot.projectName??"Sans chantier"}</p>
+                          {slot.projectName&&slot.clientName&&<p className="text-[11px] opacity-80">{slot.projectName}</p>}
+                          <p className="text-[11px] opacity-70">{slot.startTime} – {slot.endTime}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })}
                 </div>
