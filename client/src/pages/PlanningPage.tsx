@@ -54,8 +54,8 @@ const WEEK_DAYS_FR = ["Lun","Mar","Mer","Jeu","Ven"];
 const WEEK_DAYS_FULL = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const H_START = 7;
-const H_END   = 18;
-const H_TOTAL = H_END - H_START; // 11
+const H_END   = 19;
+const H_TOTAL = H_END - H_START; // 12
 
 const SERVICE_COLORS: Record<string,string> = {
   clim:"bg-sky-500",pac:"bg-violet-500",chauffe_eau:"bg-orange-500",
@@ -384,6 +384,10 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   const slotsRef = useRef(slots);
   useEffect(()=>{ slotsRef.current = slots; },[slots]);
 
+  // Rows dépliables
+  const [expandedTechs,setExpandedTechs]=useState<Set<number>>(new Set());
+  const toggleExpand=(id:number)=>setExpandedTechs(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+
   const clearInteraction = useCallback(()=>{
     if(dragRef.current){
       const {id,date,origSStr,origEStr}=dragRef.current;
@@ -516,12 +520,19 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       {technicians.map(tech=>{
         const ml=maxLanes(tech.id);
         const rowH=ml*LANE_H+8;
+        const isExp=expandedTechs.has(tech.id);
+        const techSlots=slots.filter(s=>s.technicianId===tech.id&&dayColumns.includes(s.slotDate))
+          .sort((a,b)=>a.slotDate.localeCompare(b.slotDate)||timeToMin(a.startTime)-timeToMin(b.startTime));
         return(
-          <div key={tech.id} className="border-b border-border/20 last:border-b-0"
-            style={{display:"grid",gridTemplateColumns:colTemplate}}>
+          <div key={tech.id} className="border-b border-border/20 last:border-b-0">
+          <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
             <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 bg-slate-50/70 border-r border-border/40">
-              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0 mt-0.5">
+              <button onClick={()=>toggleExpand(tech.id)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded flex items-center justify-center hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors">
+                {isExp?<ChevronDown className="h-3 w-3"/>:<ChevronRightIcon className="h-3 w-3"/>}
+              </button>
+              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                 {tech.firstName[0]}{tech.lastName[0]}
               </div>
               <div className="min-w-0">
@@ -604,6 +615,34 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                 </div>
               );
             })}
+          </div>
+          {isExp&&(
+            <div className="border-t border-border/10 bg-slate-50/30 px-3 py-2">
+              {techSlots.length===0
+                ? <p className="py-2 text-center text-xs text-muted-foreground">Aucun créneau cette semaine</p>
+                : <div className="flex flex-col gap-1 py-1">
+                    {techSlots.map(slot=>(
+                      <div key={slot.id} onClick={()=>onClickSlot(slot)}
+                        className={`flex items-center gap-3 rounded-lg ${slotColor(slot.projectServiceType)} text-white px-3 py-2 cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity`}>
+                        <div className="text-[10px] text-white/80 font-medium shrink-0 w-36">
+                          {new Date(slot.slotDate+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})} · {slot.startTime}–{slot.endTime}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold truncate">{slotLabel(slot)??"Sans chantier"}</div>
+                          {slot.clientName&&<div className="text-[10px] text-white/70 truncate">{slot.clientName}</div>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {slot.hasLocationChange&&<MapPin className="h-2.5 w-2.5 text-white/70"/>}
+                          {slot.hasTimeChange&&<Clock className="h-2.5 w-2.5 text-white/70"/>}
+                          {slot.hasDiscount&&<Tag className="h-2.5 w-2.5 text-white/70"/>}
+                        </div>
+                        <StatusBadge status={slot.status}/>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+          )}
           </div>
         );
       })}

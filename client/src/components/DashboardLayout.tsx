@@ -224,6 +224,17 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
     user?.role === "technicien" ? "Technicien" :
     user?.role === "client" ? "Client" : "Utilisateur";
 
+  const isPlanning = location === "/planning";
+
+  // Planning page : sidebar masquée, contenu pleine largeur sans max-w
+  if (isPlanning) {
+    return (
+      <div className="flex-1 min-w-0 flex flex-col bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)]">
+        <main className="flex-1 p-4 md:p-5"><div className="w-full">{children}</div></main>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="relative" ref={sidebarRef}>
