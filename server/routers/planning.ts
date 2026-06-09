@@ -16,6 +16,7 @@ const slotSchema = z.object({
   slotDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  freeClientName: z.string().max(200).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled"),
   hasLocationChange: z.boolean().default(false),
@@ -38,6 +39,7 @@ function mapSlot(r: Record<string, unknown>) {
     projectRef: r.project_ref as string | null,
     projectAddress: r.project_address as string | null,
     projectServiceType: r.project_service_type as string | null,
+    freeClientName: r.free_client_name as string | null,
     clientName: r.client_name as string | null,
     clientPhone: r.client_phone as string | null,
     clientAddress: r.client_address as string | null,
@@ -73,7 +75,7 @@ export const planningRouter = router({
 
       const { data: raw, error } = await supabase
         .from("planning_slots")
-        .select("id, technician_id, project_id, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
+        .select("id, technician_id, project_id, free_client_name, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
         .gte("slot_date", input.weekStart)
         .lte("slot_date", weekEndStr)
         .order("slot_date")
@@ -167,6 +169,7 @@ export const planningRouter = router({
     const { error } = await supabase.from("planning_slots").insert({
       technician_id: input.technicianId,
       project_id: input.projectId ?? null,
+      free_client_name: input.freeClientName ?? null,
       slot_date: input.slotDate,
       start_time: input.startTime,
       end_time: input.endTime,
@@ -190,6 +193,7 @@ export const planningRouter = router({
       const patch: Record<string, unknown> = {};
       if (rest.technicianId !== undefined) patch.technician_id = rest.technicianId;
       if (rest.projectId !== undefined) patch.project_id = rest.projectId ?? null;
+      if (rest.freeClientName !== undefined) patch.free_client_name = rest.freeClientName ?? null;
       if (rest.slotDate !== undefined) patch.slot_date = rest.slotDate;
       if (rest.startTime !== undefined) patch.start_time = rest.startTime;
       if (rest.endTime !== undefined) patch.end_time = rest.endTime;

@@ -70,7 +70,7 @@ const SERVICE_LABELS: Record<string,string> = {
   clim:"Clim",pac:"PAC",chauffe_eau:"Chauffe-eau",pv:"PV",vmc:"VMC",autre:"Autre",
 };
 function slotColor(serviceType: string|null) { return SERVICE_COLORS[serviceType??""]??"bg-primary"; }
-function slotLabel(slot: Slot) { return slot.projectName ?? slot.clientName ?? null; }
+function slotLabel(slot: Slot) { return slot.projectName ?? slot.freeClientName ?? slot.clientName ?? null; }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,7 @@ type Slot = {
   id:number; technicianId:number; technicianName:string|null;
   projectId:number|null; projectName:string|null; projectRef:string|null;
   projectAddress:string|null; projectServiceType:string|null;
+  freeClientName:string|null;
   clientName:string|null; clientPhone:string|null; clientAddress:string|null;
   slotDate:string; startTime:string; endTime:string; notes:string|null; status:string;
   hasLocationChange:boolean; hasTimeChange:boolean; hasDiscount:boolean;
@@ -630,7 +631,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                           </div>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="flex flex-col gap-0.5">
-                          <p className="font-semibold text-xs">{slot.clientName??slot.projectName??"Sans chantier"}</p>
+                          <p className="font-semibold text-xs">{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</p>
                           {slot.projectName&&slot.clientName&&<p className="text-[11px] opacity-80">{slot.projectName}</p>}
                           <p className="text-[11px] opacity-70">{slot.startTime} – {slot.endTime}</p>
                         </TooltipContent>
@@ -910,7 +911,7 @@ function SlotDetailDialog({slot,onClose,onEdit,onDelete,onOpenProject,canManage}
 // ─── Slot Form Dialog ─────────────────────────────────────────────────────────
 
 type SlotFormRow = {
-  technicianId:number;projectId:number|null;slotDate:string;
+  technicianId:number;projectId:number|null;freeClientName?:string|null;slotDate:string;
   startTime:string;endTime:string;notes?:string|null;
   status:"scheduled"|"in_progress"|"completed"|"cancelled";
   hasLocationChange:boolean;hasTimeChange:boolean;hasDiscount:boolean;
@@ -927,6 +928,7 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
     new Set(initialSlot?[initialSlot.technicianId]:technicians.slice(0,1).map(t=>t.id))
   );
   const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):"none");
+  const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??"");
   const [date,setDate]=useState(initialSlot?.slotDate??defaultDate??toDateStr(new Date()));
   const [startTime,setStartTime]=useState(initialSlot?.startTime??"08:00");
   const [endTime,setEndTime]=useState(initialSlot?.endTime??"12:00");
@@ -959,6 +961,7 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
     }
     const base:Omit<SlotFormRow,"technicianId">={
       projectId:projId!=="none"?Number(projId):null,
+      freeClientName:projId==="none"&&freeClientName.trim()?freeClientName.trim():null,
       slotDate:date,startTime,endTime,notes:notes.trim()||null,status,
       hasLocationChange:hasLocChange,hasTimeChange,hasDiscount,
       discountNote:discountNote.trim()||null,changeNote:changeNote.trim()||null,
@@ -1000,6 +1003,13 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
               </SelectContent>
             </Select>
           </div>
+          {/* Nom client libre (si pas de chantier) */}
+          {projId==="none"&&(
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Nom du client <span className="text-muted-foreground font-normal">(optionnel)</span></label>
+              <Input placeholder="Ex. Dupont, SARL Horizon…" value={freeClientName} onChange={e=>setFreeClientName(e.target.value)} maxLength={200}/>
+            </div>
+          )}
           {/* Date + heures */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5 col-span-1"><label className="text-sm font-medium">Date</label><Input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
