@@ -90,7 +90,7 @@ export const planningRouter = router({
       const [techRes, projRes] = await Promise.all([
         supabase.from("technicians").select("id, first_name, last_name").in("id", techIds),
         projectIds.length
-          ? supabase.from("projects").select("id, title, reference, service_type, address_line_1, city, client_id").in("id", projectIds)
+          ? supabase.from("projects").select("id, title, reference, service_type, client_id, sites(address_line_1, city)").in("id", projectIds)
           : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       ]);
 
@@ -113,11 +113,12 @@ export const planningRouter = router({
       const projMap = Object.fromEntries(
         projArr.map(p => {
           const cl = clientMap[p.client_id as number] as Record<string, unknown> | undefined;
+          const site = p.sites as Record<string, unknown> | null;
           return [p.id, {
             name: p.title,
             ref: p.reference,
             serviceType: p.service_type,
-            address: [p.address_line_1, p.city].filter(Boolean).join(", "),
+            address: site ? [site.address_line_1, site.city].filter(Boolean).join(", ") : "",
             clientName: cl?.company_name ?? null,
             clientPhone: cl?.phone ?? null,
             clientAddress: cl ? [cl.billing_address, cl.city].filter(Boolean).join(", ") : null,

@@ -333,6 +333,10 @@ type GridProps = {
 function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 148;
+  // min column width drives horizontal zoom; wider = more pixels per hour → readable
+  const MIN_COL_W = Math.round(110 * zoom);
+  // show hour labels every 1h when zoomed in, every 2h otherwise
+  const hourStep = zoom >= 1.3 ? 1 : 2;
   const today = toDateStr(new Date());
 
   // Drag / resize
@@ -404,10 +408,13 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   });
   const maxLanes=(techId:number)=>Math.max(1,...dayColumns.map(d=>(laneMap.get(`${techId}-${d}`)??[]).reduce((m,s)=>Math.max(m,s.totalLanes),1)));
 
+  const colTemplate = `${LABEL_W}px repeat(${dayColumns.length},minmax(${MIN_COL_W}px,1fr))`;
+
   return (
     <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
       {/* ── Column headers ── */}
-      <div className="border-b border-border/60 bg-slate-50/80" style={{display:"grid",gridTemplateColumns:`${LABEL_W}px repeat(${dayColumns.length},1fr)`}}>
+      <div className="border-b border-border/60 bg-slate-50/80" style={{display:"grid",gridTemplateColumns:colTemplate}}>
         <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Technicien</div>
         {dayColumns.map((d,i)=>{
           const date=new Date(d+"T00:00:00");
@@ -422,14 +429,16 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       </div>
 
       {/* ── Hour ruler ── */}
-      <div className="border-b border-border/40 bg-white" style={{display:"grid",gridTemplateColumns:`${LABEL_W}px repeat(${dayColumns.length},1fr)`}}>
+      <div className="border-b border-border/40 bg-white" style={{display:"grid",gridTemplateColumns:colTemplate}}>
         <div/>
         {dayColumns.map(d=>(
           <div key={d} className="border-l border-border/40 relative h-6 overflow-hidden">
             {Array.from({length:H_TOTAL+1},(_,i)=>(
-              <span key={i} className="absolute top-1 text-[9px] text-muted-foreground" style={{left:`${i/H_TOTAL*100}%`,transform:"translateX(-50%)"}}>
-                {(H_START+i).toString().padStart(2,"0")}h
-              </span>
+              i % hourStep === 0 ? (
+                <span key={i} className="absolute top-1 text-[9px] font-medium text-muted-foreground" style={{left:`${i/H_TOTAL*100}%`,transform:"translateX(-50%)"}}>
+                  {(H_START+i).toString().padStart(2,"0")}h
+                </span>
+              ) : null
             ))}
           </div>
         ))}
@@ -441,7 +450,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
         const rowH=ml*LANE_H+8;
         return(
           <div key={tech.id} className="border-b border-border/20 last:border-b-0"
-            style={{display:"grid",gridTemplateColumns:`${LABEL_W}px repeat(${dayColumns.length},1fr)`}}>
+            style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
             <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 bg-slate-50/70 border-r border-border/40">
               <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0 mt-0.5">
@@ -513,6 +522,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
         );
       })}
       {technicians.length===0&&<div className="py-16 text-center text-sm text-muted-foreground">Aucun technicien actif.</div>}
+      </div>{/* end overflow-x-auto */}
     </div>
   );
 }
