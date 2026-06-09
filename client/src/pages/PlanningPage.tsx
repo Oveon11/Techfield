@@ -111,10 +111,47 @@ export default function PlanningPage() {
   const projects = projectsRaw.map(p=>({id:p.id,name:p.title,reference:p.reference}));
 
   const inv = useCallback(() => utils.planning.listWeek.invalidate({weekStart}),[utils,weekStart]);
-  const createMut = trpc.planning.create.useMutation({onSuccess:()=>{inv();toast.success("Créneau créé");},onError:e=>toast.error(e.message)});
-  const updateMut = trpc.planning.update.useMutation({onSuccess:()=>{inv();toast.success("Créneau mis à jour");},onError:e=>toast.error(e.message)});
-  const moveMut   = trpc.planning.move.useMutation({onSuccess:inv,onError:e=>toast.error(e.message)});
-  const deleteMut = trpc.planning.delete.useMutation({onSuccess:()=>{inv();toast.success("Créneau supprimé");},onError:e=>toast.error(e.message)});
+  const createMut   = trpc.planning.create.useMutation({onSuccess:()=>{inv();toast.success("Créneau créé");},onError:e=>toast.error(e.message)});
+  const updateMut   = trpc.planning.update.useMutation({onSuccess:()=>{inv();toast.success("Créneau mis à jour");},onError:e=>toast.error(e.message)});
+  const moveMut     = trpc.planning.move.useMutation({onSuccess:inv,onError:e=>toast.error(e.message)});
+  const deleteMut   = trpc.planning.delete.useMutation({onSuccess:()=>{inv();toast.success("Créneau supprimé");},onError:e=>toast.error(e.message)});
+  // Mutation silencieuse pour les transitions de statut automatiques
+  const autoStatusMut = trpc.planning.update.useMutation({onSuccess:inv});
+
+  // Auto-transition des statuts selon l'heure courante
+  const autoApplied = useRef<Record<number,string>>({});
+  useEffect(()=>{
+    if(!canManage||slots.length===0) return;
+    const now=new Date();
+    const todayStr=toDateStr(now);
+    const currentMin=now.getHours()*60+now.getMinutes();
+    for(const slot of slots){
+      const startMin=timeToMin(slot.startTime);
+      const endMin=timeToMin(slot.endTime);
+      const isPast=slot.slotDate<todayStr;
+      const isToday=slot.slotDate===todayStr;
+      let newStatus:"in_progress"|"completed"|null=null;
+      if(isPast&&(slot.status==="scheduled"||slot.status==="in_progress")){
+        newStatus="completed";
+      } else if(isToday){
+        if(slot.status==="scheduled"&&currentMin>=startMin)
+          newStatus=currentMin>=endMin?"completed":"in_progress";
+        else if(slot.status==="in_progress"&&currentMin>=endMin)
+          newStatus="completed";
+      }
+      if(newStatus&&autoApplied.current[slot.id]!==newStatus){
+        autoApplied.current[slot.id]=newStatus;
+        autoStatusMut.mutate({id:slot.id,status:newStatus});
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[slots,canManage]);
+
+  // Refetch toutes les minutes pour détecter les transitions sans interaction
+  useEffect(()=>{
+    const id=setInterval(()=>inv(),60_000);
+    return()=>clearInterval(id);
+  },[inv]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
@@ -296,17 +333,29 @@ export default function PlanningPage() {
 
 type SlotWithLane = Slot & {lane:number;totalLanes:number};
 
-/** Résout les chevauchements : repositionne ns au bord le plus proche d'un slot bloquant */
-function snapToFreeSlot(ns: number, dur: number, others: {startMin:number;endMin:number}[]): number {
-  let cur = ns;
-  for (let iter = 0; iter < others.length + 1; iter++) {
-    const blocking = others.find(o => cur < o.endMin && cur + dur > o.startMin);
-    if (!blocking) break;
-    const snapAfter  = Math.min(blocking.endMin, H_END*60 - dur);
-    const snapBefore = Math.max(blocking.startMin - dur, H_START*60);
-    cur = Math.abs(cur - snapAfter) <= Math.abs(cur - snapBefore) ? snapAfter : snapBefore;
+/** Snap vers le gap libre le plus proche. Utilise les intervalles réels pour garantir 0 chevauchement. */
+function snapToFreeSlot(ns: number, dur: number, others: {startMin:number;endMin:number}[], fallback?: number): number {
+  if (others.length === 0) return ns;
+  const sorted = [...others].sort((a,b)=>a.startMin-b.startMin);
+  const overlaps = (p:number) => sorted.some(o=>p < o.endMin && p+dur > o.startMin);
+  if (!overlaps(ns)) return ns;
+
+  // Construire la liste des créneaux libres dans [H_START*60, H_END*60]
+  const gaps:{s:number;e:number}[] = [];
+  let cur = H_START*60;
+  for (const o of sorted) {
+    if (o.startMin > cur) gaps.push({s:cur,e:o.startMin});
+    cur = Math.max(cur, o.endMin);
   }
-  return cur;
+  if (cur < H_END*60) gaps.push({s:cur,e:H_END*60});
+
+  // Pour chaque gap assez large, trouver la meilleure position
+  const candidates: number[] = [];
+  for (const g of gaps) {
+    if (g.e - g.s >= dur) candidates.push(Math.max(g.s, Math.min(ns, g.e-dur)));
+  }
+  if (candidates.length === 0) return fallback ?? H_START*60;
+  return candidates.reduce((best,p) => Math.abs(p-ns) < Math.abs(best-ns) ? p : best);
 }
 
 function computeLanes(daySlots: Slot[]): SlotWithLane[] {
@@ -395,7 +444,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       const others=slotsRef.current
         .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
         .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
-      ns=snapToFreeSlot(ns,dur,others);
+      ns=snapToFreeSlot(ns,dur,others,origStart);
       setPreview(p=>({...p,[id]:{start:ns,end:ns+dur}}));
     }
     if(resizeRef.current){

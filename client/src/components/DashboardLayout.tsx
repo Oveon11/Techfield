@@ -226,15 +226,6 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
 
   const isPlanning = location === "/planning";
 
-  // Planning page : sidebar masquée, contenu pleine largeur sans max-w
-  if (isPlanning) {
-    return (
-      <div className="flex-1 min-w-0 flex flex-col bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)]">
-        <main className="flex-1 p-4 md:p-5"><div className="w-full">{children}</div></main>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="relative" ref={sidebarRef}>
@@ -331,7 +322,9 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
             </div>
           </div>
         )}
-        <main className="flex-1 p-4 md:p-6"><div className="mx-auto w-full max-w-6xl">{children}</div></main>
+        <main className={`flex-1 ${isPlanning?"p-3 md:p-4":"p-4 md:p-6"}`}>
+          <div className={isPlanning?"w-full":"mx-auto w-full max-w-6xl"}>{children}</div>
+        </main>
       </SidebarInset>
     </>
   );
