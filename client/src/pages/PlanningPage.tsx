@@ -284,13 +284,19 @@ export default function PlanningPage() {
         ) : view==="semaine" ? (
           <WeekView slots={slots} technicians={technicians} dayColumns={dayDates} canManage={canManage} zoom={zoom}
             onClickSlot={setDetailSlot}
-            onMove={(id,date,start,end,prev)=>moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev})}
+            onMove={(id,date,start,end,prev,technicianId)=>{
+              if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
+              else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
+            }}
             onDayClick={d=>{setSelDay(d);setView("jour");}}
           />
         ) : view==="jour" ? (
           <DayView slots={slots} technicians={technicians} selDay={selDay} canManage={canManage} zoom={zoom}
             onClickSlot={setDetailSlot}
-            onMove={(id,date,start,end,prev)=>moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev})}
+            onMove={(id,date,start,end,prev,technicianId)=>{
+              if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
+              else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
+            }}
           />
         ) : (
           <MonthView slots={slots} monthRef={monthRef}
@@ -390,7 +396,7 @@ type GridProps = {
   slots:Slot[]; technicians:Technician[]; dayColumns:string[];
   canManage:boolean; zoom:number;
   onClickSlot:(s:Slot)=>void;
-  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string})=>void;
+  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
 };
 
 // Shared timeline grid — percentage-based, fits parent width
@@ -403,10 +409,11 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   const today = toDateStr(new Date());
 
   // Drag / resize
-  const dragRef  = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number}|null>(null);
+  const dragRef  = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number;targetTechId:number;targetDate:string}|null>(null);
   const resizeRef = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;dayColRef:Element|null;mouseX:number;edge:"start"|"end"}|null>(null);
   const [draggingId,setDraggingId]=useState<number|null>(null);
   const [preview,setPreview]=useState<Record<number,{start:number;end:number}>>({});
+  const [dragTarget,setDragTarget]=useState<{techId:number;date:string;start:number;end:number}|null>(null);
   const dayColRefs = useRef<Record<string,HTMLDivElement|null>>({});
   // ref vers les slots courants pour y accéder dans onMouseMove sans le mettre en dépendance
   const slotsRef = useRef(slots);
@@ -418,17 +425,18 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
   const clearInteraction = useCallback(()=>{
     if(dragRef.current){
-      const {id,date,origSStr,origEStr}=dragRef.current;
+      const {id,technicianId,date,origSStr,origEStr,targetTechId,targetDate}=dragRef.current;
       const pv=preview[id];
-      if(pv&&(pv.start!==timeToMin(origSStr)||pv.end!==timeToMin(origEStr))){
-        onMove(id,date,minToTime(pv.start),minToTime(pv.end),{prevDate:date,prevStartTime:origSStr,prevEndTime:origEStr});
+      const changedTech=targetTechId!==technicianId;
+      const changedDate=targetDate!==date;
+      if(pv&&(pv.start!==timeToMin(origSStr)||pv.end!==timeToMin(origEStr)||changedTech||changedDate)){
+        onMove(id,targetDate,minToTime(pv.start),minToTime(pv.end),{prevDate:date,prevStartTime:origSStr,prevEndTime:origEStr},changedTech?targetTechId:undefined);
       }
-      dragRef.current=null;setDraggingId(null);setPreview({});
+      dragRef.current=null;setDraggingId(null);setPreview({});setDragTarget(null);
     }
     if(resizeRef.current){
       const {id,date}=resizeRef.current;
       const pv=preview[id];
-      const s=dragRef.current;void s;
       if(pv){
         const slot=slots.find(x=>x.id===id);
         if(slot)onMove(id,date,minToTime(pv.start),minToTime(pv.end),{prevStartTime:slot.startTime,prevEndTime:slot.endTime});
@@ -439,18 +447,50 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
   const onMouseMove = useCallback((e:MouseEvent)=>{
     if(dragRef.current){
-      const {id,technicianId,origStart,origEnd,dayColRef,date}=dragRef.current;
-      if(!dayColRef)return;
-      const rect=dayColRef.getBoundingClientRect();
-      const dx=e.clientX-dragRef.current.mouseX;
-      const dm=Math.round(dx/rect.width*H_TOTAL*60/15)*15;
+      const {id,technicianId,origStart,origEnd,date,mouseX}=dragRef.current;
       const dur=origEnd-origStart;
-      let ns=Math.max(H_START*60,Math.min(origStart+dm,H_END*60-dur));
-      // Anti-chevauchement : snap au bord du slot bloquant
+
+      // Trouver la cellule cible sous le curseur
+      let tTechId=dragRef.current.targetTechId;
+      let tDate=dragRef.current.targetDate;
+      let targetRect:DOMRect|null=null;
+      for(const [key,el] of Object.entries(dayColRefs.current)){
+        if(!el)continue;
+        const r=el.getBoundingClientRect();
+        if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
+          const dash=key.indexOf("-");
+          tTechId=Number(key.slice(0,dash));
+          tDate=key.slice(dash+1);
+          targetRect=r;
+          break;
+        }
+      }
+      if(!targetRect){
+        const el=dayColRefs.current[`${tTechId}-${tDate}`];
+        if(el)targetRect=el.getBoundingClientRect();
+      }
+      if(!targetRect)return;
+
+      let ns:number;
+      if(tTechId===technicianId&&tDate===date){
+        // Même cellule : déplacement relatif (préserve le point de saisie)
+        const dx=e.clientX-mouseX;
+        const dm=Math.round(dx/targetRect.width*H_TOTAL*60/15)*15;
+        ns=Math.max(H_START*60,Math.min(origStart+dm,H_END*60-dur));
+      } else {
+        // Autre cellule : position absolue sous le curseur
+        const cursorMin=(e.clientX-targetRect.left)/targetRect.width*H_TOTAL*60+H_START*60;
+        ns=Math.round(Math.max(H_START*60,Math.min(cursorMin-dur/2,H_END*60-dur))/15)*15;
+      }
+
       const others=slotsRef.current
-        .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
+        .filter(s=>s.id!==id&&s.technicianId===tTechId&&s.slotDate===tDate)
         .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
       ns=snapToFreeSlot(ns,dur,others,origStart);
+
+      dragRef.current.targetTechId=tTechId;
+      dragRef.current.targetDate=tDate;
+      setDragTarget({techId:tTechId,date:tDate,start:ns,end:ns+dur});
       setPreview(p=>({...p,[id]:{start:ns,end:ns+dur}}));
     }
     if(resizeRef.current){
@@ -550,7 +590,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
         const rowH=ml*LANE_H+8;
         const isExp=focusedTech===tech.id;
         return(
-          <div key={tech.id} className="border-b border-border/20 last:border-b-0">
+          <div key={tech.id} className="border-b-2 border-slate-200 last:border-b-0">
           <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
             <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 bg-slate-50/70 border-r border-border/40">
@@ -579,6 +619,22 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     const isGrad=(i+1)%3===0;
                     return <div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}} className={`absolute top-0 bottom-0 border-l ${isGrad?"border-border/30":"border-border/10"} pointer-events-none`}/>;
                   })}
+                  {/* Ghost slot cross-technicien/cross-jour */}
+                  {draggingId!==null&&dragTarget?.techId===tech.id&&dragTarget?.date===d&&(()=>{
+                    const src=slotsRef.current.find(s=>s.id===draggingId);
+                    if(!src||( src.technicianId===tech.id&&src.slotDate===d))return null;
+                    const lp=(dragTarget.start-H_START*60)/(H_TOTAL*60)*100;
+                    const wp=(dragTarget.end-dragTarget.start)/(H_TOTAL*60)*100;
+                    const c=slotColor(src.projectServiceType);
+                    return(
+                      <div key="ghost" style={{left:`${lp}%`,width:`max(${wp}%,2px)`,top:3,height:LANE_H-6}}
+                        className={`absolute rounded-lg ${c} opacity-75 text-white text-[10px] shadow-xl ring-2 ring-white/60 z-30 pointer-events-none px-1.5 py-1 flex flex-col`}>
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
+                          <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{minToTime(dragTarget.start)} – {minToTime(dragTarget.end)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Slots */}
                   {daySlots.map(slot=>{
                     const pv=preview[slot.id];
@@ -594,29 +650,30 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     const isInteracting=!!pv;
                     const displayStart=minToTime(start);
                     const displayEnd=minToTime(end);
+                    const isCrossDragging=isDragging&&dragTarget&&(dragTarget.techId!==slot.technicianId||dragTarget.date!==slot.slotDate);
                     return(
-                      <Tooltip key={slot.id} delayDuration={isInteracting?999999:400} open={isInteracting?false:undefined}>
+                      <Tooltip key={slot.id} delayDuration={draggingId!==null?999999:400} open={draggingId!==null?false:undefined}>
                         <TooltipTrigger asChild>
                           <div
                             style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
-                            className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
+                            className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
                             onClick={()=>!isInteracting&&onClickSlot(slot)}
                             onMouseDown={canManage?e=>{
                               e.preventDefault();
                               const colEl=dayColRefs.current[`${tech.id}-${d}`];
-                              dragRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX};
+                              dragRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX,targetTechId:slot.technicianId,targetDate:d};
                               setDraggingId(slot.id);
                             }:undefined}
                           >
                             {/* Overlay heures pendant drag/resize */}
-                            {isInteracting&&(
+                            {isInteracting&&!isCrossDragging&&(
                               <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10 pointer-events-none rounded-lg">
                                 <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{displayStart} – {displayEnd}</span>
                               </div>
                             )}
-                            <div className="font-semibold leading-tight truncate">{label}</div>
-                            {(zoom>=0.8||isInteracting)&&<div className="text-white/80 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
-                            {zoom>=1&&slot.clientName&&slot.projectName&&<div className="text-white/70 text-[9px] leading-tight truncate">{slot.clientName}</div>}
+                            <div className="font-semibold leading-tight truncate">{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
+                            {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className="text-white/85 text-[9px] leading-tight truncate">{slot.projectName}</div>}
+                            {(zoom>=0.8||isInteracting)&&<div className="text-white/70 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
                             <div className="flex gap-0.5 mt-auto">
                               {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
                               {slot.hasTimeChange&&<Clock className="h-2 w-2 text-white/80"/>}
@@ -717,7 +774,7 @@ function WeekView({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMov
 function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
   onClickSlot:(s:Slot)=>void;
-  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string})=>void;
+  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
 }){
   return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove}/>;
 }
