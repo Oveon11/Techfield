@@ -69,6 +69,7 @@ import {
   LayoutDashboard,
   MapPin,
   MapPinned,
+  Phone,
   MoreVertical,
   Newspaper,
   Pencil,
@@ -1259,16 +1260,16 @@ export function ProjectsPage() {
                 className="pl-9"
               />
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex gap-2">
               <Select value={statusFilter} onValueChange={value => setStatusFilter(value as "all" | ProjectStatus)}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les statuts</SelectItem>
                   {PROJECT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={serviceFilter} onValueChange={value => setServiceFilter(value as "all" | ProjectServiceType)}>
-                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les services</SelectItem>
                   {STATIC_SERVICE_OPTIONS.map(st => <SelectItem key={st.value} value={st.value}>{st.label}</SelectItem>)}
@@ -1400,7 +1401,7 @@ export function ProjectsPage() {
                   </div>
                   <Link href={`/chantiers/${project.id}`}>
                     <Button size="sm" className="bg-primary font-semibold text-white shadow-sm shadow-primary/30 hover:bg-primary/90">
-                      OUVRIR
+                      Voir
                     </Button>
                   </Link>
                 </div>
@@ -2031,6 +2032,7 @@ export function ProjectDetailPage() {
   }
 
   const canManage = !!permissions?.manageProjects;
+  const canContribute = !!permissions?.manageInterventions; // admin + technicien
   const serviceLabel = STATIC_SERVICE_OPTIONS.find(st => st.value === project.serviceType)?.label ?? project.serviceType;
   const statusLabel = PROJECT_STATUS_OPTIONS.find(opt => opt.value === project.status)?.label ?? STATUS_CONFIG[project.status]?.display ?? project.status;
 
@@ -2040,7 +2042,7 @@ export function ProjectDetailPage() {
       {canManage && (
         <>
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogContent className="sm:max-w-3xl">
+            <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Modifier le chantier</DialogTitle>
                 <DialogDescription>{project.reference}</DialogDescription>
@@ -2207,24 +2209,37 @@ export function ProjectDetailPage() {
             </div>
           </div>
 
-          {/* Row 3: stats card */}
-          <div className="rounded-xl border border-border/60 bg-white px-5 py-4 shadow-sm">
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Charge de travail</p>
-            <div className="grid grid-cols-3 gap-4 sm:grid-cols-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Réalisé</p>
-                <p className="mt-0.5 text-lg font-bold text-foreground">{Number(project.actualHours ?? 0).toFixed(0)} h</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Estimé</p>
-                <p className="mt-0.5 text-lg font-bold text-foreground">{Number(project.estimatedHours ?? 0).toFixed(0)} h</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Avancement</p>
-                <p className="mt-0.5 text-lg font-bold text-foreground">{project.progressPercent ?? 0} %</p>
+          {/* Row 3: contact rapide */}
+          {(project.clientPhone || project.siteAddress || project.siteCity) && (
+            <div className="rounded-xl border border-border/60 bg-white px-5 py-4 shadow-sm">
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Contact &amp; Adresse</p>
+              <div className="flex flex-wrap gap-4">
+                {project.clientPhone && (
+                  <a href={`tel:${project.clientPhone}`}
+                    className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-2.5 hover:bg-muted/40 transition-colors">
+                    <Phone className="h-4 w-4 text-primary shrink-0"/>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Téléphone</p>
+                      <p className="font-semibold text-sm text-foreground">{project.clientPhone}</p>
+                    </div>
+                  </a>
+                )}
+                {(project.siteAddress || project.siteCity) && (
+                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([project.siteAddress, project.sitePostalCode, project.siteCity].filter(Boolean).join(", "))}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-2.5 hover:bg-muted/40 transition-colors">
+                    <MapPin className="h-4 w-4 text-primary shrink-0"/>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Adresse chantier</p>
+                      <p className="font-semibold text-sm text-foreground leading-snug">
+                        {[project.siteAddress, project.sitePostalCode, project.siteCity].filter(Boolean).join(", ")}
+                      </p>
+                    </div>
+                  </a>
+                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <Tabs defaultValue="journal">
@@ -2350,16 +2365,17 @@ export function ProjectDetailPage() {
               clientId={project.clientId}
               siteId={project.siteId ?? null}
               canManage={canManage}
+              canContribute={canContribute}
             />
           </TabsContent>
           <TabsContent value="medias" className="mt-6">
-            <ProjectMediaPanel projectId={project.id} canManage={canManage} />
+            <ProjectMediaPanel projectId={project.id} canManage={canManage} canContribute={canContribute} />
           </TabsContent>
           <TabsContent value="memos" className="mt-6">
-            <ProjectMemosPanel projectId={project.id} canManage={canManage} />
+            <ProjectMemosPanel projectId={project.id} canManage={canManage} canContribute={canContribute} />
           </TabsContent>
           <TabsContent value="documents" className="mt-6">
-            <ProjectDocumentsPanel projectId={project.id} canManage={canManage} />
+            <ProjectDocumentsPanel projectId={project.id} canManage={canManage} canContribute={canContribute} />
           </TabsContent>
         </Tabs>
       </div>

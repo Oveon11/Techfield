@@ -318,6 +318,8 @@ function mapMemoRow(row: Record<string, unknown>) {
     updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : null,
     validationComment: (row.validation_comment as string | null | undefined) ?? null,
     validationPhotoKey: (row.validation_photo_key as string | null | undefined) ?? null,
+    validatedByName: (row.validated_by_name as string | null | undefined) ?? null,
+    validatedAt: row.validated_at ? new Date(String(row.validated_at)).toISOString() : null,
   };
 }
 
@@ -349,7 +351,7 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
 
   const { data, error } = await supabase
     .from("project_memos")
-    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at, validation_comment, validation_photo_key")
+    .select("id, project_id, title, content, urgency, status, pinned, created_by_user_id, created_at, updated_at, validation_comment, validation_photo_key, validated_by_user_id, validated_at")
     .eq("project_id", projectId)
     .order("pinned", { ascending: false })
     .order("urgency", { ascending: true })
@@ -357,10 +359,16 @@ export async function listProjectMemos(scope: AccessScope, projectId: number) {
 
   if (error) throw error;
   const rows = (data ?? []) as Record<string, unknown>[];
-  const userMap = await fetchUserNameMap(supabase, uniqueIds(rows, "created_by_user_id"));
+  const allIds = Array.from(new Set([...uniqueIds(rows, "created_by_user_id"), ...uniqueIds(rows, "validated_by_user_id")]));
+  const userMap = await fetchUserNameMap(supabase, allIds);
   const memos = rows.map((row) => {
     const uid = row.created_by_user_id == null ? null : Number(row.created_by_user_id);
-    return mapMemoRow({ ...row, users: uid !== null ? { name: userMap.get(uid) ?? "" } : null });
+    const vid = row.validated_by_user_id == null ? null : Number(row.validated_by_user_id);
+    return mapMemoRow({
+      ...row,
+      users: uid !== null ? { name: userMap.get(uid) ?? "" } : null,
+      validated_by_name: vid !== null ? (userMap.get(vid) ?? null) : null,
+    });
   });
   return enrichMemosWithPhotoUrls(supabase, memos);
 }
@@ -421,6 +429,13 @@ export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInp
   if (scope.user.role === "technicien") {
     if (input.status === undefined) throw new Error("Action non autorisée.");
     const upd: Record<string, unknown> = { status: input.status };
+    if (input.status === "done") {
+      upd.validated_by_user_id = scope.user.id;
+      upd.validated_at = new Date().toISOString();
+    } else if (input.status === "todo") {
+      upd.validated_by_user_id = null;
+      upd.validated_at = null;
+    }
     if (input.validationComment !== undefined) upd.validation_comment = input.validationComment;
     if (input.validationPhotoKey !== undefined) upd.validation_photo_key = input.validationPhotoKey;
     const { error } = await supabase.from("project_memos").update(upd).eq("id", input.id);
@@ -432,7 +447,16 @@ export async function updateProjectMemo(scope: AccessScope, input: UpdateMemoInp
   if (input.title !== undefined) updates.title = input.title;
   if (input.content !== undefined) updates.content = input.content;
   if (input.urgency !== undefined) updates.urgency = input.urgency;
-  if (input.status !== undefined) updates.status = input.status;
+  if (input.status !== undefined) {
+    updates.status = input.status;
+    if (input.status === "done") {
+      updates.validated_by_user_id = scope.user.id;
+      updates.validated_at = new Date().toISOString();
+    } else if (input.status === "todo") {
+      updates.validated_by_user_id = null;
+      updates.validated_at = null;
+    }
+  }
   if (input.pinned !== undefined) updates.pinned = input.pinned;
   if (input.validationComment !== undefined) updates.validation_comment = input.validationComment;
   if (input.validationPhotoKey !== undefined) updates.validation_photo_key = input.validationPhotoKey;

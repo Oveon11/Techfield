@@ -240,7 +240,7 @@ const INITIAL_JOURNAL_FORM: JournalFormState = {
   occurredAt: "",
 };
 
-export function ProjectJournalPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
+export function ProjectJournalPanel({ projectId, canManage, canContribute }: { projectId: number; canManage: boolean; canContribute: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectJournal.list.useQuery({ projectId });
   const mediaListQuery = trpc.management.projectMedia.list.useQuery({ projectId });
@@ -326,7 +326,7 @@ export function ProjectJournalPanel({ projectId, canManage }: { projectId: numbe
         title="Journal du chantier"
         description="Historique horodaté des étapes, blocages, livraisons et échanges client."
         action={
-          canManage ? (
+          canContribute ? (
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -560,7 +560,7 @@ const URGENCY_OPTIONS = [
 type TaskFormState = { title: string; content: string; urgency: string };
 const INITIAL_TASK_FORM: TaskFormState = { title: "", content: "", urgency: "normale" };
 
-export function ProjectMemosPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
+export function ProjectMemosPanel({ projectId, canManage, canContribute }: { projectId: number; canManage: boolean; canContribute: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectMemos.list.useQuery({ projectId });
 
@@ -652,7 +652,7 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
         title="Tâches du chantier"
         description="Actions à réaliser, visibles par tous les membres de l'équipe."
         action={
-          canManage ? (
+          canContribute ? (
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button><Plus className="h-4 w-4" />Nouvelle tâche</Button>
@@ -746,9 +746,15 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
                   <div className="flex items-start gap-3">
                     <button
                       type="button"
-                      onClick={() => isDone ? updateMutation.mutate({ id: task.id, status: "todo" }) : setValidationTargetId(task.id)}
-                      className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? "border-emerald-500 bg-emerald-500" : "border-slate-300 hover:border-emerald-400"}`}
-                      title={isDone ? "Marquer à faire" : "Valider (commentaire requis)"}
+                      onClick={() => {
+                        if (isDone) {
+                          if (canManage) updateMutation.mutate({ id: task.id, status: "todo" });
+                        } else {
+                          setValidationTargetId(task.id);
+                        }
+                      }}
+                      className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? "border-emerald-500 bg-emerald-500" : "border-slate-300 hover:border-emerald-400"} ${isDone && !canManage ? "cursor-default" : "cursor-pointer"}`}
+                      title={isDone ? (canManage ? "Annuler la validation" : "Validé") : "Valider (commentaire requis)"}
                     >
                       {isDone && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </button>
@@ -757,7 +763,11 @@ export function ProjectMemosPanel({ projectId, canManage }: { projectId: number;
                       <p className={`text-sm leading-6 mt-0.5 ${isDone ? "line-through text-muted-foreground" : "text-foreground"}`}>{task.content}</p>
                       {isDone && task.validationComment && (
                         <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
-                          <p className="text-xs text-emerald-700"><span className="font-semibold">Validation :</span> {task.validationComment}</p>
+                          <p className="text-xs text-emerald-700 font-semibold mb-0.5">
+                            Validé{"validatedByName" in task && task.validatedByName ? ` par ${task.validatedByName}` : ""}
+                            {"validatedAt" in task && task.validatedAt ? ` · ${formatDateTime(task.validatedAt as string)}` : ""}
+                          </p>
+                          <p className="text-xs text-emerald-700">{task.validationComment}</p>
                           {task.validationPhotoSignedUrl && (
                             <img src={task.validationPhotoSignedUrl} className="mt-2 h-20 w-20 object-cover rounded-lg cursor-zoom-in" onClick={() => window.open(task.validationPhotoSignedUrl!, "_blank")} />
                           )}
@@ -853,7 +863,7 @@ async function uploadFileToSignedUrl(signedUrl: string, file: File): Promise<voi
   }
 }
 
-export function ProjectMediaPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
+export function ProjectMediaPanel({ projectId, canManage, canContribute }: { projectId: number; canManage: boolean; canContribute: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectMedia.list.useQuery({ projectId });
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -922,7 +932,7 @@ export function ProjectMediaPanel({ projectId, canManage }: { projectId: number;
         title="Médias du chantier"
         description="Photos avant/après et vidéos courtes (max 100 Mo par fichier)."
         action={
-          canManage ? (
+          canContribute ? (
             <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
               <Input
                 value={caption}
@@ -1049,7 +1059,7 @@ const INITIAL_DOCUMENT_FORM: DocumentFormState = {
   visibility: "interne",
 };
 
-export function ProjectDocumentsPanel({ projectId, canManage }: { projectId: number; canManage: boolean }) {
+export function ProjectDocumentsPanel({ projectId, canManage, canContribute }: { projectId: number; canManage: boolean; canContribute: boolean }) {
   const utils = trpc.useUtils();
   const listQuery = trpc.management.projectDocuments.list.useQuery({ projectId });
 
@@ -1117,7 +1127,7 @@ export function ProjectDocumentsPanel({ projectId, canManage }: { projectId: num
         title="Documents du chantier"
         description="Rapports, contrats, plans et bons d'intervention rattachés à ce chantier."
         action={
-          canManage ? (
+          canContribute ? (
             <Dialog open={uploadOpen} onOpenChange={open => { setUploadOpen(open); if (!open) resetUploadDialog(); }}>
               <DialogTrigger asChild>
                 <Button>
@@ -1268,11 +1278,13 @@ export function ProjectActivityFeedPanel({
   clientId,
   siteId,
   canManage,
+  canContribute,
 }: {
   projectId: number;
   clientId: number;
   siteId: number | null;
   canManage: boolean;
+  canContribute: boolean;
 }) {
   const utils = trpc.useUtils();
 
@@ -1385,7 +1397,7 @@ export function ProjectActivityFeedPanel({
   return (
     <div className="space-y-4">
       {/* ── Compose area ── */}
-      {canManage && (
+      {canContribute && (
         <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm space-y-3">
           <Textarea
             rows={3}
@@ -1601,7 +1613,7 @@ export function ProjectActivityFeedPanel({
       )}
 
       {/* ── Dialog : Upload document ── */}
-      {canManage && (
+      {canContribute && (
         <Dialog open={docOpen} onOpenChange={open => { setDocOpen(open); if (!open) { setDocForm(INITIAL_DOCUMENT_FORM); setDocFile(null); } }}>
           <DialogContent className="sm:max-w-xl">
             <DialogHeader>
