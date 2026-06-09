@@ -62,6 +62,87 @@ function mapSlot(r: Record<string, unknown>) {
   };
 }
 
+// ─── Shared enrichment helper ─────────────────────────────────────────────────
+
+async function fetchAndEnrichSlots(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  start: string,
+  end: string,
+) {
+  const { data: raw, error } = await supabase
+    .from("planning_slots")
+    .select("id, technician_id, project_id, free_client_name, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
+    .gte("slot_date", start)
+    .lte("slot_date", end)
+    .order("slot_date")
+    .order("start_time");
+
+  if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+
+  const slots = (raw ?? []) as Record<string, unknown>[];
+  if (slots.length === 0) return [];
+
+  const techIds = Array.from(new Set(slots.map(s => s.technician_id as number)));
+  const projectIds = Array.from(new Set(slots.filter(s => s.project_id).map(s => s.project_id as number)));
+
+  const [techRes, projRes] = await Promise.all([
+    supabase.from("technicians").select("id, first_name, last_name").in("id", techIds),
+    projectIds.length
+      ? supabase.from("projects").select("id, title, reference, service_type, color, client_id, sites(address_line_1, city)").in("id", projectIds)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ]);
+
+  const techMap = Object.fromEntries(
+    ((techRes.data ?? []) as Record<string, unknown>[]).map(t => [
+      t.id,
+      `${t.first_name} ${t.last_name}`,
+    ])
+  );
+
+  const projArr = (projRes.data ?? []) as Record<string, unknown>[];
+  const clientIds = Array.from(new Set(projArr.filter(p => p.client_id).map(p => p.client_id as number)));
+  const clientRes = clientIds.length
+    ? await supabase.from("clients").select("id, company_name, phone, billing_address, city").in("id", clientIds)
+    : { data: [] as Record<string, unknown>[] };
+
+  const clientMap = Object.fromEntries(
+    ((clientRes.data ?? []) as Record<string, unknown>[]).map(c => [c.id, c])
+  );
+  const projMap = Object.fromEntries(
+    projArr.map(p => {
+      const cl = clientMap[p.client_id as number] as Record<string, unknown> | undefined;
+      const site = p.sites as Record<string, unknown> | null;
+      return [p.id, {
+        name: p.title,
+        ref: p.reference,
+        serviceType: p.service_type,
+        color: (p.color as string | null) ?? null,
+        address: site ? [site.address_line_1, site.city].filter(Boolean).join(", ") : "",
+        clientName: cl?.company_name ?? null,
+        clientPhone: cl?.phone ?? null,
+        clientAddress: cl ? [cl.billing_address, cl.city].filter(Boolean).join(", ") : null,
+      }];
+    })
+  );
+
+  return slots.map(s => {
+    const techName = techMap[s.technician_id as number] ?? null;
+    const proj = s.project_id ? projMap[s.project_id as number] : null;
+    return mapSlot({
+      ...s,
+      technician_name: techName,
+      project_name: proj?.name ?? null,
+      project_ref: proj?.ref ?? null,
+      project_address: proj?.address ?? null,
+      project_service_type: proj?.serviceType ?? null,
+      project_color: proj?.color ?? null,
+      client_name: proj?.clientName ?? null,
+      client_phone: proj?.clientPhone ?? null,
+      client_address: proj?.clientAddress ?? null,
+    });
+  });
+}
+
 export const planningRouter = router({
   /** Liste les créneaux pour une semaine donnée */
   listWeek: protectedProcedure
@@ -69,83 +150,22 @@ export const planningRouter = router({
     .query(async ({ ctx, input }) => {
       await getScope(ctx.user.openId);
       const supabase = createSupabaseAdminClient();
-
       const weekEnd = new Date(input.weekStart);
       weekEnd.setDate(weekEnd.getDate() + 6);
       const weekEndStr = weekEnd.toISOString().slice(0, 10);
+      return fetchAndEnrichSlots(supabase, input.weekStart, weekEndStr);
+    }),
 
-      const { data: raw, error } = await supabase
-        .from("planning_slots")
-        .select("id, technician_id, project_id, free_client_name, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
-        .gte("slot_date", input.weekStart)
-        .lte("slot_date", weekEndStr)
-        .order("slot_date")
-        .order("start_time");
-
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
-
-      const slots = (raw ?? []) as Record<string, unknown>[];
-      if (slots.length === 0) return [];
-
-      const techIds = Array.from(new Set(slots.map(s => s.technician_id as number)));
-      const projectIds = Array.from(new Set(slots.filter(s => s.project_id).map(s => s.project_id as number)));
-
-      const [techRes, projRes] = await Promise.all([
-        supabase.from("technicians").select("id, first_name, last_name").in("id", techIds),
-        projectIds.length
-          ? supabase.from("projects").select("id, title, reference, service_type, color, client_id, sites(address_line_1, city)").in("id", projectIds)
-          : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-      ]);
-
-      const techMap = Object.fromEntries(
-        ((techRes.data ?? []) as Record<string, unknown>[]).map(t => [
-          t.id,
-          `${t.first_name} ${t.last_name}`,
-        ])
-      );
-
-      const projArr = (projRes.data ?? []) as Record<string, unknown>[];
-      const clientIds = Array.from(new Set(projArr.filter(p => p.client_id).map(p => p.client_id as number)));
-      const clientRes = clientIds.length
-        ? await supabase.from("clients").select("id, company_name, phone, billing_address, city").in("id", clientIds)
-        : { data: [] as Record<string, unknown>[] };
-
-      const clientMap = Object.fromEntries(
-        ((clientRes.data ?? []) as Record<string, unknown>[]).map(c => [c.id, c])
-      );
-      const projMap = Object.fromEntries(
-        projArr.map(p => {
-          const cl = clientMap[p.client_id as number] as Record<string, unknown> | undefined;
-          const site = p.sites as Record<string, unknown> | null;
-          return [p.id, {
-            name: p.title,
-            ref: p.reference,
-            serviceType: p.service_type,
-            color: (p.color as string | null) ?? null,
-            address: site ? [site.address_line_1, site.city].filter(Boolean).join(", ") : "",
-            clientName: cl?.company_name ?? null,
-            clientPhone: cl?.phone ?? null,
-            clientAddress: cl ? [cl.billing_address, cl.city].filter(Boolean).join(", ") : null,
-          }];
-        })
-      );
-
-      return slots.map(s => {
-        const techName = techMap[s.technician_id as number] ?? null;
-        const proj = s.project_id ? projMap[s.project_id as number] : null;
-        return mapSlot({
-          ...s,
-          technician_name: techName,
-          project_name: proj?.name ?? null,
-          project_ref: proj?.ref ?? null,
-          project_address: proj?.address ?? null,
-          project_service_type: proj?.serviceType ?? null,
-          project_color: proj?.color ?? null,
-          client_name: proj?.clientName ?? null,
-          client_phone: proj?.clientPhone ?? null,
-          client_address: proj?.clientAddress ?? null,
-        });
-      });
+  /** Liste les créneaux pour une plage de dates arbitraire */
+  listRange: protectedProcedure
+    .input(z.object({
+      start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ ctx, input }) => {
+      await getScope(ctx.user.openId);
+      const supabase = createSupabaseAdminClient();
+      return fetchAndEnrichSlots(supabase, input.start, input.end);
     }),
 
   /** Liste tous les techniciens actifs */

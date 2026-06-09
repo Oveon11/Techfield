@@ -136,19 +136,36 @@ export default function PlanningPage() {
   // Compute weekStart from view context
   const weekStart = view === "jour"
     ? toDateStr(getMondayOf(new Date(selDay+"T00:00:00")))
-    : view === "mois"
-      ? toDateStr(getMondayOf(monthRef))
-      : toDateStr(monday);
+    : toDateStr(monday);
+
+  const monthRangeStart = React.useMemo(() => {
+    const firstDay = new Date(monthRef.getFullYear(), monthRef.getMonth(), 1);
+    return toDateStr(getMondayOf(firstDay));
+  }, [monthRef]);
+  const monthRangeEnd = React.useMemo(() => {
+    const lastDay = new Date(monthRef.getFullYear(), monthRef.getMonth() + 1, 0);
+    return toDateStr(addDays(getMondayOf(lastDay), 4));
+  }, [monthRef]);
 
   const dayDates = Array.from({length:5},(_,i)=>toDateStr(addDays(new Date(weekStart+"T00:00:00"),i)));
 
   const utils = trpc.useUtils();
-  const {data:slots=[],isLoading:slotsLoading} = trpc.planning.listWeek.useQuery({weekStart});
+  const {data:weekSlots=[],isLoading:weekSlotsLoading} = trpc.planning.listWeek.useQuery(
+    {weekStart}, {enabled: view !== "mois"}
+  );
+  const {data:monthSlots=[],isLoading:monthSlotsLoading} = trpc.planning.listRange.useQuery(
+    {start:monthRangeStart,end:monthRangeEnd}, {enabled: view === "mois"}
+  );
+  const slots = view === "mois" ? monthSlots : weekSlots;
+  const slotsLoading = view === "mois" ? monthSlotsLoading : weekSlotsLoading;
   const {data:technicians=[],isLoading:techLoading} = trpc.planning.listTechnicians.useQuery();
   const {data:projectsRaw=[]} = trpc.management.projects.list.useQuery();
   const projects = projectsRaw.map(p=>({id:p.id,name:p.title,reference:p.reference,clientName:p.clientName??null}));
 
-  const inv = useCallback(() => utils.planning.listWeek.invalidate({weekStart}),[utils,weekStart]);
+  const inv = useCallback(() => {
+    if (view === "mois") utils.planning.listRange.invalidate({start:monthRangeStart,end:monthRangeEnd});
+    else utils.planning.listWeek.invalidate({weekStart});
+  }, [utils, weekStart, view, monthRangeStart, monthRangeEnd]);
   const createMut   = trpc.planning.create.useMutation({onSuccess:()=>{inv();toast.success("Créneau créé");},onError:e=>toast.error(e.message)});
   const updateMut   = trpc.planning.update.useMutation({onSuccess:()=>{inv();toast.success("Créneau mis à jour");},onError:e=>toast.error(e.message)});
   const moveMut     = trpc.planning.move.useMutation({onSuccess:inv,onError:e=>toast.error(e.message)});
@@ -368,9 +385,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : (
-          <MonthView slots={slots} monthRef={monthRef}
-            onDayClick={d=>{setSelDay(d);setView("jour");}}
-          />
+          <MonthGrid slots={slots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} onClickSlot={setDetailSlot}/>
         )}
 
         {(createOpen||quickCreate!==null)&&(
@@ -873,60 +888,70 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
               );
             })}
           </div>
-          {isExp&&(
-            <div className="border-t border-border/20 bg-white"
-              style={{display:"grid",gridTemplateColumns:colTemplate}}>
-              {/* Cellule label vide */}
-              <div className="bg-slate-50/70 border-r border-border/40 p-2 flex items-center justify-center">
-                <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/50">Détail</span>
+          {isExp&&(()=>{
+            const techSlotsAll=slots.filter(s=>s.technicianId===tech.id);
+            const projKeys=Array.from(new Set(
+              techSlotsAll.map(s=>s.projectId?`p:${s.projectId}`:`f:${s.freeClientName??""}`)
+            ));
+            if(projKeys.length===0) return(
+              <div className="border-t border-border/10 bg-slate-50/40 py-2 px-4 text-[11px] text-muted-foreground/50 italic">
+                Aucun créneau cette semaine
               </div>
-              {/* Une colonne par jour */}
-              {dayColumns.map(d=>{
-                const isToday=d===today;
-                const daySlotsFull=slots
-                  .filter(s=>s.technicianId===tech.id&&s.slotDate===d)
-                  .sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
-                return(
-                  <div key={d} className={`border-l border-border/20 p-2 flex flex-col gap-2 min-h-[80px] ${isToday?"bg-primary/[0.02]":""}`}>
-                    {daySlotsFull.length===0
-                      ? <div className="flex-1 flex items-center justify-center"><span className="text-[11px] text-muted-foreground/25">—</span></div>
-                      : daySlotsFull.map(slot=>(
-                          <div key={slot.id} onClick={()=>onClickSlot(slot)}
-                            className="rounded-xl border border-border/50 bg-white hover:bg-muted/20 cursor-pointer transition-colors overflow-hidden shadow-sm">
-                            {/* Barre couleur en haut */}
-                            {(()=>{const{bgClass,bgStyle}=slotBgStyle(slot);return<div className={`h-1 w-full ${bgClass}`} style={bgStyle}/>;})()}
-                            <div className="p-2.5 flex flex-col gap-1.5">
-                              {/* Horaire */}
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[11px] font-bold text-foreground tabular-nums">{slot.startTime} – {slot.endTime}</span>
-                                <StatusBadge status={slot.status}/>
-                              </div>
-                              {/* Chantier */}
-                              <p className="text-xs font-semibold text-foreground leading-snug">{slotLabel(slot)??"Sans chantier"}</p>
-                              {/* Client */}
-                              {slot.clientName&&<p className="text-[10px] text-muted-foreground leading-snug">{slot.clientName}</p>}
-                              {/* Type de service + alertes */}
-                              <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                                {slot.projectServiceType&&(
-                                  <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full text-white ${slotColor(slot.projectServiceType)}`}>
-                                    {SERVICE_LABELS[slot.projectServiceType]??slot.projectServiceType}
-                                  </span>
-                                )}
-                                {slot.hasLocationChange&&<MapPin className="h-3 w-3 text-amber-500"/>}
-                                {slot.hasTimeChange&&<Clock className="h-3 w-3 text-amber-500"/>}
-                                {slot.hasDiscount&&<Tag className="h-3 w-3 text-amber-500"/>}
-                              </div>
-                              {/* Notes */}
-                              {slot.notes&&<p className="text-[10px] text-muted-foreground italic leading-snug line-clamp-2">{slot.notes}</p>}
-                            </div>
-                          </div>
-                        ))
-                    }
+            );
+            const subRowH=LANE_H+6;
+            return projKeys.map(key=>{
+              const keySlots=techSlotsAll.filter(s=>
+                key.startsWith("p:")
+                  ?s.projectId===Number(key.slice(2))
+                  :s.freeClientName===(key==="f:"?null:key.slice(2))
+              );
+              const firstSlot=keySlots[0];
+              const label=firstSlot?(slotLabel(firstSlot)??"Sans chantier"):"Sans chantier";
+              const {bgClass:lbc,bgStyle:lbs}=firstSlot?slotBgStyle(firstSlot):{bgClass:"bg-slate-400",bgStyle:undefined as React.CSSProperties|undefined};
+              return(
+                <div key={key} className="border-t border-border/10 bg-white/80"
+                  style={{display:"grid",gridTemplateColumns:colTemplate}}>
+                  <div style={{height:subRowH}}
+                    className="flex items-center gap-2 pl-12 pr-3 border-r border-border/20 bg-slate-50/50">
+                    <div className={`h-5 w-5 rounded-full ${lbc} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}
+                      style={lbs}>
+                      {label.slice(0,2).toUpperCase()}
+                    </div>
+                    <span className="text-[11px] font-medium text-foreground/80 truncate">{label}</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {dayColumns.map(d=>{
+                    const isToday=d===today;
+                    const dayKeySlots=computeLanes(keySlots.filter(s=>s.slotDate===d));
+                    return(
+                      <div key={d} style={{height:subRowH}}
+                        className={`relative border-l-2 border-slate-100 ${isToday?"bg-primary/[0.02]":""}`}>
+                        {Array.from({length:H_TOTAL-1},(_,i)=>{
+                          const isGrad=(i+1)%3===0;
+                          return<div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}}
+                            className={`absolute top-0 bottom-0 border-l ${isGrad?"border-border/20":"border-border/8"} pointer-events-none`}/>;
+                        })}
+                        {dayKeySlots.map(slot=>{
+                          const start=timeToMin(slot.startTime);
+                          const end=timeToMin(slot.endTime);
+                          const leftPct=(start-H_START*60)/(H_TOTAL*60)*100;
+                          const widthPct=(end-start)/(H_TOTAL*60)*100;
+                          const{bgClass:bc,bgStyle:bs}=slotBgStyle(slot);
+                          return(
+                            <div key={slot.id}
+                              style={{left:`${leftPct}%`,width:`max(${widthPct}%,2px)`,top:3,height:subRowH-6,...(bs??{})}}
+                              className={`absolute rounded-lg ${bc} text-white text-[9px] shadow-sm cursor-pointer overflow-hidden px-1.5 py-0.5 flex items-center hover:brightness-110 transition-all z-10`}
+                              onClick={e=>{e.stopPropagation();onClickSlot(slot);}}>
+                              <span className="truncate font-semibold">{slot.startTime}–{slot.endTime}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
           </div>
         );
       })}
@@ -958,54 +983,176 @@ function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove,onC
   return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
-// ─── Month View ───────────────────────────────────────────────────────────────
+// ─── Month Grid ───────────────────────────────────────────────────────────────
 
-function MonthView({slots,monthRef,onDayClick}:{slots:Slot[];monthRef:Date;onDayClick:(d:string)=>void}){
+function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
+  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;onClickSlot:(s:Slot)=>void;
+}){
+  void canManage;
+  const year=monthRef.getFullYear();
+  const month=monthRef.getMonth();
   const today=toDateStr(new Date());
-  const year=monthRef.getFullYear();const month=monthRef.getMonth();
+  const[expandedTechs,setExpandedTechs]=useState<Set<number>>(new Set());
+  const toggleTech=(id:number)=>setExpandedTechs(s=>{const n=new Set(s);n.has(id)?n.delete(id):n.add(id);return n;});
+
+  // All Mon-Fri days in the month's weeks
   const firstDay=new Date(year,month,1);
   const lastDay=new Date(year,month+1,0);
-  // start from Monday of the first week
   const gridStart=getMondayOf(firstDay);
-  // end on Sunday of the last week
-  const gridEnd=addDays(getMondayOf(lastDay),6);
+  const gridFriEnd=addDays(getMondayOf(lastDay),4);
   const days:string[]=[];
   let cur=new Date(gridStart);
-  while(cur<=gridEnd){days.push(toDateStr(cur));cur=addDays(cur,1);}
+  while(cur<=gridFriEnd){
+    const dow=cur.getDay();
+    if(dow>=1&&dow<=5) days.push(toDateStr(cur));
+    cur=addDays(cur,1);
+  }
 
-  const SERVICE_DOT_COLORS: Record<string,string>={
-    clim:"bg-sky-400",pac:"bg-violet-400",chauffe_eau:"bg-orange-400",
-    pv:"bg-yellow-400",vmc:"bg-teal-400",autre:"bg-slate-400",
-  };
+  // Group by ISO week for headers
+  const weeks:{weekNum:number;days:string[]}[]=[];
+  for(const d of days){
+    const wn=getISOWeek(new Date(d+"T00:00:00"));
+    const last=weeks[weeks.length-1];
+    if(last?.weekNum===wn) last.days.push(d);
+    else weeks.push({weekNum:wn,days:[d]});
+  }
+
+  const LABEL_W=176;
+  const DAY_W=32;
+  const colTemplate=`${LABEL_W}px repeat(${days.length},${DAY_W}px)`;
+  const DOW_SHORT=["","Lu","Ma","Me","Je","Ve"];
 
   return(
     <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
-      {/* Day of week headers */}
-      <div className="grid grid-cols-7 border-b border-border/60 bg-slate-50/80">
-        {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(d=>(
-          <div key={d} className="py-2 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r border-border/30 last:border-r-0">{d}</div>
-        ))}
-      </div>
-      {/* Day cells */}
-      <div className="grid grid-cols-7">
-        {days.map(d=>{
-          const isCurrentMonth=new Date(d+"T00:00:00").getMonth()===month;
-          const isToday=d===today;
-          const daySlots=slots.filter(s=>s.slotDate===d);
-          const dotMap=new Map<string,number>();
-          daySlots.forEach(s=>{const k=s.projectServiceType??"autre";dotMap.set(k,(dotMap.get(k)??0)+1);});
-          return(
-            <button key={d} onClick={()=>onDayClick(d)}
-              className={`relative border-r border-b border-border/20 last:border-r-0 p-1.5 min-h-[72px] text-left flex flex-col hover:bg-muted/40 transition-colors ${!isCurrentMonth?"opacity-40":""}`}>
-              <span className={`text-sm font-semibold leading-none mb-1.5 ${isToday?"h-6 w-6 rounded-full bg-primary text-white flex items-center justify-center text-xs":"text-foreground"}`}>
-                {new Date(d+"T00:00:00").getDate()}
-              </span>
-              <div className="flex flex-wrap gap-0.5">
-                {Array.from(dotMap.entries()).map(([type,count])=>(
-                  <div key={type} className={`${SERVICE_DOT_COLORS[type]??"bg-primary"} rounded-full px-1 py-0 text-white text-[9px] font-bold leading-4`}>{count}</div>
-                ))}
+      <div className="overflow-x-auto">
+        {/* Week headers */}
+        <div className="border-b border-border/40 bg-slate-50/80" style={{display:"grid",gridTemplateColumns:colTemplate}}>
+          <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Technicien</div>
+          {weeks.map(w=>(
+            <div key={w.weekNum} style={{gridColumn:`span ${w.days.length}`}}
+              className="border-l-2 border-slate-200 py-1.5 text-center">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Sem.{w.weekNum}</span>
+            </div>
+          ))}
+        </div>
+        {/* Day headers */}
+        <div className="border-b border-border/60 bg-slate-50/60" style={{display:"grid",gridTemplateColumns:colTemplate}}>
+          <div className="px-3 py-1.5">
+            <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{MONTHS_FR[month]} {year}</span>
+          </div>
+          {days.map(d=>{
+            const date=new Date(d+"T00:00:00");
+            const isCurrentMonth=date.getMonth()===month;
+            const isToday=d===today;
+            return(
+              <div key={d} className={`border-l border-slate-200 flex flex-col items-center py-1 ${isToday?"bg-primary/8":""}`}>
+                <span className="text-[8px] font-medium text-muted-foreground/50 leading-none">{DOW_SHORT[date.getDay()]}</span>
+                <span className={`text-[11px] font-bold leading-snug ${isToday?"text-primary":isCurrentMonth?"text-foreground":"text-muted-foreground/40"}`}>
+                  {date.getDate()}
+                </span>
               </div>
-            </button>
+            );
+          })}
+        </div>
+        {/* Tech rows */}
+        {technicians.length===0&&<div className="py-16 text-center text-sm text-muted-foreground">Aucun technicien actif.</div>}
+        {technicians.map(tech=>{
+          const isExp=expandedTechs.has(tech.id);
+          const techSlots=slots.filter(s=>s.technicianId===tech.id);
+          const projKeys=isExp?Array.from(new Set(
+            techSlots.map(s=>s.projectId?`p:${s.projectId}`:`f:${s.freeClientName??""}`)
+          )):[];
+
+          return(
+            <div key={tech.id} className="border-b border-slate-200 last:border-b-0">
+              {/* Main tech row */}
+              <div style={{display:"grid",gridTemplateColumns:colTemplate}}
+                className={`${isExp?"bg-primary/5":"hover:bg-slate-50/60"} transition-colors`}>
+                <div className="flex items-center gap-2 px-3 py-2 border-r border-border/40">
+                  <button onClick={()=>toggleTech(tech.id)}
+                    className="h-4 w-4 rounded flex items-center justify-center hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors shrink-0">
+                    {isExp?<ChevronDown className="h-3 w-3"/>:<ChevronRightIcon className="h-3 w-3"/>}
+                  </button>
+                  <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+                    {tech.firstName[0]}{tech.lastName[0]}
+                  </div>
+                  <p className="text-sm font-semibold text-foreground truncate">{tech.firstName} {tech.lastName}</p>
+                </div>
+                {days.map(d=>{
+                  const isToday=d===today;
+                  const date=new Date(d+"T00:00:00");
+                  const isCurrentMonth=date.getMonth()===month;
+                  const daySlots=isExp?[]:techSlots.filter(s=>s.slotDate===d);
+                  return(
+                    <div key={d}
+                      className={`border-l border-slate-100 py-1 px-0.5 flex flex-col gap-0.5 min-h-[40px] ${isToday?"bg-primary/[0.03]":""}${!isCurrentMonth?" opacity-50 bg-slate-50/40":""}`}>
+                      {daySlots.map(s=>{
+                        const{bgClass,bgStyle}=slotBgStyle(s);
+                        return(
+                          <Tooltip key={s.id} delayDuration={300}>
+                            <TooltipTrigger asChild>
+                              <button onClick={()=>onClickSlot(s)}
+                                className={`w-full h-3 rounded-sm ${bgClass} hover:brightness-110 transition-all shrink-0 shadow-sm`}
+                                style={bgStyle}/>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="flex flex-col gap-0.5">
+                              <p className="font-semibold text-xs">{slotLabel(s)??"Sans chantier"}</p>
+                              <p className="text-[11px] opacity-70">{s.startTime}–{s.endTime}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Sub-rows per project/client when expanded */}
+              {isExp&&projKeys.map(key=>{
+                const keySlots=techSlots.filter(s=>
+                  key.startsWith("p:")?s.projectId===Number(key.slice(2)):s.freeClientName===(key==="f:"?null:key.slice(2))
+                );
+                const firstSlot=keySlots[0];
+                const label=firstSlot?(slotLabel(firstSlot)??"Sans chantier"):"Sans chantier";
+                const{bgClass:lbc,bgStyle:lbs}=firstSlot?slotBgStyle(firstSlot):{bgClass:"bg-slate-400",bgStyle:undefined as React.CSSProperties|undefined};
+                return(
+                  <div key={key} style={{display:"grid",gridTemplateColumns:colTemplate}}
+                    className="border-t border-border/10">
+                    <div className="flex items-center gap-2 pl-12 pr-3 py-1.5 border-r border-border/20 bg-white">
+                      <div className={`h-5 w-5 rounded-full ${lbc} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}
+                        style={lbs}>
+                        {label.slice(0,2).toUpperCase()}
+                      </div>
+                      <span className="text-[11px] font-medium text-foreground/80 truncate">{label}</span>
+                    </div>
+                    {days.map(d=>{
+                      const isToday=d===today;
+                      const cSlots=keySlots.filter(s=>s.slotDate===d);
+                      return(
+                        <div key={d}
+                          className={`border-l border-slate-50 py-1 px-0.5 flex flex-col gap-0.5 min-h-[32px] bg-white ${isToday?"bg-primary/[0.015]":""}`}>
+                          {cSlots.map(s=>{
+                            const{bgClass:bc,bgStyle:bs}=slotBgStyle(s);
+                            return(
+                              <Tooltip key={s.id} delayDuration={300}>
+                                <TooltipTrigger asChild>
+                                  <button onClick={()=>onClickSlot(s)}
+                                    className={`w-full h-2.5 rounded-sm ${bc} hover:brightness-110 transition-all shrink-0`}
+                                    style={bs}/>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="flex flex-col gap-0.5">
+                                  <p className="font-semibold text-xs">{slotLabel(s)??"Sans chantier"}</p>
+                                  <p className="text-[11px] opacity-70">{s.startTime}–{s.endTime}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           );
         })}
       </div>
