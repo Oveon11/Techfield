@@ -301,6 +301,19 @@ export default function PlanningPage() {
 
 type SlotWithLane = Slot & {lane:number;totalLanes:number};
 
+/** Résout les chevauchements : repositionne ns au bord le plus proche d'un slot bloquant */
+function snapToFreeSlot(ns: number, dur: number, others: {startMin:number;endMin:number}[]): number {
+  let cur = ns;
+  for (let iter = 0; iter < others.length + 1; iter++) {
+    const blocking = others.find(o => cur < o.endMin && cur + dur > o.startMin);
+    if (!blocking) break;
+    const snapAfter  = Math.min(blocking.endMin, H_END*60 - dur);
+    const snapBefore = Math.max(blocking.startMin - dur, H_START*60);
+    cur = Math.abs(cur - snapAfter) <= Math.abs(cur - snapBefore) ? snapAfter : snapBefore;
+  }
+  return cur;
+}
+
 function computeLanes(daySlots: Slot[]): SlotWithLane[] {
   const sorted = [...daySlots].sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
   const laneEnds: number[] = [];
@@ -340,12 +353,14 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   const today = toDateStr(new Date());
 
   // Drag / resize
-  const dragRef  = useRef<{id:number;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number}|null>(null);
-  const resizeRef = useRef<{id:number;date:string;origStart:number;origEnd:number;dayColRef:Element|null;mouseX:number;edge:"start"|"end"}|null>(null);
+  const dragRef  = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number}|null>(null);
+  const resizeRef = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;dayColRef:Element|null;mouseX:number;edge:"start"|"end"}|null>(null);
   const [draggingId,setDraggingId]=useState<number|null>(null);
-  // preview positions during drag (minutes)
   const [preview,setPreview]=useState<Record<number,{start:number;end:number}>>({});
   const dayColRefs = useRef<Record<string,HTMLDivElement|null>>({});
+  // ref vers les slots courants pour y accéder dans onMouseMove sans le mettre en dépendance
+  const slotsRef = useRef(slots);
+  useEffect(()=>{ slotsRef.current = slots; },[slots]);
 
   const clearInteraction = useCallback(()=>{
     if(dragRef.current){
@@ -370,26 +385,44 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
   const onMouseMove = useCallback((e:MouseEvent)=>{
     if(dragRef.current){
-      const {id,origStart,origEnd,dayColRef}=dragRef.current;
+      const {id,technicianId,origStart,origEnd,dayColRef,date}=dragRef.current;
       if(!dayColRef)return;
       const rect=dayColRef.getBoundingClientRect();
       const dx=e.clientX-dragRef.current.mouseX;
       const dm=Math.round(dx/rect.width*H_TOTAL*60/15)*15;
       const dur=origEnd-origStart;
-      const ns=Math.max(H_START*60,Math.min(origStart+dm,H_END*60-dur));
+      let ns=Math.max(H_START*60,Math.min(origStart+dm,H_END*60-dur));
+      // Anti-chevauchement : snap au bord du slot bloquant
+      const others=slotsRef.current
+        .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
+        .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
+      ns=snapToFreeSlot(ns,dur,others);
       setPreview(p=>({...p,[id]:{start:ns,end:ns+dur}}));
     }
     if(resizeRef.current){
-      const {id,origStart,origEnd,dayColRef,edge}=resizeRef.current;
+      const {id,technicianId,origStart,origEnd,dayColRef,edge,date}=resizeRef.current;
       if(!dayColRef)return;
       const rect=dayColRef.getBoundingClientRect();
       const dx=e.clientX-resizeRef.current.mouseX;
       const dm=Math.round(dx/rect.width*H_TOTAL*60/15)*15;
-      setPreview(p=>({
-        ...p,[id]:edge==="end"
-          ?{start:origStart,end:Math.max(origStart+15,Math.min(origEnd+dm,H_END*60))}
-          :{start:Math.min(origEnd-15,Math.max(origStart+dm,H_START*60)),end:origEnd},
-      }));
+      const others=slotsRef.current
+        .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
+        .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
+      if(edge==="end"){
+        let newEnd=Math.max(origStart+15,Math.min(origEnd+dm,H_END*60));
+        // Clampe à la fin : ne peut pas dépasser le début du slot suivant
+        for(const o of others){
+          if(o.startMin>=origStart&&newEnd>o.startMin) newEnd=o.startMin;
+        }
+        setPreview(p=>({...p,[id]:{start:origStart,end:newEnd}}));
+      }else{
+        let newStart=Math.min(origEnd-15,Math.max(origStart+dm,H_START*60));
+        // Clampe au début : ne peut pas remonter avant la fin du slot précédent
+        for(const o of others){
+          if(o.endMin<=origEnd&&newStart<o.endMin) newStart=o.endMin;
+        }
+        setPreview(p=>({...p,[id]:{start:newStart,end:origEnd}}));
+      }
     }
   },[]);
 
@@ -435,13 +468,20 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       </div>
 
       {/* ── Hour ruler ── */}
-      <div className="border-b border-border/40 bg-white" style={{display:"grid",gridTemplateColumns:colTemplate}}>
-        <div/>
+      <div className="border-b border-border/50 bg-slate-50/70" style={{display:"grid",gridTemplateColumns:colTemplate}}>
+        <div className="px-3 flex items-end pb-1.5"><span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Horaires</span></div>
         {dayColumns.map(d=>(
-          <div key={d} className="border-l border-border/40 relative h-6 overflow-hidden">
+          <div key={d} className="border-l border-border/40 relative h-8">
+            {/* Tick marks aux graduations intermédiaires */}
+            {Array.from({length:H_TOTAL+1},(_,i)=>(
+              (i % 3 === 0 && i > 0 && i < H_TOTAL) ? (
+                <div key={`tick-${i}`} className="absolute top-0 h-3 border-l border-border/35 pointer-events-none" style={{left:`${i/H_TOTAL*100}%`}}/>
+              ) : null
+            ))}
+            {/* Labels */}
             {Array.from({length:H_TOTAL+1},(_,i)=>(
               (i % 3 === 0 || i === H_TOTAL) ? (
-                <span key={i} className="absolute top-1 text-[9px] font-medium text-muted-foreground" style={rulerLabelStyle(i)}>
+                <span key={i} className="absolute bottom-1.5 text-[10px] font-semibold text-slate-400 tracking-tight" style={rulerLabelStyle(i)}>
                   {(H_START+i).toString().padStart(2,"0")}h
                 </span>
               ) : null
@@ -475,10 +515,11 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                 <div key={d} ref={el=>{dayColRefs.current[`${tech.id}-${d}`]=el;}}
                   style={{height:rowH}}
                   className={`relative border-l border-border/30 ${isToday?"bg-primary/[0.025]":""}`}>
-                  {/* Hour lines */}
-                  {Array.from({length:H_TOTAL-1},(_,i)=>(
-                    <div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}} className="absolute top-0 bottom-0 border-l border-border/15 pointer-events-none"/>
-                  ))}
+                  {/* Hour lines — graduation (toutes les 3h) plus visible */}
+                  {Array.from({length:H_TOTAL-1},(_,i)=>{
+                    const isGrad=(i+1)%3===0;
+                    return <div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}} className={`absolute top-0 bottom-0 border-l ${isGrad?"border-border/30":"border-border/10"} pointer-events-none`}/>;
+                  })}
                   {/* Slots */}
                   {daySlots.map(slot=>{
                     const pv=preview[slot.id];
@@ -504,7 +545,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                             onMouseDown={canManage?e=>{
                               e.preventDefault();
                               const colEl=dayColRefs.current[`${tech.id}-${d}`];
-                              dragRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX};
+                              dragRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX};
                               setDraggingId(slot.id);
                             }:undefined}
                           >
@@ -524,8 +565,8 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                             </div>
                             {canManage&&(
                               <>
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
-                                <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
+                                <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
+                                <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
                               </>
                             )}
                           </div>
