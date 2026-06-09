@@ -160,6 +160,7 @@ export default function PlanningPage() {
   },[inv]);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [quickCreate, setQuickCreate] = useState<{techId:number;date:string;start:string;end:string}|null>(null);
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
   const [editSlot,   setEditSlot]   = useState<Slot|null>(null);
   const [deleteSlot, setDeleteSlot] = useState<Slot|null>(null);
@@ -288,6 +289,7 @@ export default function PlanningPage() {
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
+            onCellClick={(techId,date,start,end)=>setQuickCreate({techId,date,start,end})}
             onDayClick={d=>{setSelDay(d);setView("jour");}}
           />
         ) : view==="jour" ? (
@@ -297,6 +299,7 @@ export default function PlanningPage() {
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
+            onCellClick={(techId,date,start,end)=>setQuickCreate({techId,date,start,end})}
           />
         ) : (
           <MonthView slots={slots} monthRef={monthRef}
@@ -304,9 +307,15 @@ export default function PlanningPage() {
           />
         )}
 
-        {createOpen&&(
-          <SlotFormDialog open onClose={()=>setCreateOpen(false)} technicians={technicians} projects={projects}
-            existingSlots={slots} defaultDate={selDay}
+        {(createOpen||quickCreate!==null)&&(
+          <SlotFormDialog open
+            onClose={()=>{setCreateOpen(false);setQuickCreate(null);}}
+            technicians={technicians} projects={projects}
+            existingSlots={slots}
+            defaultDate={quickCreate?.date??selDay}
+            defaultTechId={quickCreate?.techId}
+            defaultStartTime={quickCreate?.start}
+            defaultEndTime={quickCreate?.end}
             onSave={handleSaveCreate} saving={createMut.isPending}/>
         )}
         {editSlot&&(
@@ -397,10 +406,11 @@ type GridProps = {
   canManage:boolean; zoom:number;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
+  onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
 };
 
 // Shared timeline grid — percentage-based, fits parent width
-function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove}:GridProps){
+function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 148;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
@@ -620,7 +630,14 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
               return(
                 <div key={d} ref={el=>{dayColRefs.current[`${tech.id}-${d}`]=el;}}
                   style={{height:rowH}}
-                  className={`relative border-l-2 border-slate-200 ${isToday?"bg-primary/[0.025]":""}`}>
+                  className={`relative border-l-2 border-slate-200 ${isToday?"bg-primary/[0.025]":""} ${canManage&&onCellClick?"cursor-crosshair":""}`}
+                  onClick={canManage&&onCellClick?e=>{
+                    const rect=e.currentTarget.getBoundingClientRect();
+                    const rawMin=Math.round((e.clientX-rect.left)/rect.width*H_TOTAL*60/15)*15+H_START*60;
+                    const s=Math.max(H_START*60,Math.min(rawMin,H_END*60-60));
+                    const en=Math.min(s+120,H_END*60);
+                    onCellClick(tech.id,d,minToTime(s),minToTime(en));
+                  }:undefined}>
                   {/* Hour lines — graduation (toutes les 3h) plus visible */}
                   {Array.from({length:H_TOTAL-1},(_,i)=>{
                     const isGrad=(i+1)%3===0;
@@ -672,9 +689,9 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                           <div
                             style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
                             className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
-                            onClick={()=>!isInteracting&&onClickSlot(slot)}
+                            onClick={e=>{e.stopPropagation();if(!isInteracting)onClickSlot(slot);}}
                             onMouseDown={canManage?e=>{
-                              e.preventDefault();
+                              e.preventDefault();e.stopPropagation();
                               const colEl=dayColRefs.current[`${tech.id}-${d}`];
                               dragRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX,targetTechId:slot.technicianId,targetDate:d};
                               setDraggingId(slot.id);
@@ -779,19 +796,20 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
+function WeekView({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
   void onDayClick;
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick}/>;
 }
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove}:{
+function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove,onCellClick}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
+  onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
 }){
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick}/>;
 }
 
 // ─── Month View ───────────────────────────────────────────────────────────────
@@ -990,20 +1008,21 @@ type SlotFormRow = {
   discountNote?:string|null;changeNote?:string|null;
 };
 
-function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initialSlot,defaultDate,onSave,saving}:{
+function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initialSlot,defaultDate,defaultTechId,defaultStartTime,defaultEndTime,onSave,saving}:{
   open:boolean;onClose:()=>void;
   technicians:Technician[];projects:{id:number;name:string;reference:string|null}[];
   existingSlots:Slot[];initialSlot?:Slot|null;defaultDate?:string;
+  defaultTechId?:number;defaultStartTime?:string;defaultEndTime?:string;
   onSave:(rows:SlotFormRow[])=>void;saving:boolean;
 }){
   const [selectedTechIds,setSelectedTechIds]=useState<Set<number>>(
-    new Set(initialSlot?[initialSlot.technicianId]:technicians.slice(0,1).map(t=>t.id))
+    new Set(initialSlot?[initialSlot.technicianId]:defaultTechId?[defaultTechId]:technicians.slice(0,1).map(t=>t.id))
   );
   const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):"none");
   const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??"");
   const [date,setDate]=useState(initialSlot?.slotDate??defaultDate??toDateStr(new Date()));
-  const [startTime,setStartTime]=useState(initialSlot?.startTime??"08:00");
-  const [endTime,setEndTime]=useState(initialSlot?.endTime??"12:00");
+  const [startTime,setStartTime]=useState(initialSlot?.startTime??defaultStartTime??"08:00");
+  const [endTime,setEndTime]=useState(initialSlot?.endTime??defaultEndTime??"10:00");
   const [notes,setNotes]=useState(initialSlot?.notes??"");
   const [status,setStatus]=useState<SlotFormRow["status"]>((initialSlot?.status as SlotFormRow["status"])??"scheduled");
   const [hasLocChange,setHasLocChange]=useState(initialSlot?.hasLocationChange??false);
