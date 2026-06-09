@@ -161,6 +161,7 @@ const createProjectSchema = z.object({
   plannedEndDate: z.string().optional().nullable(),
   quoteNumber: z.string().optional().nullable(),
   technicianIds: z.array(z.number().int().positive()).default([]),
+  color: z.string().max(7).optional().nullable(),
 });
 
 const updateProjectSchema = createProjectSchema.extend({
@@ -183,6 +184,7 @@ const createProjectWithClientSchema = z.object({
   plannedEndDate: z.string().optional().nullable(),
   quoteNumber: z.string().optional().nullable(),
   technicianIds: z.array(z.number().int().positive()).default([]),
+  color: z.string().max(7).optional().nullable(),
 });
 
 const createContractSchema = z.object({
@@ -850,6 +852,7 @@ export const managementRouter = router({
           siteAddress: null as string | null,
           sitePostalCode: null as string | null,
           siteCity: null as string | null,
+          color: null as string | null,
           technicianIds: assignmentRows.map(item => item.technicianId),
           assignedTechnicianNames: assignmentRows.map(item => `${item.firstName} ${item.lastName}`.trim()),
         };
@@ -875,6 +878,7 @@ export const managementRouter = router({
           quoteNumber: input.quoteNumber ?? null,
           technicianIds: input.technicianIds,
           createdByUserId: ctx.user.id,
+          color: input.color ?? null,
         });
         return { success: true, id: result.id, reference };
       }
@@ -943,6 +947,7 @@ export const managementRouter = router({
         quoteNumber: input.quoteNumber ?? null,
         technicianIds: input.technicianIds,
         createdByUserId: ctx.user.id,
+        color: input.color ?? null,
       });
       return { success: true, id: result.id, reference, clientId: clientResult.id };
     }),
@@ -965,6 +970,7 @@ export const managementRouter = router({
           quoteNumber: input.quoteNumber ?? null,
           technicianIds: input.technicianIds,
           updatedByUserId: ctx.user.id,
+          color: input.color ?? null,
         });
         return { success: true };
       }

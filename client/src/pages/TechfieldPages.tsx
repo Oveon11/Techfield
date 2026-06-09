@@ -822,6 +822,7 @@ type ProjectFormState = {
   plannedEndDate: string;
   quoteNumber: string;
   technicianIds: number[];
+  color: string;
 };
 
 const INITIAL_PROJECT_FORM: ProjectFormState = {
@@ -839,6 +840,7 @@ const INITIAL_PROJECT_FORM: ProjectFormState = {
   plannedEndDate: "",
   quoteNumber: "",
   technicianIds: [],
+  color: "",
 };
 
 type CreateWithClientFormState = {
@@ -857,6 +859,7 @@ type CreateWithClientFormState = {
   plannedEndDate: string;
   quoteNumber: string;
   technicianIds: number[];
+  color: string;
 };
 
 const INITIAL_CREATE_FORM: CreateWithClientFormState = {
@@ -875,7 +878,15 @@ const INITIAL_CREATE_FORM: CreateWithClientFormState = {
   plannedEndDate: "",
   quoteNumber: "",
   technicianIds: [],
+  color: "",
 };
+
+const PROJECT_COLORS = [
+  "#ef4444","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6",
+  "#06b6d4","#0ea5e9","#3b82f6","#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899",
+  "#be123c","#7f1d1d","#78350f","#365314","#14532d","#134e4a","#1e3a8a","#4c1d95",
+  "#64748b","#475569","#1e293b","#292524","#0c4a6e","#fbbf24",
+];
 
 const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: "planifie", label: "Planifié" },
@@ -1004,6 +1015,37 @@ function ProjectFormFields({
           </div>
         </div>
       ) : null}
+      <div className="space-y-2 md:col-span-2">
+        <Label>Couleur planning</Label>
+        <div className="rounded-xl border border-border/60 p-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              title="Aucune couleur"
+              onClick={() => setForm(prev => ({ ...prev, color: "" }))}
+              className={`h-7 w-7 rounded-full border-2 transition-all flex items-center justify-center bg-white ${!form.color ? "border-primary ring-2 ring-primary/30 scale-110" : "border-border hover:border-slate-400"}`}
+            >
+              <span className="text-[10px] text-muted-foreground font-bold">✕</span>
+            </button>
+            {PROJECT_COLORS.map(c => (
+              <button
+                key={c}
+                type="button"
+                title={c}
+                onClick={() => setForm(prev => ({ ...prev, color: c }))}
+                style={{ backgroundColor: c }}
+                className={`h-7 w-7 rounded-full border-2 transition-all ${form.color === c ? "border-white ring-2 ring-offset-1 scale-110" : "border-transparent hover:scale-105"}`}
+              />
+            ))}
+          </div>
+          {form.color && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-4 w-4 rounded-full border border-border/60" style={{ backgroundColor: form.color }} />
+              <span className="text-xs text-muted-foreground font-mono">{form.color}</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1084,6 +1126,7 @@ export function ProjectsPage() {
       plannedEndDate: detail.plannedEndDate ? new Date(detail.plannedEndDate).toISOString().slice(0, 10) : "",
       quoteNumber: detail.quoteNumber ?? "",
       technicianIds: detail.technicianIds ?? [],
+      color: detail.color ?? "",
     });
   }, [projectDetailQuery.data, editingId]);
 
@@ -1204,6 +1247,37 @@ export function ProjectsPage() {
                         </div>
                       </div>
                     ) : null}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Couleur planning</Label>
+                      <div className="rounded-xl border border-border/60 p-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            title="Aucune couleur"
+                            onClick={() => setCreateForm(prev => ({ ...prev, color: "" }))}
+                            className={`h-7 w-7 rounded-full border-2 transition-all flex items-center justify-center bg-white ${!createForm.color ? "border-primary ring-2 ring-primary/30 scale-110" : "border-border hover:border-slate-400"}`}
+                          >
+                            <span className="text-[10px] text-muted-foreground font-bold">✕</span>
+                          </button>
+                          {PROJECT_COLORS.map(c => (
+                            <button
+                              key={c}
+                              type="button"
+                              title={c}
+                              onClick={() => setCreateForm(prev => ({ ...prev, color: c }))}
+                              style={{ backgroundColor: c }}
+                              className={`h-7 w-7 rounded-full border-2 transition-all ${createForm.color === c ? "border-white ring-2 ring-offset-1 scale-110" : "border-transparent hover:scale-105"}`}
+                            />
+                          ))}
+                        </div>
+                        {createForm.color && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="h-4 w-4 rounded-full border border-border/60" style={{ backgroundColor: createForm.color }} />
+                            <span className="text-xs text-muted-foreground font-mono">{createForm.color}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   </div>
                   <DialogFooter className="pt-2 border-t border-border/60">
@@ -1216,6 +1290,7 @@ export function ProjectsPage() {
                         startDate: createForm.startDate || null,
                         plannedEndDate: createForm.plannedEndDate || null,
                         quoteNumber: createForm.quoteNumber || null,
+                        color: createForm.color || null,
                       })}
                       disabled={createWithClient.isPending || !createForm.clientName.trim() || !createForm.title.trim()}
                     >
@@ -1306,6 +1381,7 @@ export function ProjectsPage() {
                               clientId: Number(editForm.clientId),
                               siteId: editForm.siteId ? Number(editForm.siteId) : null,
                               quoteNumber: editForm.quoteNumber || null,
+                              color: editForm.color || null,
                             })}
                             disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
                           >
@@ -2003,6 +2079,7 @@ export function ProjectDetailPage() {
       plannedEndDate: detail.plannedEndDate ? new Date(detail.plannedEndDate).toISOString().slice(0, 10) : "",
       quoteNumber: detail.quoteNumber ?? "",
       technicianIds: detail.technicianIds ?? [],
+      color: detail.color ?? "",
     });
   }, [projectQuery.data]);
 

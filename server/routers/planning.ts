@@ -39,6 +39,7 @@ function mapSlot(r: Record<string, unknown>) {
     projectRef: r.project_ref as string | null,
     projectAddress: r.project_address as string | null,
     projectServiceType: r.project_service_type as string | null,
+    projectColor: r.project_color as string | null,
     freeClientName: r.free_client_name as string | null,
     clientName: r.client_name as string | null,
     clientPhone: r.client_phone as string | null,
@@ -92,7 +93,7 @@ export const planningRouter = router({
       const [techRes, projRes] = await Promise.all([
         supabase.from("technicians").select("id, first_name, last_name").in("id", techIds),
         projectIds.length
-          ? supabase.from("projects").select("id, title, reference, service_type, client_id, sites(address_line_1, city)").in("id", projectIds)
+          ? supabase.from("projects").select("id, title, reference, service_type, color, client_id, sites(address_line_1, city)").in("id", projectIds)
           : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       ]);
 
@@ -120,6 +121,7 @@ export const planningRouter = router({
             name: p.title,
             ref: p.reference,
             serviceType: p.service_type,
+            color: (p.color as string | null) ?? null,
             address: site ? [site.address_line_1, site.city].filter(Boolean).join(", ") : "",
             clientName: cl?.company_name ?? null,
             clientPhone: cl?.phone ?? null,
@@ -138,6 +140,7 @@ export const planningRouter = router({
           project_ref: proj?.ref ?? null,
           project_address: proj?.address ?? null,
           project_service_type: proj?.serviceType ?? null,
+          project_color: proj?.color ?? null,
           client_name: proj?.clientName ?? null,
           client_phone: proj?.clientPhone ?? null,
           client_address: proj?.clientAddress ?? null,

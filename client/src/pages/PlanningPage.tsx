@@ -69,7 +69,14 @@ const SERVICE_COLORS: Record<string,string> = {
 const SERVICE_LABELS: Record<string,string> = {
   clim:"Clim",pac:"PAC",chauffe_eau:"Chauffe-eau",pv:"PV",vmc:"VMC",autre:"Autre",
 };
+const SERVICE_EMOJI: Record<string,string> = {
+  clim:"❄️",pac:"♨️",chauffe_eau:"🚿",pv:"☀️",vmc:"💨",autre:"🔧",
+};
 function slotColor(serviceType: string|null) { return SERVICE_COLORS[serviceType??""]??"bg-primary"; }
+function slotBgStyle(slot: {projectColor:string|null;projectServiceType:string|null}): {bgClass:string;bgStyle:React.CSSProperties|undefined} {
+  if (slot.projectColor) return {bgClass:"",bgStyle:{backgroundColor:slot.projectColor}};
+  return {bgClass:slotColor(slot.projectServiceType),bgStyle:undefined};
+}
 function slotLabel(slot: Slot) { return slot.projectName ?? slot.freeClientName ?? slot.clientName ?? null; }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -77,7 +84,7 @@ function slotLabel(slot: Slot) { return slot.projectName ?? slot.freeClientName 
 type Slot = {
   id:number; technicianId:number; technicianName:string|null;
   projectId:number|null; projectName:string|null; projectRef:string|null;
-  projectAddress:string|null; projectServiceType:string|null;
+  projectAddress:string|null; projectServiceType:string|null; projectColor:string|null;
   freeClientName:string|null;
   clientName:string|null; clientPhone:string|null; clientAddress:string|null;
   slotDate:string; startTime:string; endTime:string; notes:string|null; status:string;
@@ -656,10 +663,10 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     if(!src||( src.technicianId===tech.id&&src.slotDate===d))return null;
                     const lp=(dragTarget.start-H_START*60)/(H_TOTAL*60)*100;
                     const wp=(dragTarget.end-dragTarget.start)/(H_TOTAL*60)*100;
-                    const c=slotColor(src.projectServiceType);
+                    const {bgClass:gc,bgStyle:gs}=slotBgStyle(src);
                     return(
-                      <div key="ghost" style={{left:`${lp}%`,width:`max(${wp}%,2px)`,top:3,height:LANE_H-6}}
-                        className={`absolute rounded-lg ${c} opacity-75 text-white text-[10px] shadow-xl ring-2 ring-white/60 z-30 pointer-events-none px-1.5 py-1 flex flex-col`}>
+                      <div key="ghost" style={{left:`${lp}%`,width:`max(${wp}%,2px)`,top:3,height:LANE_H-6,...(gs??{})}}
+                        className={`absolute rounded-lg ${gc} opacity-75 text-white text-[10px] shadow-xl ring-2 ring-white/60 z-30 pointer-events-none px-1.5 py-1 flex flex-col`}>
                         <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
                           <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{minToTime(dragTarget.start)} – {minToTime(dragTarget.end)}</span>
                         </div>
@@ -675,19 +682,20 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     const widthPct=(end-start)/(H_TOTAL*60)*100;
                     const top=slot.lane*LANE_H+3;
                     const height=LANE_H-6;
-                    const color=slotColor(slot.projectServiceType);
+                    const {bgClass,bgStyle}=slotBgStyle(slot);
                     const label=slotLabel(slot)??"Sans chantier";
                     const isDragging=draggingId===slot.id;
                     const isInteracting=!!pv;
                     const displayStart=minToTime(start);
                     const displayEnd=minToTime(end);
                     const isCrossDragging=isDragging&&dragTarget&&(dragTarget.techId!==slot.technicianId||dragTarget.date!==slot.slotDate);
+                    const emoji=slot.projectServiceType?SERVICE_EMOJI[slot.projectServiceType]??null:null;
                     return(
                       <Tooltip key={slot.id} delayDuration={draggingId!==null?999999:400} open={draggingId!==null?false:undefined}>
                         <TooltipTrigger asChild>
                           <div
-                            style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
-                            className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
+                            style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height,...(bgStyle??{})}}
+                            className={`absolute rounded-lg ${bgClass} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
                             onClick={e=>{e.stopPropagation();if(!isInteracting)onClickSlot(slot);}}
                             onMouseDown={canManage?e=>{
                               e.preventDefault();e.stopPropagation();
@@ -702,7 +710,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                                 <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{displayStart} – {displayEnd}</span>
                               </div>
                             )}
-                            <div className="font-semibold leading-tight truncate">{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
+                            <div className="font-semibold leading-tight truncate">{emoji&&<span className="mr-0.5">{emoji}</span>}{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
                             {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className="text-white/85 text-[9px] leading-tight truncate">{slot.projectName}</div>}
                             {(zoom>=0.8||isInteracting)&&<div className="text-white/70 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
                             <div className="flex gap-0.5 mt-auto">
@@ -751,7 +759,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                           <div key={slot.id} onClick={()=>onClickSlot(slot)}
                             className="rounded-xl border border-border/50 bg-white hover:bg-muted/20 cursor-pointer transition-colors overflow-hidden shadow-sm">
                             {/* Barre couleur en haut */}
-                            <div className={`h-1 w-full ${slotColor(slot.projectServiceType)}`}/>
+                            {(()=>{const{bgClass,bgStyle}=slotBgStyle(slot);return<div className={`h-1 w-full ${bgClass}`} style={bgStyle}/>;})()}
                             <div className="p-2.5 flex flex-col gap-1.5">
                               {/* Horaire */}
                               <div className="flex items-center justify-between gap-1">

@@ -337,7 +337,7 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
 
   let query = supabase
     .from("projects")
-    .select("id, reference, title, status, progress_percent, service_type, start_date, planned_end_date, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
+    .select("id, reference, title, status, progress_percent, service_type, color, start_date, planned_end_date, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
     .order("created_at", { ascending: false });
 
   if (scope.user.role === "client" && scope.clientContactProfile) {
@@ -354,6 +354,7 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
     return {
       ...mapProjectRow(item),
       serviceType: (item.service_type as string | undefined) ?? "autre",
+      color: (item.color as string | null) ?? null,
       startDate: (item.start_date as string | null) ?? null,
       plannedEndDate: (item.planned_end_date as string | null) ?? null,
     };
@@ -393,6 +394,7 @@ function mapProjectDetailRow(row: Record<string, unknown>) {
     actualEndDate: (row.actual_end_date as string | null | undefined) ?? null,
     actualEndAt: (row.actual_end_at as string | null | undefined) ?? null,
     quoteNumber: (row.quote_number as string | null | undefined) ?? null,
+    color: (row.color as string | null | undefined) ?? null,
     createdAt: row.created_at ? new Date(String(row.created_at)) : new Date(0),
     updatedAt: row.updated_at ? new Date(String(row.updated_at)) : new Date(0),
     clientName: String(client?.company_name ?? ""),
@@ -411,7 +413,7 @@ export async function getSupabaseProjectById(scope: AccessScope, projectId: numb
 
   let query = supabase
     .from("projects")
-    .select("id, reference, client_id, site_id, title, service_type, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, actual_end_at, quote_number, created_at, updated_at, clients(company_name, phone), sites(site_name, address_line_1, postal_code, city), project_assignments(technician_id, technicians(first_name, last_name))")
+    .select("id, reference, client_id, site_id, title, service_type, color, description, status, progress_percent, estimated_hours, actual_hours, budget_amount, start_date, planned_end_date, actual_end_date, actual_end_at, quote_number, created_at, updated_at, clients(company_name, phone), sites(site_name, address_line_1, postal_code, city), project_assignments(technician_id, technicians(first_name, last_name))")
     .eq("id", projectId);
 
   if (scope.user.role === "client" && scope.clientContactProfile) {
@@ -448,6 +450,7 @@ type CreateProjectInput = {
   quoteNumber: string | null;
   technicianIds: number[];
   createdByUserId: number;
+  color?: string | null;
 };
 
 export async function createSupabaseProject(input: CreateProjectInput) {
@@ -471,6 +474,7 @@ export async function createSupabaseProject(input: CreateProjectInput) {
       planned_end_date: input.plannedEndDate,
       quote_number: input.quoteNumber,
       created_by_user_id: input.createdByUserId,
+      color: input.color ?? null,
     })
     .select("id")
     .single();
@@ -516,6 +520,7 @@ type UpdateProjectInput = {
   quoteNumber: string | null;
   technicianIds: number[];
   updatedByUserId: number;
+  color?: string | null;
 };
 
 export async function updateSupabaseProject(input: UpdateProjectInput) {
@@ -537,6 +542,7 @@ export async function updateSupabaseProject(input: UpdateProjectInput) {
       start_date: input.startDate,
       planned_end_date: input.plannedEndDate,
       quote_number: input.quoteNumber,
+      color: input.color ?? null,
     })
     .eq("id", input.projectId);
 
