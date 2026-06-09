@@ -423,6 +423,13 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   const [focusedTech,setFocusedTech]=useState<number|null>(null);
   const toggleFocus=(id:number)=>setFocusedTech(p=>p===id?null:id);
 
+  // Heure courante en minutes — mise à jour toutes les 30 s
+  const [nowMin,setNowMin]=useState(()=>{const n=new Date();return n.getHours()*60+n.getMinutes();});
+  useEffect(()=>{
+    const id=setInterval(()=>{const n=new Date();setNowMin(n.getHours()*60+n.getMinutes());},30_000);
+    return()=>clearInterval(id);
+  },[]);
+
   const clearInteraction = useCallback(()=>{
     if(dragRef.current){
       const {id,technicianId,date,origSStr,origEStr,targetTechId,targetDate}=dragRef.current;
@@ -553,7 +560,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
           const date=new Date(d+"T00:00:00");
           const isToday=d===today;
           return(
-            <div key={d} className={`border-l border-border/40 px-2 py-2 flex flex-col items-center ${isToday?"bg-primary/5":""}`}>
+            <div key={d} className={`border-l-2 border-slate-200 px-2 py-2 flex flex-col items-center ${isToday?"bg-primary/5":""}`}>
               <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{WEEK_DAYS_FR[i%5]}</span>
               <span className={`text-lg font-bold leading-none mt-0.5 ${isToday?"text-primary":"text-foreground"}`}>{date.getDate()}</span>
             </div>
@@ -565,7 +572,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       <div className="border-b border-border/50 bg-slate-50/70" style={{display:"grid",gridTemplateColumns:colTemplate}}>
         <div className="px-3 flex items-end pb-1.5"><span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Horaires</span></div>
         {dayColumns.map(d=>(
-          <div key={d} className="border-l border-border/40 relative h-8">
+          <div key={d} className="border-l-2 border-slate-200 relative h-8">
             {/* Tick marks aux graduations intermédiaires */}
             {Array.from({length:H_TOTAL+1},(_,i)=>(
               (i % 3 === 0 && i > 0 && i < H_TOTAL) ? (
@@ -613,12 +620,20 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
               return(
                 <div key={d} ref={el=>{dayColRefs.current[`${tech.id}-${d}`]=el;}}
                   style={{height:rowH}}
-                  className={`relative border-l border-border/30 ${isToday?"bg-primary/[0.025]":""}`}>
+                  className={`relative border-l-2 border-slate-200 ${isToday?"bg-primary/[0.025]":""}`}>
                   {/* Hour lines — graduation (toutes les 3h) plus visible */}
                   {Array.from({length:H_TOTAL-1},(_,i)=>{
                     const isGrad=(i+1)%3===0;
                     return <div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}} className={`absolute top-0 bottom-0 border-l ${isGrad?"border-border/30":"border-border/10"} pointer-events-none`}/>;
                   })}
+                  {/* Ligne heure courante */}
+                  {isToday&&nowMin>=H_START*60&&nowMin<=H_END*60&&(
+                    <div className="absolute top-0 bottom-0 z-25 pointer-events-none"
+                      style={{left:`${(nowMin-H_START*60)/(H_TOTAL*60)*100}%`}}>
+                      <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-rose-500 shadow shadow-rose-300"/>
+                      <div className="absolute top-1.5 bottom-0 left-1/2 -translate-x-1/2 w-0.5 bg-rose-500/70"/>
+                    </div>
+                  )}
                   {/* Ghost slot cross-technicien/cross-jour */}
                   {draggingId!==null&&dragTarget?.techId===tech.id&&dragTarget?.date===d&&(()=>{
                     const src=slotsRef.current.find(s=>s.id===draggingId);
