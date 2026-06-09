@@ -491,13 +491,16 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     const color=slotColor(slot.projectServiceType);
                     const label=slotLabel(slot)??"Sans chantier";
                     const isDragging=draggingId===slot.id;
+                    const isInteracting=!!pv;
+                    const displayStart=minToTime(start);
+                    const displayEnd=minToTime(end);
                     return(
-                      <Tooltip key={slot.id} delayDuration={400}>
+                      <Tooltip key={slot.id} delayDuration={isInteracting?999999:400} open={isInteracting?false:undefined}>
                         <TooltipTrigger asChild>
                           <div
                             style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
                             className={`absolute rounded-lg ${color} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
-                            onClick={()=>onClickSlot(slot)}
+                            onClick={()=>!isInteracting&&onClickSlot(slot)}
                             onMouseDown={canManage?e=>{
                               e.preventDefault();
                               const colEl=dayColRefs.current[`${tech.id}-${d}`];
@@ -505,8 +508,14 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                               setDraggingId(slot.id);
                             }:undefined}
                           >
+                            {/* Overlay heures pendant drag/resize */}
+                            {isInteracting&&(
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10 pointer-events-none rounded-lg">
+                                <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{displayStart} – {displayEnd}</span>
+                              </div>
+                            )}
                             <div className="font-semibold leading-tight truncate">{label}</div>
-                            {zoom>=0.8&&<div className="text-white/80 text-[9px] leading-tight">{slot.startTime}–{slot.endTime}</div>}
+                            {(zoom>=0.8||isInteracting)&&<div className="text-white/80 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
                             {zoom>=1&&slot.clientName&&slot.projectName&&<div className="text-white/70 text-[9px] leading-tight truncate">{slot.clientName}</div>}
                             <div className="flex gap-0.5 mt-auto">
                               {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
