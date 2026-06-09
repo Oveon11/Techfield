@@ -23,7 +23,7 @@ import { useLocation } from "wouter";
 function useRoleMatrix() {
   const auth = trpc.auth.me.useQuery();
   const matrix = trpc.security.roleMatrix.useQuery(undefined, { enabled: !!auth.data });
-  return { permissions: matrix.data?.permissions, role: matrix.data?.role ?? auth.data?.role };
+  return { permissions: matrix.data?.permissions, role: matrix.data?.role ?? auth.data?.role, userId: (auth.data as {openId?:string}|null)?.openId ?? null };
 }
 
 function getMondayOf(d: Date): Date {
@@ -98,7 +98,7 @@ type ViewMode = "semaine"|"jour"|"mois";
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const { permissions } = useRoleMatrix();
+  const { permissions, userId } = useRoleMatrix();
   const canManage = !!permissions?.manageInterventions;
   const [, setLocation] = useLocation();
 
@@ -108,13 +108,30 @@ export default function PlanningPage() {
   const [monthRef, setMonthRef]   = useState<Date>(() => getMonthStart(new Date()));
   const [zoom, setZoom]           = useState(1);
   const [hiddenTechs, setHiddenTechs] = useState<Set<number>>(new Set());
-  const [techOrder, setTechOrder] = useState<number[]>(() => {
-    try { return JSON.parse(localStorage.getItem("tf-planning-tech-order") ?? "[]") as number[]; }
-    catch { return []; }
-  });
+  const [techOrder, setTechOrder] = useState<number[]>([]);
+  const prefsLoaded = useRef(false);
+  // Charger les préférences dès que l'userId est connu (une seule fois)
   useEffect(()=>{
-    localStorage.setItem("tf-planning-tech-order", JSON.stringify(techOrder));
-  },[techOrder]);
+    if(!userId||prefsLoaded.current) return;
+    prefsLoaded.current=true;
+    try {
+      const hidden=JSON.parse(localStorage.getItem(`tf-planning-hidden-${userId}`)??"[]") as number[];
+      if(hidden.length>0) setHiddenTechs(new Set(hidden));
+    } catch {}
+    try {
+      const order=JSON.parse(localStorage.getItem(`tf-planning-order-${userId}`)??"[]") as number[];
+      if(order.length>0) setTechOrder(order);
+    } catch {}
+  },[userId]);
+  // Sauvegarder à chaque changement (clé par utilisateur)
+  useEffect(()=>{
+    if(!userId) return;
+    localStorage.setItem(`tf-planning-hidden-${userId}`,JSON.stringify(Array.from(hiddenTechs)));
+  },[userId,hiddenTechs]);
+  useEffect(()=>{
+    if(!userId) return;
+    localStorage.setItem(`tf-planning-order-${userId}`,JSON.stringify(techOrder));
+  },[userId,techOrder]);
 
   // Compute weekStart from view context
   const weekStart = view === "jour"
@@ -129,7 +146,7 @@ export default function PlanningPage() {
   const {data:slots=[],isLoading:slotsLoading} = trpc.planning.listWeek.useQuery({weekStart});
   const {data:technicians=[],isLoading:techLoading} = trpc.planning.listTechnicians.useQuery();
   const {data:projectsRaw=[]} = trpc.management.projects.list.useQuery();
-  const projects = projectsRaw.map(p=>({id:p.id,name:p.title,reference:p.reference}));
+  const projects = projectsRaw.map(p=>({id:p.id,name:p.title,reference:p.reference,clientName:p.clientName??null}));
 
   const inv = useCallback(() => utils.planning.listWeek.invalidate({weekStart}),[utils,weekStart]);
   const createMut   = trpc.planning.create.useMutation({onSuccess:()=>{inv();toast.success("Créneau créé");},onError:e=>toast.error(e.message)});
@@ -1117,7 +1134,7 @@ type SlotFormRow = {
 
 function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initialSlot,defaultDate,defaultTechId,defaultStartTime,defaultEndTime,onSave,saving}:{
   open:boolean;onClose:()=>void;
-  technicians:Technician[];projects:{id:number;name:string;reference:string|null}[];
+  technicians:Technician[];projects:{id:number;name:string;reference:string|null;clientName:string|null}[];
   existingSlots:Slot[];initialSlot?:Slot|null;defaultDate?:string;
   defaultTechId?:number;defaultStartTime?:string;defaultEndTime?:string;
   onSave:(rows:SlotFormRow[])=>void;saving:boolean;
@@ -1197,7 +1214,11 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
               <SelectTrigger><SelectValue placeholder="Aucun"/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">— Aucun chantier —</SelectItem>
-                {projects.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.name}{p.reference?` (${p.reference})`:""}</SelectItem>)}
+                {projects.map(p=>(
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.clientName?`${p.clientName} · `:""}{p.name}{p.reference?` (${p.reference})`:""}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
