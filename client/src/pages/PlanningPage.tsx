@@ -479,7 +479,7 @@ type GridProps = {
 // Shared timeline grid — percentage-based, fits parent width
 function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
-  const LABEL_W = 148;
+  const LABEL_W = 176;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
   // zoom>1 → largeur fixe en px, déclenche le scroll horizontal
   const COL_W = zoom > 1.05 ? Math.round(150 * zoom) : undefined;
@@ -710,19 +710,25 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       </div>
 
       {/* ── Tech rows ── */}
-      {(focusedTech!==null ? technicians.filter(t=>t.id===focusedTech) : technicians).map((tech,rowIdx)=>{
+      {technicians.map((tech,rowIdx)=>{
         const ml=maxLanes(tech.id);
         const rowH=ml*LANE_H+8;
         const isExp=focusedTech===tech.id;
         const isRowDragging=rowDraggingId===tech.id;
         const showDropBefore=rowDropIdx===rowIdx&&rowDraggingId!==null&&rowDraggingId!==tech.id;
+        // Clients uniques de la semaine pour ce technicien (mode focus)
+        const weekClients=isExp ? Array.from(new Set(
+          slots.filter(s=>s.technicianId===tech.id)
+            .map(s=>s.freeClientName??s.clientName??s.projectName)
+            .filter((c):c is string=>!!c)
+        )) : [];
         return(
           <div key={tech.id} ref={el=>{rowRefs.current[tech.id]=el;}}
             className={`border-b-2 border-slate-200 last:border-b-0 relative ${isRowDragging?"opacity-40":""}`}>
           {showDropBefore&&<div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-50"/>}
           <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
-            <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 bg-slate-50/70 border-r border-border/40">
+            <div style={{height:rowH}} className={`flex items-start gap-2 px-3 py-2 border-r border-border/40 transition-colors ${isExp?"bg-primary/5":"bg-slate-50/70"}`}>
               {onReorder&&(
                 <div
                   className="mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0 transition-colors"
@@ -738,9 +744,20 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
               <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                 {tech.firstName[0]}{tech.lastName[0]}
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground leading-tight truncate">{tech.name}</p>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="text-sm font-semibold text-foreground leading-tight truncate">{tech.firstName} {tech.lastName}</p>
+                {isExp && weekClients.length>0 ? (
+                  <div className="flex flex-col gap-px mt-0.5">
+                    {weekClients.slice(0,4).map((c,i)=>(
+                      <span key={i} className="text-[9px] font-medium text-primary/80 leading-snug truncate">{c}</span>
+                    ))}
+                    {weekClients.length>4&&<span className="text-[8px] text-muted-foreground">+{weekClients.length-4} autres</span>}
+                  </div>
+                ) : isExp ? (
+                  <p className="text-[9px] text-muted-foreground">Aucune affectation</p>
+                ) : (
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
+                )}
               </div>
             </div>
             {/* Day cells */}
@@ -826,6 +843,11 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                             <div className="font-semibold leading-tight truncate">{emoji&&<span className="mr-0.5">{emoji}</span>}{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
                             {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className="text-white/85 text-[9px] leading-tight truncate">{slot.projectName}</div>}
                             {(zoom>=0.8||isInteracting)&&<div className="text-white/70 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
+                            {isExp&&!isInteracting&&(
+                              <div className="mt-auto self-start rounded-full bg-black/35 px-1.5 py-0.5 text-[8px] font-bold text-white leading-none tracking-tight">
+                                {displayStart}–{displayEnd}
+                              </div>
+                            )}
                             <div className="flex gap-0.5 mt-auto">
                               {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
                               {slot.hasTimeChange&&<Clock className="h-2 w-2 text-white/80"/>}

@@ -22,20 +22,40 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
+const SIDEBAR_OPEN_KEY = "tf-sidebar-open";
 const DEFAULT_WIDTH = 292;
 const MIN_WIDTH = 220;
 const MAX_WIDTH = 420;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const isPlanning = location === "/planning";
+
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
+
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (isPlanning) return false;
+    const saved = localStorage.getItem(SIDEBAR_OPEN_KEY);
+    return saved !== null ? saved === "true" : true;
+  });
+
   const { loading, user } = useAuth();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (isPlanning) setSidebarOpen(false);
+  }, [isPlanning]);
+
+  const handleSidebarOpenChange = (open: boolean) => {
+    setSidebarOpen(open);
+    if (!isPlanning) localStorage.setItem(SIDEBAR_OPEN_KEY, String(open));
+  };
 
   if (loading) {
     return <DashboardLayoutSkeleton />;
@@ -47,6 +67,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider
+      open={sidebarOpen}
+      onOpenChange={handleSidebarOpenChange}
       style={
         {
           "--sidebar-width": `${sidebarWidth}px`,
