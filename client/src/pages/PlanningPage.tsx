@@ -13,7 +13,7 @@ import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, MapPin, Clock, Tag,
   AlertTriangle, ChevronDown, ChevronRight as ChevronRightIcon, Layers,
   X, Phone, User, Building2, FileText, ExternalLink, Pencil, Trash2,
-  ZoomIn, ZoomOut, ArrowUpRight,
+  ZoomIn, ZoomOut, ArrowUpRight, GripVertical, EyeOff,
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -107,6 +107,14 @@ export default function PlanningPage() {
   const [selDay, setSelDay]       = useState<string>(() => toDateStr(new Date()));
   const [monthRef, setMonthRef]   = useState<Date>(() => getMonthStart(new Date()));
   const [zoom, setZoom]           = useState(1);
+  const [hiddenTechs, setHiddenTechs] = useState<Set<number>>(new Set());
+  const [techOrder, setTechOrder] = useState<number[]>(() => {
+    try { return JSON.parse(localStorage.getItem("tf-planning-tech-order") ?? "[]") as number[]; }
+    catch { return []; }
+  });
+  useEffect(()=>{
+    localStorage.setItem("tf-planning-tech-order", JSON.stringify(techOrder));
+  },[techOrder]);
 
   // Compute weekStart from view context
   const weekStart = view === "jour"
@@ -237,6 +245,14 @@ export default function PlanningPage() {
     setEditSlot(null);
   };
 
+  // Techniciens triés + filtrés selon l'ordre et la visibilité
+  const sortedVisibleTechs = React.useMemo(()=>{
+    const orderMap = new Map(techOrder.map((id,i)=>[id,i]));
+    return [...technicians]
+      .sort((a,b)=>(orderMap.has(a.id)?orderMap.get(a.id)!:9999)-(orderMap.has(b.id)?orderMap.get(b.id)!:9999))
+      .filter(t=>!hiddenTechs.has(t.id));
+  },[technicians,techOrder,hiddenTechs]);
+
   const isLoading = slotsLoading || techLoading;
 
   const VIEW_BUTTONS: {key:ViewMode;label:string}[] = [
@@ -287,10 +303,34 @@ export default function PlanningPage() {
           </div>
         </div>
 
+        {/* ── Filtre techniciens ── */}
+        {!isLoading && technicians.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {technicians.map(t=>{
+              const hidden = hiddenTechs.has(t.id);
+              return(
+                <button key={t.id}
+                  onClick={()=>setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;})}
+                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15"}`}
+                >
+                  {hidden && <EyeOff className="h-3 w-3"/>}
+                  {t.firstName[0]}{t.lastName[0]} · {t.firstName}
+                </button>
+              );
+            })}
+            {hiddenTechs.size>0&&(
+              <button onClick={()=>setHiddenTechs(new Set())}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors">
+                Tout afficher
+              </button>
+            )}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
-          <WeekView slots={slots} technicians={technicians} dayColumns={dayDates} canManage={canManage} zoom={zoom}
+          <WeekView slots={slots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -298,15 +338,17 @@ export default function PlanningPage() {
             }}
             onCellClick={(techId,date,start,end)=>setQuickCreate({techId,date,start,end})}
             onDayClick={d=>{setSelDay(d);setView("jour");}}
+            onReorder={setTechOrder}
           />
         ) : view==="jour" ? (
-          <DayView slots={slots} technicians={technicians} selDay={selDay} canManage={canManage} zoom={zoom}
+          <DayView slots={slots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
             onCellClick={(techId,date,start,end)=>setQuickCreate({techId,date,start,end})}
+            onReorder={setTechOrder}
           />
         ) : (
           <MonthView slots={slots} monthRef={monthRef}
@@ -414,10 +456,11 @@ type GridProps = {
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
+  onReorder?:(orderedIds:number[])=>void;
 };
 
 // Shared timeline grid — percentage-based, fits parent width
-function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick}:GridProps){
+function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 148;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
@@ -435,6 +478,17 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   // ref vers les slots courants pour y accéder dans onMouseMove sans le mettre en dépendance
   const slotsRef = useRef(slots);
   useEffect(()=>{ slotsRef.current = slots; },[slots]);
+  // ref vers les technicians + onReorder pour le drag de rangée (évite les dépendances stales)
+  const techniciansRef = useRef(technicians);
+  useEffect(()=>{ techniciansRef.current = technicians; },[technicians]);
+  const onReorderRef = useRef(onReorder);
+  useEffect(()=>{ onReorderRef.current = onReorder; },[onReorder]);
+  // Drag de rangée (réordonnancement des techniciens)
+  const rowDragRef = useRef<{techId:number}|null>(null);
+  const rowDropIdxRef = useRef<number|null>(null);
+  const rowRefs = useRef<Record<number,HTMLDivElement|null>>({});
+  const [rowDraggingId, setRowDraggingId] = useState<number|null>(null);
+  const [rowDropIdx, setRowDropIdx] = useState<number|null>(null);
 
   // Focus technicien (un seul à la fois — masque les autres)
   const [focusedTech,setFocusedTech]=useState<number|null>(null);
@@ -448,6 +502,23 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   },[]);
 
   const clearInteraction = useCallback(()=>{
+    if(rowDragRef.current){
+      const {techId}=rowDragRef.current;
+      const dropIdx=rowDropIdxRef.current;
+      const techs=techniciansRef.current;
+      if(dropIdx!==null&&onReorderRef.current){
+        const fromIdx=techs.findIndex(t=>t.id===techId);
+        if(fromIdx!==-1){
+          const newOrder=techs.map(t=>t.id);
+          newOrder.splice(fromIdx,1);
+          const insertAt=dropIdx>fromIdx?dropIdx-1:dropIdx;
+          newOrder.splice(insertAt,0,techId);
+          if(newOrder.join()!==techs.map(t=>t.id).join()) onReorderRef.current(newOrder);
+        }
+      }
+      rowDragRef.current=null;rowDropIdxRef.current=null;setRowDraggingId(null);setRowDropIdx(null);
+      return;
+    }
     if(dragRef.current){
       const {id,technicianId,date,origSStr,origEStr,targetTechId,targetDate}=dragRef.current;
       const pv=preview[id];
@@ -470,6 +541,19 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   },[preview,slots,onMove]);
 
   const onMouseMove = useCallback((e:MouseEvent)=>{
+    if(rowDragRef.current){
+      const techs=techniciansRef.current;
+      let dropIdx=techs.length;
+      for(let i=0;i<techs.length;i++){
+        const el=rowRefs.current[techs[i].id];
+        if(!el)continue;
+        const r=el.getBoundingClientRect();
+        if(e.clientY<r.top+r.height/2){dropIdx=i;break;}
+      }
+      rowDropIdxRef.current=dropIdx;
+      setRowDropIdx(dropIdx);
+      return;
+    }
     if(dragRef.current){
       const {id,technicianId,origStart,origEnd,date,mouseX}=dragRef.current;
       const dur=origEnd-origStart;
@@ -609,15 +693,27 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       </div>
 
       {/* ── Tech rows ── */}
-      {(focusedTech!==null ? technicians.filter(t=>t.id===focusedTech) : technicians).map(tech=>{
+      {(focusedTech!==null ? technicians.filter(t=>t.id===focusedTech) : technicians).map((tech,rowIdx)=>{
         const ml=maxLanes(tech.id);
         const rowH=ml*LANE_H+8;
         const isExp=focusedTech===tech.id;
+        const isRowDragging=rowDraggingId===tech.id;
+        const showDropBefore=rowDropIdx===rowIdx&&rowDraggingId!==null&&rowDraggingId!==tech.id;
         return(
-          <div key={tech.id} className="border-b-2 border-slate-200 last:border-b-0">
+          <div key={tech.id} ref={el=>{rowRefs.current[tech.id]=el;}}
+            className={`border-b-2 border-slate-200 last:border-b-0 relative ${isRowDragging?"opacity-40":""}`}>
+          {showDropBefore&&<div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-50"/>}
           <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
             <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 bg-slate-50/70 border-r border-border/40">
+              {onReorder&&(
+                <div
+                  className="mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0 transition-colors"
+                  onMouseDown={e=>{e.preventDefault();e.stopPropagation();rowDragRef.current={techId:tech.id};setRowDraggingId(tech.id);setRowDropIdx(rowIdx);rowDropIdxRef.current=rowIdx;}}
+                >
+                  <GripVertical className="h-4 w-4"/>
+                </div>
+              )}
               <button onClick={()=>toggleFocus(tech.id)}
                 className="mt-0.5 h-4 w-4 shrink-0 rounded flex items-center justify-center hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors">
                 {isExp?<ChevronDown className="h-3 w-3"/>:<ChevronRightIcon className="h-3 w-3"/>}
@@ -795,6 +891,9 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
           </div>
         );
       })}
+      {rowDropIdx===technicians.length&&rowDraggingId!==null&&(
+        <div className="h-0.5 bg-primary mx-0"/>
+      )}
       {technicians.length===0&&<div className="py-16 text-center text-sm text-muted-foreground">Aucun technicien actif.</div>}
       </div>{/* end overflow-x-auto */}
     </div>
@@ -803,20 +902,21 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
+function WeekView({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
   void onDayClick;
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove,onCellClick}:{
+function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
+  onReorder?:(orderedIds:number[])=>void;
 }){
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Month View ───────────────────────────────────────────────────────────────

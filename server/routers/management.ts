@@ -873,12 +873,12 @@ export const managementRouter = router({
           estimatedHours: input.estimatedHours,
           actualHours: input.actualHours,
           budgetAmount: input.budgetAmount,
-          startDate: input.startDate ?? null,
-          plannedEndDate: input.plannedEndDate ?? null,
-          quoteNumber: input.quoteNumber ?? null,
+          startDate: input.startDate || null,
+          plannedEndDate: input.plannedEndDate || null,
+          quoteNumber: input.quoteNumber || null,
           technicianIds: input.technicianIds,
           createdByUserId: ctx.user.id,
-          color: input.color ?? null,
+          color: input.color || null,
         });
         return { success: true, id: result.id, reference };
       }
@@ -898,8 +898,8 @@ export const managementRouter = router({
           estimatedHours: input.estimatedHours,
           actualHours: input.actualHours,
           budgetAmount: input.budgetAmount,
-          startDate: input.startDate ?? null,
-          plannedEndDate: input.plannedEndDate ?? null,
+          startDate: input.startDate || null,
+          plannedEndDate: input.plannedEndDate || null,
           createdByUserId: ctx.user.id,
         } as any)
         .$returningId();
@@ -942,12 +942,12 @@ export const managementRouter = router({
         estimatedHours: input.estimatedHours,
         actualHours: input.actualHours,
         budgetAmount: input.budgetAmount,
-        startDate: input.startDate ?? null,
-        plannedEndDate: input.plannedEndDate ?? null,
-        quoteNumber: input.quoteNumber ?? null,
+        startDate: input.startDate || null,
+        plannedEndDate: input.plannedEndDate || null,
+        quoteNumber: input.quoteNumber || null,
         technicianIds: input.technicianIds,
         createdByUserId: ctx.user.id,
-        color: input.color ?? null,
+        color: input.color || null,
       });
       return { success: true, id: result.id, reference, clientId: clientResult.id };
     }),
@@ -965,12 +965,12 @@ export const managementRouter = router({
           estimatedHours: input.estimatedHours,
           actualHours: input.actualHours,
           budgetAmount: input.budgetAmount,
-          startDate: input.startDate ?? null,
-          plannedEndDate: input.plannedEndDate ?? null,
-          quoteNumber: input.quoteNumber ?? null,
+          startDate: input.startDate || null,
+          plannedEndDate: input.plannedEndDate || null,
+          quoteNumber: input.quoteNumber || null,
           technicianIds: input.technicianIds,
           updatedByUserId: ctx.user.id,
-          color: input.color ?? null,
+          color: input.color || null,
         });
         return { success: true };
       }
