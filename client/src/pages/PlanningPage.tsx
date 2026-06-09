@@ -645,10 +645,9 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                   })}
                   {/* Ligne heure courante */}
                   {isToday&&nowMin>=H_START*60&&nowMin<=H_END*60&&(
-                    <div className="absolute top-0 bottom-0 z-25 pointer-events-none"
+                    <div className="absolute top-0 bottom-0 z-25 pointer-events-none -translate-x-px"
                       style={{left:`${(nowMin-H_START*60)/(H_TOTAL*60)*100}%`}}>
-                      <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-rose-500 shadow shadow-rose-300"/>
-                      <div className="absolute top-1.5 bottom-0 left-1/2 -translate-x-1/2 w-0.5 bg-rose-500/70"/>
+                      <div className="absolute inset-y-0 w-px bg-rose-500/80"/>
                     </div>
                   )}
                   {/* Ghost slot cross-technicien/cross-jour */}
