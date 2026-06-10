@@ -216,6 +216,23 @@ export default function PlanningPage() {
     return()=>clearInterval(id);
   },[inv]);
 
+  const touchStartX = useRef<number|null>(null);
+  const touchStartY = useRef<number|null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) goNext(); else goPrev();
+    }
+  };
+
   const [createOpen, setCreateOpen] = useState(false);
   const [quickCreate, setQuickCreate] = useState<{techId:number;date:string;start:string;end:string}|null>(null);
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
@@ -398,6 +415,7 @@ export default function PlanningPage() {
           )}
         </div>
 
+        <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
@@ -424,6 +442,7 @@ export default function PlanningPage() {
         ) : (
           <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={approvedLeaves} onClickSlot={setDetailSlot}/>
         )}
+        </div>
 
         {(createOpen||quickCreate!==null)&&(
           <SlotFormDialog open
