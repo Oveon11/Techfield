@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { ImportCalendarDialog, type ImportedEvent } from "./ImportCalendarDialog";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -244,6 +245,8 @@ export default function PlanningPage() {
   };
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting]   = useState(false);
   const [quickCreate, setQuickCreate] = useState<{techId:number;date:string;start:string;end:string}|null>(null);
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
   const [editSlot,   setEditSlot]   = useState<Slot|null>(null);
@@ -313,6 +316,34 @@ export default function PlanningPage() {
     }
     rows.forEach(r => updateMut.mutate({id:editSlot.id,...r}));
     setEditSlot(null);
+  };
+
+  const handleImportCalendar = async (events: ImportedEvent[], technicianId: number) => {
+    setImporting(true);
+    let ok = 0, skip = 0;
+    for (const ev of events) {
+      try {
+        await createMut.mutateAsync({
+          technicianId,
+          slotDate: ev.date,
+          startTime: ev.startTime,
+          endTime: ev.endTime,
+          freeClientName: ev.summary,
+          projectId: null,
+          notes: [ev.description, ev.location].filter(Boolean).join(" — ") || null,
+          status: "scheduled",
+          hasLocationChange: false,
+          hasTimeChange: false,
+          hasDiscount: false,
+        });
+        ok++;
+      } catch { skip++; }
+    }
+    setImporting(false);
+    setImportOpen(false);
+    if (ok > 0) toast.success(`${ok} créneau${ok > 1 ? "x" : ""} importé${ok > 1 ? "s" : ""} depuis Google Calendar.`);
+    if (skip > 0) toast.error(`${skip} événement${skip > 1 ? "s" : ""} ignoré${skip > 1 ? "s" : ""} (conflit ou erreur).`);
+    inv();
   };
 
   // Techniciens triés + filtrés selon l'ordre et la visibilité
@@ -465,9 +496,14 @@ export default function PlanningPage() {
               </div>
             )}
             {canManage&&(
-              <Button size="sm" onClick={()=>setCreateOpen(true)} className="gap-1.5 shadow-sm">
-                <Plus className="h-4 w-4"/> Créer
-              </Button>
+              <>
+                <Button size="sm" variant="outline" onClick={()=>setImportOpen(true)} className="gap-1.5 shadow-sm" title="Importer Google Calendar">
+                  <CalendarDays className="h-4 w-4"/> <span className="hidden sm:inline">Importer</span>
+                </Button>
+                <Button size="sm" onClick={()=>setCreateOpen(true)} className="gap-1.5 shadow-sm">
+                  <Plus className="h-4 w-4"/> Créer
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -621,6 +657,14 @@ export default function PlanningPage() {
           </div>
         </>
       )}
+
+      <ImportCalendarDialog
+        open={importOpen}
+        onClose={()=>setImportOpen(false)}
+        technicians={technicians}
+        onImport={handleImportCalendar}
+        importing={importing}
+      />
     </DashboardLayout>
   );
 }
