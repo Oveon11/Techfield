@@ -18,6 +18,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { ImportCalendarDialog, type ImportedEvent } from "./ImportCalendarDialog";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ type Slot = {
   id:number; technicianId:number; technicianName:string|null;
   projectId:number|null; projectName:string|null; projectRef:string|null;
   projectAddress:string|null; projectServiceType:string|null; projectColor:string|null;
-  freeClientName:string|null; freeClientAddress:string|null; gcalEventUid:string|null;
+  freeClientName:string|null; freeClientAddress:string|null; freeClientPhone:string|null; gcalEventUid:string|null;
   clientName:string|null; clientPhone:string|null; clientAddress:string|null;
   slotDate:string; startTime:string; endTime:string; notes:string|null; status:string;
   hasLocationChange:boolean; hasTimeChange:boolean; hasDiscount:boolean;
@@ -345,38 +346,12 @@ export default function PlanningPage() {
   };
 
   const handleSaveCreate = (rows: SlotFormRow[]) => {
-    // Check overlap
-    for (const row of rows) {
-      const conflict = slots.find(s =>
-        s.technicianId === row.technicianId &&
-        s.slotDate === row.slotDate &&
-        slotsOverlap(row.startTime, row.endTime, s.startTime, s.endTime)
-      );
-      if (conflict) {
-        const tech = technicians.find(t=>t.id===row.technicianId);
-        toast.error(`Conflit pour ${tech?.name??""} : créneau existant ${conflict.startTime}–${conflict.endTime}`);
-        return;
-      }
-    }
     rows.forEach(r => createMut.mutate(r));
     setCreateOpen(false);
   };
 
   const handleSaveEdit = (rows: SlotFormRow[]) => {
     if (!editSlot) return;
-    for (const row of rows) {
-      const conflict = slots.find(s =>
-        s.id !== editSlot.id &&
-        s.technicianId === row.technicianId &&
-        s.slotDate === row.slotDate &&
-        slotsOverlap(row.startTime, row.endTime, s.startTime, s.endTime)
-      );
-      if (conflict) {
-        const tech = technicians.find(t=>t.id===row.technicianId);
-        toast.error(`Conflit pour ${tech?.name??""} : créneau existant ${conflict.startTime}–${conflict.endTime}`);
-        return;
-      }
-    }
     rows.forEach(r => updateMut.mutate({id:editSlot.id,...r}));
     setEditSlot(null);
   };
@@ -657,6 +632,16 @@ export default function PlanningPage() {
             onDuplicate={()=>{setDuplicateSource(detailSlot);setDetailSlot(null);}}
             onDelete={()=>{setDeleteSlot(detailSlot);setDetailSlot(null);}}
             onOpenProject={id=>{setDetailSlot(null);setLocation(`/chantiers/${id}`);}}
+            onCreateProject={()=>{
+              const s=detailSlot;
+              sessionStorage.setItem("tf-prefill-chantier",JSON.stringify({
+                clientName:s.freeClientName??"",
+                clientPhone:s.freeClientPhone??"",
+                clientAddress:s.freeClientAddress??"",
+              }));
+              setDetailSlot(null);
+              setLocation("/chantiers");
+            }}
             canManage={canManage}/>
         )}
         <AlertDialog open={!!deleteSlot} onOpenChange={o=>!o&&setDeleteSlot(null)}>
@@ -712,6 +697,12 @@ export default function PlanningPage() {
                             <p className="font-semibold text-sm truncate text-foreground">{slotLabel(s)??"Sans chantier"}</p>
                             <p className="text-xs text-muted-foreground truncate">{s.startTime}–{s.endTime}{(s.projectAddress||s.clientAddress)?` · ${s.projectAddress||s.clientAddress}`:""}</p>
                           </div>
+                          {s.technicianName&&(
+                            <div className="shrink-0 text-right">
+                              <p className="text-xs font-medium text-foreground truncate max-w-[80px]">{s.technicianName.split(" ")[0]}</p>
+                              <p className="text-xs text-muted-foreground">{Math.round((timeToMin(s.endTime)-timeToMin(s.startTime))/60*10)/10}h</p>
+                            </div>
+                          )}
                         </button>
                       );
                     })}
@@ -858,25 +849,7 @@ function snapToFreeSlot(ns: number, dur: number, others: {startMin:number;endMin
 }
 
 function computeLanes(daySlots: Slot[]): SlotWithLane[] {
-  const sorted = [...daySlots].sort((a,b)=>timeToMin(a.startTime)-timeToMin(b.startTime));
-  const laneEnds: number[] = [];
-  const result: SlotWithLane[] = sorted.map(s=>{
-    const start=timeToMin(s.startTime);const end=timeToMin(s.endTime);
-    let lane=laneEnds.findIndex(e=>e<=start);
-    if(lane===-1){lane=laneEnds.length;laneEnds.push(end);}else{laneEnds[lane]=end;}
-    return {...s,lane,totalLanes:0};
-  });
-  for(let i=0;i<result.length;i++){
-    const {startTime:aS,endTime:aE,technicianId:tid}=result[i];
-    let max=result[i].lane;
-    for(let j=0;j<result.length;j++){
-      if(i===j||result[j].technicianId!==tid)continue;
-      if(timeToMin(result[j].startTime)<timeToMin(aE)&&timeToMin(result[j].endTime)>timeToMin(aS))
-        max=Math.max(max,result[j].lane);
-    }
-    result[i].totalLanes=max+1;
-  }
-  return result;
+  return daySlots.map(s => ({ ...s, lane: 0, totalLanes: 1 }));
 }
 
 type ApprovedLeave = {technicianId:number;startDate:string;endDate:string};
@@ -1453,9 +1426,9 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
 
 // ─── Slot Detail Dialog ───────────────────────────────────────────────────────
 
-function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProject,canManage}:{
+function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProject,onCreateProject,canManage}:{
   slot:Slot;onClose:()=>void;onEdit:()=>void;onDuplicate:()=>void;onDelete:()=>void;
-  onOpenProject:(id:number)=>void;canManage:boolean;
+  onOpenProject:(id:number)=>void;onCreateProject:()=>void;canManage:boolean;
 }){
   const color=slotColor(slot.projectServiceType);
   const address=slot.projectAddress||slot.clientAddress;
@@ -1513,19 +1486,29 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
             </div>
           )}
 
-          {/* Adresse Google Calendar (créneau GCal sans client lié) */}
-          {slot.gcalEventUid&&slot.freeClientAddress&&!slot.clientAddress&&!slot.projectAddress&&(
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3 flex flex-col gap-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-1">📅 Adresse (Google Calendar)</p>
-              <div className="flex items-start gap-2">
-                <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5"/>
-                <div>
-                  <p className="text-sm text-foreground">{slot.freeClientAddress}</p>
-                  <a href={mapsUrl(slot.freeClientAddress)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-emerald-700 text-xs hover:underline mt-0.5">
-                    <ExternalLink className="h-3 w-3"/> Ouvrir dans Maps
-                  </a>
+          {/* Infos créneau libre (sans chantier associé) */}
+          {!slot.projectId&&(slot.freeClientAddress||slot.freeClientPhone)&&(
+            <div className="rounded-xl border border-sky-200 bg-sky-50/50 px-4 py-3 flex flex-col gap-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-sky-700 mb-1">
+                {slot.gcalEventUid ? "📅 Google Calendar" : "Contact"}
+              </p>
+              {slot.freeClientPhone&&(
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3.5 w-3.5 text-sky-600 shrink-0"/>
+                  <a href={`tel:${slot.freeClientPhone}`} className="text-sm text-primary hover:underline">{slot.freeClientPhone}</a>
                 </div>
-              </div>
+              )}
+              {slot.freeClientAddress&&(
+                <div className="flex items-start gap-2">
+                  <MapPin className="h-3.5 w-3.5 text-sky-600 shrink-0 mt-0.5"/>
+                  <div>
+                    <p className="text-sm text-foreground">{slot.freeClientAddress}</p>
+                    <a href={mapsUrl(slot.freeClientAddress)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sky-700 text-xs hover:underline mt-0.5">
+                      <ExternalLink className="h-3 w-3"/> Ouvrir dans Maps
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1593,6 +1576,11 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
             <Button variant="outline" size="sm" className="gap-1.5" onClick={onDuplicate}>
               <Layers className="h-3.5 w-3.5"/> Dupliquer
             </Button>
+            {!slot.projectId&&slot.freeClientName&&(
+              <Button variant="outline" size="sm" className="gap-1.5 text-primary border-primary/30 hover:bg-primary/5" onClick={onCreateProject}>
+                <Building2 className="h-3.5 w-3.5"/> Créer le chantier
+              </Button>
+            )}
             <Button size="sm" className="gap-1.5" onClick={onEdit}><Pencil className="h-3.5 w-3.5"/> Modifier</Button>
           </DialogFooter>
         )}
@@ -1604,8 +1592,9 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
 // ─── Slot Form Dialog ─────────────────────────────────────────────────────────
 
 type SlotFormRow = {
-  technicianId:number;projectId:number|null;freeClientName?:string|null;slotDate:string;
-  startTime:string;endTime:string;notes?:string|null;
+  technicianId:number;projectId:number|null;freeClientName?:string|null;
+  freeClientAddress?:string|null;freeClientPhone?:string|null;
+  slotDate:string;startTime:string;endTime:string;notes?:string|null;
   status:"scheduled"|"in_progress"|"completed"|"cancelled";
   hasLocationChange:boolean;hasTimeChange:boolean;hasDiscount:boolean;
   discountNote?:string|null;changeNote?:string|null;
@@ -1624,6 +1613,8 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
   );
   const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):src?.projectId?String(src.projectId):"none");
   const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??src?.freeClientName??"");
+  const [freeClientAddress,setFreeClientAddress]=useState(initialSlot?.freeClientAddress??src?.freeClientAddress??"");
+  const [freeClientPhone,setFreeClientPhone]=useState(initialSlot?.freeClientPhone??src?.freeClientPhone??"");
   const [date,setDate]=useState(initialSlot?.slotDate??defaultDate??toDateStr(new Date()));
   const [startTime,setStartTime]=useState(initialSlot?.startTime??defaultStartTime??"08:00");
   const [endTime,setEndTime]=useState(initialSlot?.endTime??defaultEndTime??"10:00");
@@ -1651,12 +1642,14 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
 
   const handleSave=()=>{
     if(conflicts.length>0){
-      toast.error(`Conflit horaire : ${conflicts[0].tech} a déjà un créneau ${conflicts[0].slot.startTime}–${conflicts[0].slot.endTime}`);
-      return;
+      toast.warning(`Conflit horaire : ${conflicts[0].tech} a déjà un créneau ${conflicts[0].slot.startTime}–${conflicts[0].slot.endTime}`);
     }
+    const isFree=projId==="none";
     const base:Omit<SlotFormRow,"technicianId">={
-      projectId:projId!=="none"?Number(projId):null,
-      freeClientName:projId==="none"&&freeClientName.trim()?freeClientName.trim():null,
+      projectId:isFree?null:Number(projId),
+      freeClientName:isFree&&freeClientName.trim()?freeClientName.trim():null,
+      freeClientAddress:isFree&&freeClientAddress.trim()?freeClientAddress.trim():null,
+      freeClientPhone:isFree&&freeClientPhone.trim()?freeClientPhone.trim():null,
       slotDate:date,startTime,endTime,notes:notes.trim()||null,status,
       hasLocationChange:hasLocChange,hasTimeChange,hasDiscount,
       discountNote:discountNote.trim()||null,changeNote:changeNote.trim()||null,
@@ -1704,9 +1697,20 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
           </div>
           {/* Nom client libre (si pas de chantier) */}
           {projId==="none"&&(
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Nom du client <span className="text-muted-foreground font-normal">(optionnel)</span></label>
-              <Input placeholder="Ex. Dupont, SARL Horizon…" value={freeClientName} onChange={e=>setFreeClientName(e.target.value)} maxLength={200}/>
+            <div className="flex flex-col gap-3 rounded-xl border border-border/60 px-4 py-3 bg-slate-50/50">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contact client</p>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Nom <span className="text-muted-foreground font-normal">(optionnel)</span></label>
+                <Input placeholder="Ex. Dupont, SARL Horizon…" value={freeClientName} onChange={e=>setFreeClientName(e.target.value)} maxLength={200}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Téléphone <span className="text-muted-foreground font-normal">(optionnel)</span></label>
+                <Input placeholder="06 00 00 00 00" type="tel" value={freeClientPhone} onChange={e=>setFreeClientPhone(e.target.value)} maxLength={50}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Adresse <span className="text-muted-foreground font-normal">(optionnel)</span></label>
+                <AddressAutocomplete value={freeClientAddress} onChange={setFreeClientAddress}/>
+              </div>
             </div>
           )}
           {/* Date + heures */}
@@ -1754,7 +1758,7 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
         </div>
         <DialogFooter className="gap-2 mt-2">
           <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button disabled={!canSubmit||saving||conflicts.length>0} onClick={handleSave}>
+          <Button disabled={!canSubmit||saving} onClick={handleSave}>
             {saving?"Enregistrement…":initialSlot?"Modifier":"Créer"}
           </Button>
         </DialogFooter>

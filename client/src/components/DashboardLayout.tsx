@@ -198,7 +198,7 @@ type DashboardLayoutContentProps = {
 function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar, setOpenMobile } = useSidebar();
+  const { state, toggleSidebar, setOpenMobile, setOpen } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -250,7 +250,10 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
 
   return (
     <>
-      <div className="relative" ref={sidebarRef}>
+      <div className="relative" ref={sidebarRef}
+        onMouseEnter={() => { if (isPlanning && isCollapsed) setOpen(true); }}
+        onMouseLeave={() => { if (isPlanning) setOpen(false); }}
+      >
         <Sidebar collapsible="icon" className="border-r-0 bg-[#0D1526] text-slate-50" disableTransition={isResizing}>
           <SidebarHeader className="h-16 justify-center border-b border-white/8 px-3">
             <div className="flex w-full items-center gap-3 px-1 transition-all">

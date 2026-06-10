@@ -86,6 +86,7 @@ import {
   listCongeForPlanning,
   updateTechnicianCalendarUrl,
   listGCalEventsForRange,
+  testGCalConnection,
 } from "../integrations/supabase/db/time-entries";
 import {
   createIntervention,
@@ -174,6 +175,8 @@ const createProjectSchema = z.object({
   quoteNumber: z.string().optional().nullable(),
   technicianIds: z.array(z.number().int().positive()).default([]),
   color: z.string().max(7).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  phone: z.string().max(50).optional().nullable(),
 });
 
 const updateProjectSchema = createProjectSchema.extend({
@@ -909,6 +912,8 @@ export const managementRouter = router({
           technicianIds: input.technicianIds,
           createdByUserId: ctx.user.id,
           color: input.color || null,
+          address: input.address || null,
+          phone: input.phone || null,
         });
         return { success: true, id: result.id, reference };
       }
@@ -1001,6 +1006,8 @@ export const managementRouter = router({
           technicianIds: input.technicianIds,
           updatedByUserId: ctx.user.id,
           color: input.color || null,
+          address: input.address || null,
+          phone: input.phone || null,
         });
         return { success: true };
       }
@@ -1885,6 +1892,14 @@ export const managementRouter = router({
       .query(async ({ ctx, input }) => {
         const scope = await getScope(ctx.user.openId);
         try { return await listGCalEventsForRange(scope, input.startDate, input.endDate); }
+        catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+      }),
+
+    testGCalConnection: adminProcedure
+      .input(z.object({ input: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try { return await testGCalConnection(scope, input.input); }
         catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
       }),
 

@@ -18,6 +18,8 @@ const slotSchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
   freeClientName: z.string().max(200).optional().nullable(),
+  freeClientAddress: z.string().max(500).optional().nullable(),
+  freeClientPhone: z.string().max(50).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled"),
   hasLocationChange: z.boolean().default(false),
@@ -43,6 +45,7 @@ function mapSlot(r: Record<string, unknown>) {
     projectColor: r.project_color as string | null,
     freeClientName: r.free_client_name as string | null,
     freeClientAddress: (r.free_client_address as string | null) ?? null,
+    freeClientPhone: (r.free_client_phone as string | null) ?? null,
     gcalEventUid: (r.gcal_event_uid as string | null) ?? null,
     clientName: r.client_name as string | null,
     clientPhone: r.client_phone as string | null,
@@ -74,7 +77,7 @@ async function fetchAndEnrichSlots(
 ) {
   const { data: raw, error } = await supabase
     .from("planning_slots")
-    .select("id, technician_id, project_id, free_client_name, free_client_address, gcal_event_uid, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
+    .select("id, technician_id, project_id, free_client_name, free_client_address, free_client_phone, gcal_event_uid, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
     .gte("slot_date", start)
     .lte("slot_date", end)
     .order("slot_date")
@@ -91,7 +94,7 @@ async function fetchAndEnrichSlots(
   const [techRes, projRes] = await Promise.all([
     supabase.from("technicians").select("id, first_name, last_name").in("id", techIds),
     projectIds.length
-      ? supabase.from("projects").select("id, title, reference, service_type, color, client_id, sites(address_line_1, city)").in("id", projectIds)
+      ? supabase.from("projects").select("id, title, reference, service_type, color, address, phone, client_id, sites(address_line_1, city)").in("id", projectIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
 
@@ -115,12 +118,14 @@ async function fetchAndEnrichSlots(
     projArr.map(p => {
       const cl = clientMap[p.client_id as number] as Record<string, unknown> | undefined;
       const site = p.sites as Record<string, unknown> | null;
+      const siteAddress = site ? [site.address_line_1, site.city].filter(Boolean).join(", ") : "";
       return [p.id, {
         name: p.title,
         ref: p.reference,
         serviceType: p.service_type,
         color: (p.color as string | null) ?? null,
-        address: site ? [site.address_line_1, site.city].filter(Boolean).join(", ") : "",
+        address: (p.address as string | null) || siteAddress || "",
+        phone: (p.phone as string | null) ?? null,
         clientName: cl?.company_name ?? null,
         clientPhone: cl?.phone ?? null,
         clientAddress: cl ? [cl.billing_address, cl.city].filter(Boolean).join(", ") : null,
@@ -140,7 +145,7 @@ async function fetchAndEnrichSlots(
       project_service_type: proj?.serviceType ?? null,
       project_color: proj?.color ?? null,
       client_name: proj?.clientName ?? null,
-      client_phone: proj?.clientPhone ?? null,
+      client_phone: proj?.phone ?? proj?.clientPhone ?? null,
       client_address: proj?.clientAddress ?? null,
     });
   });
@@ -279,6 +284,8 @@ export const planningRouter = router({
       technician_id: input.technicianId,
       project_id: input.projectId ?? null,
       free_client_name: input.freeClientName ?? null,
+      free_client_address: input.freeClientAddress ?? null,
+      free_client_phone: input.freeClientPhone ?? null,
       slot_date: input.slotDate,
       start_time: input.startTime,
       end_time: input.endTime,
@@ -303,6 +310,8 @@ export const planningRouter = router({
       if (rest.technicianId !== undefined) patch.technician_id = rest.technicianId;
       if (rest.projectId !== undefined) patch.project_id = rest.projectId ?? null;
       if (rest.freeClientName !== undefined) patch.free_client_name = rest.freeClientName ?? null;
+      if (rest.freeClientAddress !== undefined) patch.free_client_address = rest.freeClientAddress ?? null;
+      if (rest.freeClientPhone !== undefined) patch.free_client_phone = rest.freeClientPhone ?? null;
       if (rest.slotDate !== undefined) patch.slot_date = rest.slotDate;
       if (rest.startTime !== undefined) patch.start_time = rest.startTime;
       if (rest.endTime !== undefined) patch.end_time = rest.endTime;

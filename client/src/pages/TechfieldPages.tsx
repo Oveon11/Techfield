@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -823,6 +824,8 @@ type ProjectFormState = {
   quoteNumber: string;
   technicianIds: number[];
   color: string;
+  address: string;
+  phone: string;
 };
 
 const INITIAL_PROJECT_FORM: ProjectFormState = {
@@ -841,6 +844,8 @@ const INITIAL_PROJECT_FORM: ProjectFormState = {
   quoteNumber: "",
   technicianIds: [],
   color: "",
+  address: "",
+  phone: "",
 };
 
 type CreateWithClientFormState = {
@@ -992,6 +997,14 @@ function ProjectFormFields({
         <Label>Description</Label>
         <Textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} />
       </div>
+      <div className="space-y-2">
+        <Label>Adresse du chantier <span className="text-muted-foreground font-normal text-xs">(optionnel)</span></Label>
+        <AddressAutocomplete value={form.address} onChange={v => setForm(prev => ({ ...prev, address: v }))} placeholder="Adresse du chantier…" />
+      </div>
+      <div className="space-y-2">
+        <Label>Téléphone chantier <span className="text-muted-foreground font-normal text-xs">(optionnel)</span></Label>
+        <Input type="tel" placeholder="06 00 00 00 00" value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))} maxLength={50} />
+      </div>
       {technicians.length ? (
         <div className="space-y-2 md:col-span-2">
           <Label>Techniciens à affecter</Label>
@@ -1098,6 +1111,18 @@ export function ProjectsPage() {
   const [createForm, setCreateForm] = useState<CreateWithClientFormState>(INITIAL_CREATE_FORM);
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
   const [dupConfirmOpen, setDupConfirmOpen] = useState(false);
+
+  // Pré-remplissage depuis le planning (bouton "Créer le chantier" d'un slot libre)
+  useEffect(() => {
+    const raw = sessionStorage.getItem("tf-prefill-chantier");
+    if (!raw) return;
+    sessionStorage.removeItem("tf-prefill-chantier");
+    try {
+      const prefill = JSON.parse(raw) as {clientName?:string;clientPhone?:string;clientAddress?:string};
+      setCreateForm(f => ({ ...f, clientName: prefill.clientName??f.clientName, clientPhone: prefill.clientPhone??f.clientPhone, clientAddress: prefill.clientAddress??f.clientAddress }));
+      setCreateOpen(true);
+    } catch {}
+  }, []);
   const [search, setSearch] = useState("");
   const [archiveTab, setArchiveTab] = useState<"actifs" | "archives">("actifs");
   const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
@@ -1149,6 +1174,8 @@ export function ProjectsPage() {
       quoteNumber: detail.quoteNumber ?? "",
       technicianIds: detail.technicianIds ?? [],
       color: detail.color ?? "",
+      address: (detail as {address?:string|null}).address ?? "",
+      phone: (detail as {phone?:string|null}).phone ?? "",
     });
   }, [projectDetailQuery.data, editingId]);
 
@@ -2125,6 +2152,8 @@ export function ProjectDetailPage() {
       quoteNumber: detail.quoteNumber ?? "",
       technicianIds: detail.technicianIds ?? [],
       color: detail.color ?? "",
+      address: (detail as {address?:string|null}).address ?? "",
+      phone: (detail as {phone?:string|null}).phone ?? "",
     });
   }, [projectQuery.data]);
 
