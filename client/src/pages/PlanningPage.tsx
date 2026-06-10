@@ -295,8 +295,8 @@ export default function PlanningPage() {
     if (gcalSyncMut.isPending) return;
     setGcalSyncing(true);
     const oneYearAgo = toDateStr(addDays(new Date(), -365));
-    const today = toDateStr(new Date());
-    gcalSyncMut.mutate({startDate: oneYearAgo, endDate: today});
+    const lastSunday = toDateStr(addDays(getMondayOf(new Date()), -1));
+    gcalSyncMut.mutate({startDate: oneYearAgo, endDate: lastSunday});
   }, [gcalSyncMut]);
 
   // Auto-sync au chargement (une fois par session, admin seulement)
