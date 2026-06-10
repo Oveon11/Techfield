@@ -392,3 +392,27 @@ export async function updateTechnicianContractHours(scope: AccessScope, technici
   if (error) throw error;
   return { success: true };
 }
+
+export async function listCongeForPlanning(
+  scope: AccessScope,
+  startDate: string,
+  endDate: string,
+) {
+  if (scope.user.role === "client") return [];
+  const supabase = createSupabaseAdminClient();
+  let q = supabase
+    .from("time_entries")
+    .select("technician_id, date")
+    .in("entry_type", ["conge", "absence"])
+    .gte("date", startDate)
+    .lte("date", endDate);
+  if (scope.user.role === "technicien" && scope.technicianProfile?.id) {
+    q = q.eq("technician_id", scope.technicianProfile.id) as typeof q;
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(r => ({
+    technicianId: Number((r as Record<string, unknown>).technician_id),
+    date: String((r as Record<string, unknown>).date),
+  }));
+}

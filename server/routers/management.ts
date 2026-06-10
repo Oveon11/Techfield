@@ -83,6 +83,7 @@ import {
   cancelLeaveRequest,
   listLeaveRequestsForExport,
   listApprovedLeavesForPlanning,
+  listCongeForPlanning,
 } from "../integrations/supabase/db/time-entries";
 import {
   createIntervention,
@@ -1855,6 +1856,17 @@ export const managementRouter = router({
           return await updateTechnicianContractHours(scope, input.technicianId, input.contractHours);
         } catch (err) {
           throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour." });
+        }
+      }),
+
+    listCongeForPlanning: protectedProcedure
+      .input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          return await listCongeForPlanning(scope, input.startDate, input.endDate);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur" });
         }
       }),
 

@@ -33,7 +33,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -75,8 +75,217 @@ function StatusBadge({ status }: { status: "pending" | "approved" | "refused" })
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+// ── Signature canvas ─────────────────────────────────────────────────────────
+
+function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
+  const lastPos = useRef<{ x: number; y: number } | null>(null);
+  const hasDrawn = useRef(false);
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number } => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const point = "touches" in e ? e.touches[0] : e;
+    return { x: (point.clientX - rect.left) * scaleX, y: (point.clientY - rect.top) * scaleY };
+  };
+
+  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    isDrawing.current = true;
+    lastPos.current = getPos(e);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing.current || !canvasRef.current || !lastPos.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext("2d")!;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    lastPos.current = pos;
+    hasDrawn.current = true;
+  };
+
+  const endDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing.current) return;
+    e.preventDefault();
+    isDrawing.current = false;
+    lastPos.current = null;
+    onChange(hasDrawn.current ? (canvasRef.current?.toDataURL("image/png") ?? null) : null);
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current!;
+    canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height);
+    hasDrawn.current = false;
+    onChange(null);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 overflow-hidden">
+        <canvas
+          ref={canvasRef}
+          width={600} height={120}
+          className="w-full touch-none cursor-crosshair"
+          style={{ height: 80 }}
+          onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+          onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
+        />
+        <span className="absolute bottom-1.5 right-2 text-[10px] text-slate-400 pointer-events-none select-none">Signez ici</span>
+      </div>
+      <button type="button" onClick={clear} className="text-[11px] text-muted-foreground underline underline-offset-2">Effacer la signature</button>
+    </div>
+  );
+}
+
+// ── Document PDF ─────────────────────────────────────────────────────────────
+
+interface RequestDoc {
+  id: number;
+  technicianName: string;
+  employeeCode: string | null;
+  contractHours: string | null;
+  startDate: string;
+  endDate: string;
+  days: number;
+  comment: string | null;
+  adminComment: string | null;
+  status: "pending" | "approved" | "refused";
+  approvedAt: string | null;
+  createdAt: string;
+  techSignature?: string | null;
+  adminSignature?: string | null;
+  adminName?: string | null;
+}
+
+function generateRequestPDF(req: RequestDoc) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, ML = 18, MR = 18, CW = W - ML - MR;
+  let y = 20;
+
+  // ── Header ──
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(37, 99, 235);
+  doc.text("DEMANDE DE CONGÉ", W / 2, y, { align: "center" });
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text(`Document n°${req.id} — Généré le ${new Date().toLocaleDateString("fr-FR")}`, W / 2, y, { align: "center" });
+  y += 8;
+
+  doc.setDrawColor(37, 99, 235);
+  doc.setLineWidth(0.5);
+  doc.line(ML, y, W - MR, y);
+  y += 8;
+
+  // ── Technicien ──
+  doc.setTextColor(0, 0, 0);
+  const row = (label: string, value: string) => {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text(label, ML, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(value, ML + 42, y);
+    y += 6;
+  };
+
+  row("Technicien :", req.technicianName);
+  if (req.employeeCode) row("Code employé :", req.employeeCode);
+  row("Type de contrat :", req.contractHours ?? "39h");
+  y += 2;
+
+  doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
+  doc.line(ML, y, W - MR, y); y += 6;
+
+  // ── Période ──
+  row("Date de début :", fmtDate(req.startDate));
+  row("Date de fin :", fmtDate(req.endDate));
+  row("Durée :", `${req.days} jour${req.days > 1 ? "s" : ""} (samedi inclus, dimanche exclu)`);
+  if (req.comment) row("Commentaire :", req.comment);
+  y += 2;
+
+  doc.line(ML, y, W - MR, y); y += 6;
+
+  // ── Statut ──
+  const STATUS_LABELS: Record<string, string> = { pending: "EN ATTENTE", approved: "APPROUVÉ", refused: "REFUSÉ" };
+  const STATUS_COLORS: Record<string, [number, number, number]> = {
+    pending: [251, 191, 36], approved: [5, 150, 105], refused: [220, 38, 38]
+  };
+  const [sr, sg, sb] = STATUS_COLORS[req.status];
+  doc.setFillColor(sr, sg, sb);
+  doc.roundedRect(ML, y, 50, 8, 2, 2, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+  doc.text(STATUS_LABELS[req.status], ML + 25, y + 5.2, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  y += 12;
+
+  if (req.adminComment) {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text("Commentaire admin :", ML, y); y += 5;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    const lines = doc.splitTextToSize(req.adminComment, CW);
+    doc.text(lines, ML, y); y += lines.length * 5 + 4;
+  }
+
+  if (req.approvedAt) {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
+    doc.text(`Traité le : ${new Date(req.approvedAt).toLocaleDateString("fr-FR")}`, ML, y); y += 8;
+    doc.setTextColor(0, 0, 0);
+  }
+
+  doc.line(ML, y, W - MR, y); y += 8;
+
+  // ── Signatures ──
+  const sigBoxW = (CW - 10) / 2;
+  const sigBoxH = 35;
+
+  // Left: tech signature
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+  doc.text("Signature du technicien", ML, y); y += 5;
+  doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
+  doc.rect(ML, y, sigBoxW, sigBoxH);
+  if (req.techSignature) {
+    try { doc.addImage(req.techSignature, "PNG", ML + 2, y + 2, sigBoxW - 4, sigBoxH - 4); } catch { /* invalid image */ }
+  }
+  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+  doc.text(req.technicianName, ML + sigBoxW / 2, y + sigBoxH + 4, { align: "center" });
+  doc.text(fmtDate(req.createdAt.slice(0, 10)), ML + sigBoxW / 2, y + sigBoxH + 8, { align: "center" });
+
+  // Right: admin signature
+  const sigX2 = ML + sigBoxW + 10;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0);
+  doc.text("Signature de validation", sigX2, y - 5);
+  doc.rect(sigX2, y, sigBoxW, sigBoxH);
+  if (req.adminSignature) {
+    try { doc.addImage(req.adminSignature, "PNG", sigX2 + 2, y + 2, sigBoxW - 4, sigBoxH - 4); } catch { /* invalid image */ }
+  }
+  if (req.status === "pending") {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(150, 150, 150);
+    doc.text("En attente de validation", sigX2 + sigBoxW / 2, y + sigBoxH / 2, { align: "center" });
+  }
+  if (req.adminName && req.approvedAt) {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+    doc.text(req.adminName, sigX2 + sigBoxW / 2, y + sigBoxH + 4, { align: "center" });
+    doc.text(new Date(req.approvedAt).toLocaleDateString("fr-FR"), sigX2 + sigBoxW / 2, y + sigBoxH + 8, { align: "center" });
+  }
+
+  doc.save(`conge_${req.technicianName.replace(/\s+/g, "_")}_${req.startDate}.pdf`);
+}
+
 export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
   const utils = trpc.useUtils();
+  const meQuery = trpc.auth.me.useQuery();
 
   // Queries
   const allQuery    = trpc.management.timeEntries.leaveRequests.list.useQuery(undefined, { enabled: role === "admin" });
@@ -86,12 +295,33 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
   const invalidate = async () => { await utils.management.timeEntries.leaveRequests.list.invalidate(); };
 
   // Mutations
+  const pendingDocRef = useRef<RequestDoc | null>(null);
+
   const createMut  = trpc.management.timeEntries.leaveRequests.create.useMutation({
-    onSuccess: async () => { toast.success("Demande envoyée."); setCreateOpen(false); setForm({ startDate:"", endDate:"", comment:"" }); await invalidate(); },
+    onSuccess: async (res) => {
+      toast.success("Demande envoyée.");
+      // Generate PDF with technician signature
+      const doc = pendingDocRef.current;
+      if (doc) { doc.id = res.id; generateRequestPDF({ ...doc, techSignature: techSig }); }
+      pendingDocRef.current = null;
+      setTechSig(null);
+      setCreateOpen(false);
+      setForm({ startDate:"", endDate:"", comment:"" });
+      await invalidate();
+    },
     onError: e => toast.error(e.message),
   });
   const approveMut = trpc.management.timeEntries.leaveRequests.approve.useMutation({
-    onSuccess: async (d) => { toast.success(`Approuvé — ${d.daysCreated} jour(s) créé(s).`); setApproveId(null); setApproveComment(""); await invalidate(); },
+    onSuccess: async (d) => {
+      toast.success(`Approuvé — ${d.daysCreated} jour(s) créé(s).`);
+      const doc = pendingDocRef.current;
+      if (doc) generateRequestPDF({ ...doc, adminSignature: adminSig, adminName: meQuery.data?.name ?? null, approvedAt: new Date().toISOString() });
+      pendingDocRef.current = null;
+      setAdminSig(null);
+      setApproveId(null);
+      setApproveComment("");
+      await invalidate();
+    },
     onError: e => toast.error(e.message),
   });
   const refuseMut  = trpc.management.timeEntries.leaveRequests.refuse.useMutation({
@@ -121,6 +351,8 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
   const [editDatesId, setEditDatesId] = useState<number | null>(null);
   const [editDatesForm, setEditDatesForm]   = useState({ startDate: "", endDate: "" });
   const [cancelId, setCancelId]       = useState<number | null>(null);
+  const [techSig, setTechSig]         = useState<string | null>(null);
+  const [adminSig, setAdminSig]       = useState<string | null>(null);
 
   // UI state — export (admin)
   const [exportMode, setExportMode]   = useState<"mois" | "plage">("mois");
@@ -348,11 +580,37 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                   )}
 
                   {/* Row 3: actions */}
-                  {role === "technicien" && req.status === "pending" && (
-                    <div className="flex justify-end">
-                      <Button variant="outline" size="sm" className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
-                        onClick={() => setCancelId(req.id)}>
-                        <Trash2 className="h-3.5 w-3.5"/> Annuler
+                  {role === "technicien" && (
+                    <div className="flex items-center justify-between">
+                      <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs"
+                        onClick={() => generateRequestPDF({
+                          id: req.id, technicianName: req.technicianName, employeeCode: req.employeeCode,
+                          contractHours: req.contractHours, startDate: req.startDate, endDate: req.endDate,
+                          days: req.days, comment: req.comment, adminComment: req.adminComment,
+                          status: req.status, approvedAt: req.approvedAt, createdAt: req.createdAt,
+                        })}>
+                        <FileDown className="h-3.5 w-3.5"/> Document
+                      </Button>
+                      {req.status === "pending" && (
+                        <Button variant="outline" size="sm" className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
+                          onClick={() => setCancelId(req.id)}>
+                          <Trash2 className="h-3.5 w-3.5"/> Annuler
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  {role === "admin" && req.status !== "pending" && (
+                    <div className="flex justify-end pt-1 border-t border-slate-100">
+                      <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs"
+                        onClick={() => generateRequestPDF({
+                          id: req.id, technicianName: req.technicianName, employeeCode: req.employeeCode,
+                          contractHours: req.contractHours, startDate: req.startDate, endDate: req.endDate,
+                          days: req.days, comment: req.comment, adminComment: req.adminComment,
+                          status: req.status, approvedAt: req.approvedAt, createdAt: req.createdAt,
+                          adminName: meQuery.data?.name ?? null,
+                        })}>
+                        <FileDown className="h-3.5 w-3.5"/> Document
                       </Button>
                     </div>
                   )}
@@ -500,10 +758,22 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                 rows={2} placeholder="Raison, précisions…"
                 className="resize-none text-sm"/>
             </div>
+            <div>
+              <Label className="mb-1.5 block text-xs">Signature du technicien</Label>
+              <SignaturePad onChange={setTechSig}/>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button>
-            <Button onClick={() => createMut.mutate({ startDate: form.startDate, endDate: form.endDate, comment: form.comment || null })}
+            <Button variant="outline" onClick={() => { setCreateOpen(false); setTechSig(null); }}>Annuler</Button>
+            <Button onClick={() => {
+              pendingDocRef.current = {
+                id: 0, technicianName: meQuery.data?.name ?? "", employeeCode: null,
+                contractHours: null, startDate: form.startDate, endDate: form.endDate,
+                days: countDays(form.startDate, form.endDate), comment: form.comment || null,
+                adminComment: null, status: "pending", approvedAt: null, createdAt: new Date().toISOString(),
+              };
+              createMut.mutate({ startDate: form.startDate, endDate: form.endDate, comment: form.comment || null });
+            }}
               disabled={createMut.isPending || !form.startDate || !form.endDate || form.endDate < form.startDate || form.startDate < minDate}>
               {createMut.isPending ? "Envoi…" : "Envoyer"}
             </Button>
@@ -515,14 +785,29 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
       <Dialog open={approveId !== null} onOpenChange={open => !open && setApproveId(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600"/> Valider la demande</DialogTitle></DialogHeader>
-          <div className="py-2">
-            <Label className="mb-1 block text-xs">Commentaire (optionnel)</Label>
-            <Textarea value={approveComment} onChange={e => setApproveComment(e.target.value)} rows={2} placeholder="Message pour le technicien…" className="resize-none text-sm"/>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="mb-1 block text-xs">Commentaire (optionnel)</Label>
+              <Textarea value={approveComment} onChange={e => setApproveComment(e.target.value)} rows={2} placeholder="Message pour le technicien…" className="resize-none text-sm"/>
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs">Signature de validation</Label>
+              <SignaturePad onChange={setAdminSig}/>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setApproveId(null)}>Annuler</Button>
+            <Button variant="outline" onClick={() => { setApproveId(null); setAdminSig(null); }}>Annuler</Button>
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => approveMut.mutate({ id: approveId!, adminComment: approveComment || null })}
+              onClick={() => {
+                const req = (allQuery.data ?? []).find(r => r.id === approveId);
+                if (req) pendingDocRef.current = {
+                  id: req.id, technicianName: req.technicianName, employeeCode: req.employeeCode,
+                  contractHours: req.contractHours, startDate: req.startDate, endDate: req.endDate,
+                  days: req.days, comment: req.comment, adminComment: approveComment || null,
+                  status: "approved", approvedAt: null, createdAt: req.createdAt,
+                };
+                approveMut.mutate({ id: approveId!, adminComment: approveComment || null });
+              }}
               disabled={approveMut.isPending}>
               {approveMut.isPending ? "Validation…" : "Confirmer"}
             </Button>
