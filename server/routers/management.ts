@@ -84,6 +84,8 @@ import {
   listLeaveRequestsForExport,
   listApprovedLeavesForPlanning,
   listCongeForPlanning,
+  updateTechnicianCalendarUrl,
+  listGCalEventsForRange,
 } from "../integrations/supabase/db/time-entries";
 import {
   createIntervention,
@@ -1868,6 +1870,22 @@ export const managementRouter = router({
         } catch (err) {
           throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur" });
         }
+      }),
+
+    updateGCalUrl: adminProcedure
+      .input(z.object({ technicianId: z.number().int().positive(), icalUrl: z.string().nullable() }))
+      .mutation(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try { return await updateTechnicianCalendarUrl(scope, input.technicianId, input.icalUrl); }
+        catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+      }),
+
+    listGCalEvents: protectedProcedure
+      .input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try { return await listGCalEventsForRange(scope, input.startDate, input.endDate); }
+        catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
       }),
 
     leaveRequests: router({

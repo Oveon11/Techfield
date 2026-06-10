@@ -13,7 +13,7 @@ import {
   CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Plus, MapPin, Clock, Tag,
   AlertTriangle, Layers,
   X, Phone, User, Building2, FileText, ExternalLink, Pencil, Trash2,
-  ZoomIn, ZoomOut, ArrowUpRight, GripVertical, EyeOff, Users, Search,
+  ZoomIn, ZoomOut, ArrowUpRight, GripVertical, EyeOff, Users, Search, Link2,
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -96,6 +96,7 @@ type Slot = {
 };
 type Technician = {id:number;name:string;firstName:string;lastName:string;email:string|null};
 type ViewMode = "semaine"|"jour"|"mois";
+type GCalEvent = {technicianId:number;uid:string;summary:string;date:string;startTime:string;endTime:string;location:string|null};
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,20 @@ export default function PlanningPage() {
   const {data:congeEntries=[]} = trpc.management.timeEntries.listCongeForPlanning.useQuery(
     {startDate: approvedLeavesRangeStart, endDate: approvedLeavesRangeEnd}
   );
+  // Google Calendar events overlay
+  const {data:gcalEvents=[]} = trpc.management.timeEntries.listGCalEvents.useQuery(
+    {startDate: approvedLeavesRangeStart, endDate: approvedLeavesRangeEnd},
+    {staleTime: 5*60*1000, refetchOnWindowFocus: false}
+  );
+  // Techniciens avec URL Google Calendar (admin seulement)
+  const {data:techsAdmin=[]} = trpc.management.timeEntries.listTechnicians.useQuery(
+    undefined, {enabled: canManage}
+  );
+  const gcalUrlMap = React.useMemo(()=>{
+    const m = new Map<number, string|null>();
+    techsAdmin.forEach(t=>m.set(t.id, (t as {googleCalendarIcalUrl?:string|null}).googleCalendarIcalUrl ?? null));
+    return m;
+  }, [techsAdmin]);
   const allCongeIndicators = React.useMemo(()=>[
     ...approvedLeaves,
     ...congeEntries.map(e=>({technicianId:e.technicianId,startDate:e.date,endDate:e.date})),
@@ -243,6 +258,18 @@ export default function PlanningPage() {
       if (dx < 0) goNext(); else goPrev();
     }
   };
+
+  const [gcalUrlOpen, setGcalUrlOpen] = useState<number|null>(null); // technicianId or null
+  const [gcalUrlInput, setGcalUrlInput] = useState("");
+  const updateGCalUrlMut = trpc.management.timeEntries.updateGCalUrl.useMutation({
+    onSuccess: () => {
+      utils.management.timeEntries.listTechnicians.invalidate();
+      utils.management.timeEntries.listGCalEvents.invalidate();
+      toast.success("Calendrier Google lié.");
+      setGcalUrlOpen(null);
+    },
+    onError: e => toast.error(e.message),
+  });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -428,14 +455,26 @@ export default function PlanningPage() {
             <div className="hidden sm:flex flex-wrap items-center gap-2">
               {technicians.map(t=>{
                 const hidden = hiddenTechs.has(t.id);
+                const hasGcal = !!gcalUrlMap.get(t.id);
                 return(
-                  <button key={t.id}
-                    onClick={()=>setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;})}
-                    className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15"}`}
-                  >
-                    {hidden && <EyeOff className="h-3 w-3"/>}
-                    {t.firstName[0]}{t.lastName[0]} · {t.firstName}
-                  </button>
+                  <div key={t.id} className="flex items-center gap-0.5">
+                    <button
+                      onClick={()=>setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;})}
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15"}`}
+                    >
+                      {hidden && <EyeOff className="h-3 w-3"/>}
+                      {t.firstName[0]}{t.lastName[0]} · {t.firstName}
+                    </button>
+                    {canManage&&(
+                      <button
+                        onClick={()=>{setGcalUrlInput(gcalUrlMap.get(t.id)??"");setGcalUrlOpen(t.id);}}
+                        className={`rounded-full p-1 transition-colors ${hasGcal?"text-green-600 hover:bg-green-50":"text-slate-300 hover:text-slate-500 hover:bg-slate-100"}`}
+                        title={hasGcal?"Calendrier Google lié":"Lier Google Calendar"}
+                      >
+                        <Link2 className="h-3 w-3"/>
+                      </button>
+                    )}
+                  </div>
                 );
               })}
               {hiddenTechs.size>0&&(
@@ -512,7 +551,7 @@ export default function PlanningPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
-          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators}
+          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -523,7 +562,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : view==="jour" ? (
-          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators}
+          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -533,7 +572,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : (
-          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} onClickSlot={setDetailSlot}/>
+          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}/>
         )}
         </div>
 
@@ -658,6 +697,59 @@ export default function PlanningPage() {
         </>
       )}
 
+      {/* Dialog : lier URL Google Calendar à un technicien */}
+      {gcalUrlOpen!==null&&(()=>{
+        const tech=technicians.find(t=>t.id===gcalUrlOpen);
+        if(!tech) return null;
+        const hasUrl=!!gcalUrlMap.get(tech.id);
+        return(
+          <Dialog open onOpenChange={o=>!o&&setGcalUrlOpen(null)}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-primary"/>
+                  Google Calendar — {tech.firstName} {tech.lastName}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-4 py-2">
+                <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-xs text-blue-800 space-y-1">
+                  <p className="font-semibold">Deux façons de lier :</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li><strong>ID du calendrier</strong> (ex: <code>xyz@group.calendar.google.com</code>) — calendrier public</li>
+                    <li><strong>URL iCal complète</strong> — Paramètres Google Calendar → "Adresse secrète au format iCal" — pour calendrier privé</li>
+                  </ul>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold mb-1 block">ID du calendrier ou URL iCal</label>
+                  <Input
+                    value={gcalUrlInput}
+                    onChange={e=>setGcalUrlInput(e.target.value)}
+                    placeholder="xyz@group.calendar.google.com  ou  https://calendar.google.com/…"
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                {hasUrl&&(
+                  <Button variant="outline" className="text-destructive hover:text-destructive"
+                    onClick={()=>updateGCalUrlMut.mutate({technicianId:tech.id,icalUrl:null})}
+                    disabled={updateGCalUrlMut.isPending}>
+                    Délier
+                  </Button>
+                )}
+                <Button variant="outline" onClick={()=>setGcalUrlOpen(null)}>Annuler</Button>
+                <Button
+                  onClick={()=>updateGCalUrlMut.mutate({technicianId:tech.id,icalUrl:gcalUrlInput.trim()||null})}
+                  disabled={updateGCalUrlMut.isPending||!gcalUrlInput.trim()}
+                >
+                  {updateGCalUrlMut.isPending?"Enregistrement…":"Enregistrer"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
+
       <ImportCalendarDialog
         open={importOpen}
         onClose={()=>setImportOpen(false)}
@@ -725,6 +817,7 @@ type GridProps = {
   slots:Slot[]; technicians:Technician[]; dayColumns:string[];
   canManage:boolean; zoom:number;
   approvedLeaves?:ApprovedLeave[];
+  gcalEvents?:GCalEvent[];
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
@@ -732,7 +825,7 @@ type GridProps = {
 };
 
 // Shared timeline grid — percentage-based, fits parent width
-function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],onClickSlot,onMove,onCellClick,onReorder}:GridProps){
+function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],gcalEvents=[],onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 176;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
@@ -1010,6 +1103,29 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                       <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest select-none">Congé</span>
                     </div>
                   )}
+                  {/* Google Calendar events (read-only overlay) */}
+                  {gcalEvents.filter(ev=>ev.technicianId===tech.id&&ev.date===d).map(ev=>{
+                    const startM=timeToMin(ev.startTime);
+                    const endM=timeToMin(ev.endTime);
+                    if(startM>=H_END*60||endM<=H_START*60) return null;
+                    const lp=Math.max(0,(startM-H_START*60)/(H_TOTAL*60)*100);
+                    const wp=Math.max(0.5,(Math.min(endM,H_END*60)-Math.max(startM,H_START*60))/(H_TOTAL*60)*100);
+                    return(
+                      <Tooltip key={ev.uid} delayDuration={300}>
+                        <TooltipTrigger asChild>
+                          <div style={{left:`${lp}%`,width:`max(${wp}%,2px)`,top:3,bottom:3}}
+                            className="absolute rounded-md border-2 border-emerald-400 bg-emerald-50/60 pointer-events-auto z-5 overflow-hidden px-1 flex items-center cursor-default">
+                            <span className="text-[9px] font-semibold text-emerald-700 truncate leading-tight">{ev.summary}</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="flex flex-col gap-0.5">
+                          <p className="font-semibold text-xs text-emerald-700">📅 {ev.summary}</p>
+                          <p className="text-[11px] opacity-70">{ev.startTime}–{ev.endTime}</p>
+                          {ev.location&&<p className="text-[11px] opacity-60">{ev.location}</p>}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
                   {/* Hour lines — graduation (toutes les 3h) plus visible */}
                   {Array.from({length:H_TOTAL-1},(_,i)=>{
                     const isGrad=(i+1)%3===0;
@@ -1117,28 +1233,29 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
+function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,gcalEvents,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
   void onDayClick;
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,onClickSlot,onMove,onCellClick,onReorder}:{
+function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,gcalEvents,onClickSlot,onMove,onCellClick,onReorder}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
   approvedLeaves?:ApprovedLeave[];
+  gcalEvents?:GCalEvent[];
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
   onReorder?:(orderedIds:number[])=>void;
 }){
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Month Grid ───────────────────────────────────────────────────────────────
 
-function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],onClickSlot}:{
-  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;approvedLeaves?:ApprovedLeave[];onClickSlot:(s:Slot)=>void;
+function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalEvents=[],onClickSlot}:{
+  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;approvedLeaves?:ApprovedLeave[];gcalEvents?:GCalEvent[];onClickSlot:(s:Slot)=>void;
 }){
   void canManage;
   const year=monthRef.getFullYear();
@@ -1228,6 +1345,17 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],onCli
                       {approvedLeaves.some(l=>l.technicianId===tech.id&&l.startDate<=d&&l.endDate>=d)&&(
                         <div className="w-full h-1.5 rounded-sm bg-blue-300/80 shrink-0" title="Congé approuvé"/>
                       )}
+                      {gcalEvents.filter(ev=>ev.technicianId===tech.id&&ev.date===d).map(ev=>(
+                        <Tooltip key={ev.uid} delayDuration={300}>
+                          <TooltipTrigger asChild>
+                            <div className="w-full h-1.5 rounded-sm bg-emerald-400/70 shrink-0 cursor-default" title={ev.summary}/>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="flex flex-col gap-0.5">
+                            <p className="font-semibold text-xs text-emerald-700">📅 {ev.summary}</p>
+                            <p className="text-[11px] opacity-70">{ev.startTime}–{ev.endTime}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
                       {daySlots.map(s=>{
                         const{bgClass,bgStyle}=slotBgStyle(s);
                         return(

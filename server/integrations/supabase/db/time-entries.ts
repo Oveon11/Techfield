@@ -118,7 +118,7 @@ export async function listTechniciansForAdmin(scope: AccessScope) {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("technicians")
-    .select("id, first_name, last_name, employee_code, contract_hours")
+    .select("id, first_name, last_name, employee_code, contract_hours, google_calendar_ical_url")
     .eq("is_active", true)
     .order("last_name");
   if (error) throw error;
@@ -130,8 +130,145 @@ export async function listTechniciansForAdmin(scope: AccessScope) {
       lastName: String(row.last_name ?? ""),
       employeeCode: (row.employee_code as string | null) ?? null,
       contractHours: (row.contract_hours as string | null) ?? "39h",
+      googleCalendarIcalUrl: (row.google_calendar_ical_url as string | null) ?? null,
     };
   });
+}
+
+export async function updateTechnicianCalendarUrl(scope: AccessScope, technicianId: number, icalUrl: string | null) {
+  if (scope.user.role !== "admin") throw new Error("Accès refusé.");
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("technicians")
+    .update({ google_calendar_ical_url: icalUrl })
+    .eq("id", technicianId);
+  if (error) throw error;
+  return { success: true };
+}
+
+// ── iCal parser (server-side) ─────────────────────────────────────────────────
+
+function unfoldLines(content: string): string[] {
+  const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const result: string[] = [];
+  for (const line of lines) {
+    if ((line.startsWith(" ") || line.startsWith("\t")) && result.length > 0) {
+      result[result.length - 1] += line.slice(1);
+    } else {
+      result.push(line);
+    }
+  }
+  return result;
+}
+
+function parseICSDateTimeServer(value: string): { date: string; time: string } | null {
+  const raw = value.includes(":") ? value.split(":").pop()! : value;
+  if (/^\d{8}$/.test(raw)) {
+    return { date: `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`, time: "08:00" };
+  }
+  const m = raw.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+  return { date: `${m[1]}-${m[2]}-${m[3]}`, time: `${m[4]}:${m[5]}` };
+}
+
+function addOneHourServer(time: string): string {
+  const [h, min] = time.split(":").map(Number);
+  return `${String(Math.min(h + 1, 23)).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+export interface GCalEvent {
+  technicianId: number;
+  uid: string;
+  summary: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  location: string | null;
+}
+
+function normalizeIcalUrl(input: string): string {
+  if (input.startsWith("http://") || input.startsWith("https://")) return input;
+  // Bare calendar ID → public iCal URL
+  return `https://calendar.google.com/calendar/ical/${encodeURIComponent(input)}/public/basic.ics`;
+}
+
+function parseICSContent(content: string, technicianId: number): GCalEvent[] {
+  const lines = unfoldLines(content);
+  const events: GCalEvent[] = [];
+  let inEvent = false;
+  let cur: Record<string, string> = {};
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === "BEGIN:VEVENT") { inEvent = true; cur = {}; continue; }
+    if (trimmed === "END:VEVENT") {
+      inEvent = false;
+      const start = cur.DTSTART ? parseICSDateTimeServer(cur.DTSTART) : null;
+      const end   = cur.DTEND   ? parseICSDateTimeServer(cur.DTEND)   : null;
+      if (start && end && cur.SUMMARY) {
+        events.push({
+          technicianId,
+          uid: cur.UID ?? `${Date.now()}-${Math.random()}`,
+          summary: cur.SUMMARY.replace(/\\,/g, ",").replace(/\\n/g, " ").trim(),
+          date: start.date,
+          startTime: start.time,
+          endTime: end.time === start.time ? addOneHourServer(start.time) : end.time,
+          location: cur.LOCATION ? cur.LOCATION.replace(/\\,/g, ",").replace(/\\n/g, " ").trim() : null,
+        });
+      }
+      continue;
+    }
+    if (!inEvent) continue;
+    const colon = trimmed.indexOf(":");
+    if (colon === -1) continue;
+    const key = trimmed.slice(0, colon).toUpperCase().split(";")[0];
+    cur[key] = trimmed.slice(colon + 1);
+  }
+
+  return events;
+}
+
+export async function listGCalEventsForRange(
+  scope: AccessScope,
+  startDate: string,
+  endDate: string,
+): Promise<GCalEvent[]> {
+  if (scope.user.role === "client") return [];
+  const supabase = createSupabaseAdminClient();
+
+  type TechRow = { id: number; google_calendar_ical_url: string };
+  let q = supabase
+    .from("technicians")
+    .select("id, google_calendar_ical_url")
+    .eq("is_active", true)
+    .not("google_calendar_ical_url", "is", null);
+
+  if (scope.user.role === "technicien" && scope.technicianProfile?.id) {
+    q = q.eq("id", scope.technicianProfile.id) as typeof q;
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+
+  const techs = (data ?? []) as TechRow[];
+  const allEvents: GCalEvent[] = [];
+
+  await Promise.all(
+    techs.map(async (tech) => {
+      try {
+        const url = normalizeIcalUrl(tech.google_calendar_ical_url);
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return;
+        const content = await res.text();
+        const events = parseICSContent(content, tech.id);
+        allEvents.push(...events.filter(e => e.date >= startDate && e.date <= endDate));
+      } catch {
+        // skip calendriers inaccessibles
+      }
+    }),
+  );
+
+  return allEvents.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 }
 
 // ── Leave requests ────────────────────────────────────────────────────────────
