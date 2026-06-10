@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { LeaveRequestsPanel } from "./LeaveRequestsPanel";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
@@ -137,6 +138,7 @@ export default function HoursPage() {
   const [hrMode, setHrMode] = useState(false);
   const [hrTechIds, setHrTechIds] = useState<Set<number>>(new Set());
   const [hrDate, setHrDate] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"heures" | "conges">("heures");
   const [exportMode, setExportMode] = useState<"mois" | "plage">("mois");
   const [exportStart, setExportStart] = useState("");
   const [exportEnd, setExportEnd] = useState("");
@@ -471,45 +473,69 @@ export default function HoursPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Tab switcher */}
           <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
             <button
-              onClick={() => setExportMode("mois")}
-              className={`px-3 py-1.5 transition-colors ${exportMode === "mois" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
+              onClick={() => setActiveTab("heures")}
+              className={`px-3 py-1.5 transition-colors ${activeTab === "heures" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
             >
-              Mois
+              Heures
             </button>
             <button
-              onClick={() => setExportMode("plage")}
-              className={`px-3 py-1.5 transition-colors ${exportMode === "plage" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
+              onClick={() => setActiveTab("conges")}
+              className={`px-3 py-1.5 transition-colors ${activeTab === "conges" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
             >
-              Plage
+              Congés
             </button>
           </div>
-          {exportMode === "plage" && (
+          {activeTab === "heures" && (
             <>
-              <input type="date" value={exportStart} onChange={e => setExportStart(e.target.value)}
-                className="rounded-lg border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary" />
-              <span className="text-xs text-muted-foreground">→</span>
-              <input type="date" value={exportEnd} onChange={e => setExportEnd(e.target.value)}
-                className="rounded-lg border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary" />
+              <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                <button
+                  onClick={() => setExportMode("mois")}
+                  className={`px-3 py-1.5 transition-colors ${exportMode === "mois" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
+                >
+                  Mois
+                </button>
+                <button
+                  onClick={() => setExportMode("plage")}
+                  className={`px-3 py-1.5 transition-colors ${exportMode === "plage" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:bg-slate-50"}`}
+                >
+                  Plage
+                </button>
+              </div>
+              {exportMode === "plage" && (
+                <>
+                  <input type="date" value={exportStart} onChange={e => setExportStart(e.target.value)}
+                    className="rounded-lg border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary" />
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <input type="date" value={exportEnd} onChange={e => setExportEnd(e.target.value)}
+                    className="rounded-lg border border-border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary" />
+                </>
+              )}
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={exportPDF}
+                disabled={
+                  !myTechId ||
+                  (exportMode === "mois" && !entriesQuery.data) ||
+                  (exportMode === "plage" && (!exportStart || !exportEnd || exportStart > exportEnd || !rangeEntriesQuery.data))
+                }
+              >
+                <FileDown className="h-4 w-4" />
+                Exporter PDF
+              </Button>
             </>
           )}
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={exportPDF}
-            disabled={
-              !myTechId ||
-              (exportMode === "mois" && !entriesQuery.data) ||
-              (exportMode === "plage" && (!exportStart || !exportEnd || exportStart > exportEnd || !rangeEntriesQuery.data))
-            }
-          >
-            <FileDown className="h-4 w-4" />
-            Exporter PDF
-          </Button>
         </div>
       </div>
 
+      {activeTab === "conges" && (role === "admin" || role === "technicien") && (
+        <LeaveRequestsPanel role={role as "admin" | "technicien"} />
+      )}
+
+      {activeTab === "heures" && (<>
       {/* Admin: technician selector / Mode RH */}
       {role === "admin" && techniciansQuery.data && (
         <div className="space-y-3">
@@ -714,6 +740,7 @@ export default function HoursPage() {
           </table>
         </div>
       </div>
+      </>)}
 
       {/* Detail dialog */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>

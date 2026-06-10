@@ -75,6 +75,14 @@ import {
   listTimeEntriesRange,
   listTechniciansForAdmin,
   updateTechnicianContractHours,
+  createLeaveRequest,
+  listLeaveRequests,
+  approveLeaveRequest,
+  refuseLeaveRequest,
+  updateLeaveRequestDates,
+  cancelLeaveRequest,
+  listLeaveRequestsForExport,
+  listApprovedLeavesForPlanning,
 } from "../integrations/supabase/db/time-entries";
 import {
   createIntervention,
@@ -1849,5 +1857,71 @@ export const managementRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour." });
         }
       }),
+
+    leaveRequests: router({
+      create: protectedProcedure
+        .input(z.object({ startDate: z.string(), endDate: z.string(), comment: z.string().nullable() }))
+        .mutation(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await createLeaveRequest(scope, input); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      list: protectedProcedure
+        .input(z.object({ status: z.enum(["pending","approved","refused"]).optional(), technicianId: z.number().int().positive().optional() }).optional())
+        .query(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await listLeaveRequests(scope, input ?? undefined); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      approve: adminProcedure
+        .input(z.object({ id: z.number().int().positive(), adminComment: z.string().nullable() }))
+        .mutation(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await approveLeaveRequest(scope, input.id, input.adminComment); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      refuse: adminProcedure
+        .input(z.object({ id: z.number().int().positive(), adminComment: z.string().nullable() }))
+        .mutation(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await refuseLeaveRequest(scope, input.id, input.adminComment); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      updateDates: adminProcedure
+        .input(z.object({ id: z.number().int().positive(), startDate: z.string(), endDate: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await updateLeaveRequestDates(scope, input.id, input.startDate, input.endDate); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      cancel: protectedProcedure
+        .input(z.object({ id: z.number().int().positive() }))
+        .mutation(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await cancelLeaveRequest(scope, input.id); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      listForExport: adminProcedure
+        .input(z.object({ startDate: z.string(), endDate: z.string(), technicianIds: z.array(z.number().int().positive()).optional() }))
+        .query(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await listLeaveRequestsForExport(scope, input.startDate, input.endDate, input.technicianIds); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+
+      listApprovedForPlanning: protectedProcedure
+        .input(z.object({ startDate: z.string(), endDate: z.string() }))
+        .query(async ({ ctx, input }) => {
+          const scope = await getScope(ctx.user.openId);
+          try { return await listApprovedLeavesForPlanning(scope, input.startDate, input.endDate); }
+          catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
+        }),
+    }),
   }),
 });

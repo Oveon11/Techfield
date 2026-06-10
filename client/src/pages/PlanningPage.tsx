@@ -163,6 +163,13 @@ export default function PlanningPage() {
   const {data:projectsRaw=[]} = trpc.management.projects.list.useQuery();
   const projects = projectsRaw.map(p=>({id:p.id,name:p.title,reference:p.reference,clientName:p.clientName??null}));
 
+  // Approved leaves for congé indicators in the grid
+  const approvedLeavesRangeStart = view === "mois" ? monthRangeStart : weekStart;
+  const approvedLeavesRangeEnd = view === "mois" ? monthRangeEnd : toDateStr(addDays(new Date(weekStart+"T00:00:00"),6));
+  const {data:approvedLeaves=[]} = trpc.management.timeEntries.leaveRequests.listApprovedForPlanning.useQuery(
+    {startDate: approvedLeavesRangeStart, endDate: approvedLeavesRangeEnd}
+  );
+
   const inv = useCallback(() => {
     if (view === "mois") utils.planning.listRange.invalidate({start:monthRangeStart,end:monthRangeEnd});
     else utils.planning.listWeek.invalidate({weekStart});
@@ -394,7 +401,7 @@ export default function PlanningPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
-          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom}
+          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -405,7 +412,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : view==="jour" ? (
-          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom}
+          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -415,7 +422,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : (
-          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} onClickSlot={setDetailSlot}/>
+          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={approvedLeaves} onClickSlot={setDetailSlot}/>
         )}
 
         {(createOpen||quickCreate!==null)&&(
@@ -526,9 +533,11 @@ function computeLanes(daySlots: Slot[]): SlotWithLane[] {
   return result;
 }
 
+type ApprovedLeave = {technicianId:number;startDate:string;endDate:string};
 type GridProps = {
   slots:Slot[]; technicians:Technician[]; dayColumns:string[];
   canManage:boolean; zoom:number;
+  approvedLeaves?:ApprovedLeave[];
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
@@ -536,7 +545,7 @@ type GridProps = {
 };
 
 // Shared timeline grid — percentage-based, fits parent width
-function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
+function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 176;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
@@ -808,6 +817,12 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                     const en=Math.min(s+120,H_END*60);
                     onCellClick(tech.id,d,minToTime(s),minToTime(en));
                   }:undefined}>
+                  {/* Congé overlay */}
+                  {approvedLeaves.some(l=>l.technicianId===tech.id&&l.startDate<=d&&l.endDate>=d)&&(
+                    <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center bg-blue-50/70 border-l-2 border-blue-300">
+                      <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest select-none">Congé</span>
+                    </div>
+                  )}
                   {/* Hour lines — graduation (toutes les 3h) plus visible */}
                   {Array.from({length:H_TOTAL-1},(_,i)=>{
                     const isGrad=(i+1)%3===0;
@@ -915,27 +930,28 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({slots,technicians,dayColumns,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
+function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
   void onDayClick;
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({slots,technicians,selDay,canManage,zoom,onClickSlot,onMove,onCellClick,onReorder}:{
+function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,onClickSlot,onMove,onCellClick,onReorder}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
+  approvedLeaves?:ApprovedLeave[];
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
   onReorder?:(orderedIds:number[])=>void;
 }){
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Month Grid ───────────────────────────────────────────────────────────────
 
-function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
-  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;onClickSlot:(s:Slot)=>void;
+function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],onClickSlot}:{
+  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;approvedLeaves?:ApprovedLeave[];onClickSlot:(s:Slot)=>void;
 }){
   void canManage;
   const year=monthRef.getFullYear();
@@ -1022,7 +1038,10 @@ function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
                   const daySlots=techSlots.filter(s=>s.slotDate===d);
                   return(
                     <div key={d}
-                      className={`border-l border-slate-100 py-1 px-0.5 flex flex-col gap-0.5 min-h-[40px] ${isToday?"bg-primary/[0.03]":""}${!isCurrentMonth?" opacity-50 bg-slate-50/40":""}`}>
+                      className={`relative border-l border-slate-100 py-1 px-0.5 flex flex-col gap-0.5 min-h-[40px] ${isToday?"bg-primary/[0.03]":""}${!isCurrentMonth?" opacity-50 bg-slate-50/40":""}${approvedLeaves.some(l=>l.technicianId===tech.id&&l.startDate<=d&&l.endDate>=d)?" bg-blue-50/60":""}`}>
+                      {approvedLeaves.some(l=>l.technicianId===tech.id&&l.startDate<=d&&l.endDate>=d)&&(
+                        <div className="w-full h-1.5 rounded-sm bg-blue-300/80 shrink-0" title="Congé approuvé"/>
+                      )}
                       {daySlots.map(s=>{
                         const{bgClass,bgStyle}=slotBgStyle(s);
                         return(

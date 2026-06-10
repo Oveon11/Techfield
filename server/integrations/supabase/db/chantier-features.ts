@@ -543,8 +543,12 @@ async function mapMediaRow(supabase: ReturnType<typeof createSupabaseAdminClient
   const fileKey = String(row.file_key ?? "");
   let signedUrl: string | null = null;
   if (fileKey) {
-    const { data } = await supabase.storage.from(MEDIA_BUCKET).createSignedUrl(fileKey, SIGNED_URL_TTL);
-    signedUrl = data?.signedUrl ?? null;
+    if (fileKey.startsWith("https://")) {
+      signedUrl = fileKey; // URL externe (import Alobees)
+    } else {
+      const { data } = await supabase.storage.from(MEDIA_BUCKET).createSignedUrl(fileKey, SIGNED_URL_TTL);
+      signedUrl = data?.signedUrl ?? null;
+    }
   }
   return {
     id: Number(row.id),
