@@ -294,9 +294,9 @@ export default function PlanningPage() {
   const triggerGCalSync = React.useCallback(() => {
     if (gcalSyncMut.isPending) return;
     setGcalSyncing(true);
-    const today = toDateStr(new Date());
+    const weekMonday = toDateStr(getMondayOf(new Date()));
     const sixMonths = toDateStr(addDays(new Date(), 180));
-    gcalSyncMut.mutate({startDate: today, endDate: sixMonths});
+    gcalSyncMut.mutate({startDate: weekMonday, endDate: sixMonths});
   }, [gcalSyncMut]);
 
   // Auto-sync au chargement (une fois par session, admin seulement)
