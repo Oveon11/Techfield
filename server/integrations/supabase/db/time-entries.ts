@@ -186,13 +186,12 @@ export interface GCalEvent {
   location: string | null;
 }
 
-function normalizeIcalUrl(input: string): string {
+export function normalizeIcalUrl(input: string): string {
   if (input.startsWith("http://") || input.startsWith("https://")) return input;
-  // Bare calendar ID → public iCal URL
   return `https://calendar.google.com/calendar/ical/${encodeURIComponent(input)}/public/basic.ics`;
 }
 
-function parseICSContent(content: string, technicianId: number): GCalEvent[] {
+export function parseICSContent(content: string, technicianId: number): GCalEvent[] {
   const lines = unfoldLines(content);
   const events: GCalEvent[] = [];
   let inEvent = false;
@@ -250,25 +249,58 @@ export async function listGCalEventsForRange(
   const { data, error } = await q;
   if (error) throw error;
 
+  // Déduplique les URLs pour ne pas fetcher plusieurs fois le même calendrier
+  const seen = new Set<string>();
   const techs = (data ?? []) as TechRow[];
   const allEvents: GCalEvent[] = [];
 
   await Promise.all(
     techs.map(async (tech) => {
+      const url = normalizeIcalUrl(tech.google_calendar_ical_url);
+      if (seen.has(url)) return;
+      seen.add(url);
       try {
-        const url = normalizeIcalUrl(tech.google_calendar_ical_url);
         const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn(`[GCal] fetch échoué pour tech ${tech.id}: HTTP ${res.status} ${url}`);
+          return;
+        }
         const content = await res.text();
+        if (!content.includes("BEGIN:VCALENDAR")) {
+          console.warn(`[GCal] réponse invalide (pas un iCal) pour tech ${tech.id}: ${url}`);
+          return;
+        }
         const events = parseICSContent(content, tech.id);
         allEvents.push(...events.filter(e => e.date >= startDate && e.date <= endDate));
-      } catch {
-        // skip calendriers inaccessibles
+      } catch (err) {
+        console.warn(`[GCal] erreur réseau pour tech ${tech.id}: ${err instanceof Error ? err.message : err}`);
       }
     }),
   );
 
   return allEvents.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+}
+
+export async function testGCalConnection(
+  scope: AccessScope,
+  input: string,
+): Promise<{ ok: boolean; httpStatus: number | null; error: string | null; eventCount: number; preview: string | null }> {
+  if (scope.user.role !== "admin") throw new Error("Accès refusé.");
+  const url = normalizeIcalUrl(input.trim());
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) {
+      return { ok: false, httpStatus: res.status, error: `HTTP ${res.status} — Le calendrier est peut-être privé. Allez dans Paramètres Google Calendar → "Rendre accessible publiquement" ou utilisez l'URL secrète iCal.`, eventCount: 0, preview: null };
+    }
+    const content = await res.text();
+    if (!content.includes("BEGIN:VCALENDAR")) {
+      return { ok: false, httpStatus: res.status, error: "La réponse n'est pas un fichier iCal valide.", eventCount: 0, preview: content.slice(0, 100) };
+    }
+    const events = parseICSContent(content, 0);
+    return { ok: true, httpStatus: res.status, error: null, eventCount: events.length, preview: events.slice(0, 2).map(e => `${e.date} ${e.startTime} — ${e.summary}`).join("\n") };
+  } catch (err) {
+    return { ok: false, httpStatus: null, error: err instanceof Error ? err.message : "Erreur réseau", eventCount: 0, preview: null };
+  }
 }
 
 // ── Leave requests ────────────────────────────────────────────────────────────

@@ -87,7 +87,7 @@ type Slot = {
   id:number; technicianId:number; technicianName:string|null;
   projectId:number|null; projectName:string|null; projectRef:string|null;
   projectAddress:string|null; projectServiceType:string|null; projectColor:string|null;
-  freeClientName:string|null;
+  freeClientName:string|null; freeClientAddress:string|null; gcalEventUid:string|null;
   clientName:string|null; clientPhone:string|null; clientAddress:string|null;
   slotDate:string; startTime:string; endTime:string; notes:string|null; status:string;
   hasLocationChange:boolean; hasTimeChange:boolean; hasDiscount:boolean;
@@ -261,15 +261,51 @@ export default function PlanningPage() {
 
   const [gcalUrlOpen, setGcalUrlOpen] = useState<number|null>(null); // technicianId or null
   const [gcalUrlInput, setGcalUrlInput] = useState("");
+  const [gcalTestResult, setGcalTestResult] = useState<{ok:boolean;httpStatus:number|null;error:string|null;eventCount:number;preview:string|null}|null>(null);
   const updateGCalUrlMut = trpc.management.timeEntries.updateGCalUrl.useMutation({
     onSuccess: () => {
       utils.management.timeEntries.listTechnicians.invalidate();
       utils.management.timeEntries.listGCalEvents.invalidate();
       toast.success("Calendrier Google lié.");
       setGcalUrlOpen(null);
+      setGcalTestResult(null);
     },
     onError: e => toast.error(e.message),
   });
+  const testGCalMut = trpc.management.timeEntries.testGCalConnection.useMutation({
+    onSuccess: (r) => setGcalTestResult(r),
+    onError: e => setGcalTestResult({ok:false,httpStatus:null,error:e.message,eventCount:0,preview:null}),
+  });
+
+  const [gcalSyncing, setGcalSyncing] = useState(false);
+  const [gcalLastSync, setGcalLastSync] = useState<string|null>(null);
+  const gcalSyncMut = trpc.planning.gcalSync.useMutation({
+    onSuccess: (r) => {
+      inv();
+      setGcalSyncing(false);
+      setGcalLastSync(new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}));
+      if (r.created > 0 || r.updated > 0)
+        toast.success(`Google Calendar synchronisé — ${r.created} créé${r.created>1?"s":""}, ${r.updated} mis à jour`);
+    },
+    onError: (e) => { setGcalSyncing(false); toast.error("Erreur sync GCal : " + e.message); },
+  });
+
+  const gcalSyncedOnce = useRef(false);
+  const triggerGCalSync = React.useCallback(() => {
+    if (gcalSyncMut.isPending) return;
+    setGcalSyncing(true);
+    const today = toDateStr(new Date());
+    const sixMonths = toDateStr(addDays(new Date(), 180));
+    gcalSyncMut.mutate({startDate: today, endDate: sixMonths});
+  }, [gcalSyncMut]);
+
+  // Auto-sync au chargement (une fois par session, admin seulement)
+  useEffect(()=>{
+    if (!canManage || gcalSyncedOnce.current) return;
+    gcalSyncedOnce.current = true;
+    triggerGCalSync();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[canManage]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -536,7 +572,16 @@ export default function PlanningPage() {
             )}
             {canManage&&(
               <>
-                <Button size="sm" variant="outline" onClick={()=>setImportOpen(true)} className="gap-1.5 shadow-sm" title="Importer Google Calendar">
+                <Button size="sm" variant="outline"
+                  onClick={triggerGCalSync}
+                  disabled={gcalSyncing}
+                  className="gap-1.5 shadow-sm"
+                  title={gcalLastSync ? `Dernière sync : ${gcalLastSync}` : "Synchroniser Google Calendar"}
+                >
+                  <Link2 className={`h-4 w-4 ${gcalSyncing?"animate-pulse":""}`}/>
+                  <span className="hidden sm:inline">{gcalSyncing?"Sync…":"Sync GCal"}</span>
+                </Button>
+                <Button size="sm" variant="outline" onClick={()=>setImportOpen(true)} className="gap-1.5 shadow-sm" title="Importer .ics (ponctuel)">
                   <CalendarDays className="h-4 w-4"/> <span className="hidden sm:inline">Importer</span>
                 </Button>
                 <Button size="sm" onClick={()=>setCreateOpen(true)} className="gap-1.5 shadow-sm">
@@ -703,7 +748,7 @@ export default function PlanningPage() {
         if(!tech) return null;
         const hasUrl=!!gcalUrlMap.get(tech.id);
         return(
-          <Dialog open onOpenChange={o=>!o&&setGcalUrlOpen(null)}>
+          <Dialog open onOpenChange={o=>{if(!o){setGcalUrlOpen(null);setGcalTestResult(null);}}}>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -716,18 +761,34 @@ export default function PlanningPage() {
                   <p className="font-semibold">Deux façons de lier :</p>
                   <ul className="list-disc list-inside space-y-0.5">
                     <li><strong>ID du calendrier</strong> (ex: <code>xyz@group.calendar.google.com</code>) — calendrier public</li>
-                    <li><strong>URL iCal complète</strong> — Paramètres Google Calendar → "Adresse secrète au format iCal" — pour calendrier privé</li>
+                    <li><strong>URL iCal complète</strong> — Paramètres GCal → "Adresse secrète au format iCal" — pour calendrier privé</li>
                   </ul>
                 </div>
                 <div>
                   <label className="text-xs font-semibold mb-1 block">ID du calendrier ou URL iCal</label>
                   <Input
                     value={gcalUrlInput}
-                    onChange={e=>setGcalUrlInput(e.target.value)}
+                    onChange={e=>{setGcalUrlInput(e.target.value);setGcalTestResult(null);}}
                     placeholder="xyz@group.calendar.google.com  ou  https://calendar.google.com/…"
                     className="font-mono text-xs"
                   />
                 </div>
+                {/* Résultat du test */}
+                {gcalTestResult&&(
+                  <div className={`rounded-xl border px-4 py-3 text-xs space-y-1 ${gcalTestResult.ok?"border-green-200 bg-green-50 text-green-800":"border-red-200 bg-red-50 text-red-800"}`}>
+                    {gcalTestResult.ok?(
+                      <>
+                        <p className="font-semibold">✅ Connexion réussie — {gcalTestResult.eventCount} événements trouvés</p>
+                        {gcalTestResult.preview&&<p className="font-mono opacity-70 text-[10px] whitespace-pre">{gcalTestResult.preview}</p>}
+                      </>
+                    ):(
+                      <>
+                        <p className="font-semibold">❌ Échec{gcalTestResult.httpStatus?` (HTTP ${gcalTestResult.httpStatus})`:""}</p>
+                        {gcalTestResult.error&&<p className="opacity-80">{gcalTestResult.error}</p>}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
               <DialogFooter className="gap-2">
                 {hasUrl&&(
@@ -738,6 +799,12 @@ export default function PlanningPage() {
                   </Button>
                 )}
                 <Button variant="outline" onClick={()=>setGcalUrlOpen(null)}>Annuler</Button>
+                <Button variant="outline"
+                  onClick={()=>testGCalMut.mutate({input:gcalUrlInput.trim()})}
+                  disabled={testGCalMut.isPending||!gcalUrlInput.trim()}
+                >
+                  {testGCalMut.isPending?"Test en cours…":"Tester"}
+                </Button>
                 <Button
                   onClick={()=>updateGCalUrlMut.mutate({technicianId:tech.id,icalUrl:gcalUrlInput.trim()||null})}
                   disabled={updateGCalUrlMut.isPending||!gcalUrlInput.trim()}
@@ -1443,6 +1510,22 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
               {slot.projectServiceType&&(
                 <Badge variant="secondary" className="w-fit text-xs">{SERVICE_LABELS[slot.projectServiceType]??slot.projectServiceType}</Badge>
               )}
+            </div>
+          )}
+
+          {/* Adresse Google Calendar (créneau GCal sans client lié) */}
+          {slot.gcalEventUid&&slot.freeClientAddress&&!slot.clientAddress&&!slot.projectAddress&&(
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3 flex flex-col gap-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-1">📅 Adresse (Google Calendar)</p>
+              <div className="flex items-start gap-2">
+                <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5"/>
+                <div>
+                  <p className="text-sm text-foreground">{slot.freeClientAddress}</p>
+                  <a href={mapsUrl(slot.freeClientAddress)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-emerald-700 text-xs hover:underline mt-0.5">
+                    <ExternalLink className="h-3 w-3"/> Ouvrir dans Maps
+                  </a>
+                </div>
+              </div>
             </div>
           )}
 

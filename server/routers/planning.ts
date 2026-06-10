@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getUserAccessProfile } from "../db";
 import { createSupabaseAdminClient } from "../integrations/supabase/db/admin";
+import { normalizeIcalUrl, parseICSContent } from "../integrations/supabase/db/time-entries";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 
 async function getScope(openId: string) {
@@ -41,6 +42,8 @@ function mapSlot(r: Record<string, unknown>) {
     projectServiceType: r.project_service_type as string | null,
     projectColor: r.project_color as string | null,
     freeClientName: r.free_client_name as string | null,
+    freeClientAddress: (r.free_client_address as string | null) ?? null,
+    gcalEventUid: (r.gcal_event_uid as string | null) ?? null,
     clientName: r.client_name as string | null,
     clientPhone: r.client_phone as string | null,
     clientAddress: r.client_address as string | null,
@@ -71,7 +74,7 @@ async function fetchAndEnrichSlots(
 ) {
   const { data: raw, error } = await supabase
     .from("planning_slots")
-    .select("id, technician_id, project_id, free_client_name, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
+    .select("id, technician_id, project_id, free_client_name, free_client_address, gcal_event_uid, slot_date, start_time, end_time, notes, status, has_location_change, has_time_change, has_discount, discount_note, change_note, prev_date, prev_start_time, prev_end_time, created_at, updated_at")
     .gte("slot_date", start)
     .lte("slot_date", end)
     .order("slot_date")
@@ -141,6 +144,89 @@ async function fetchAndEnrichSlots(
       client_address: proj?.clientAddress ?? null,
     });
   });
+}
+
+// ─── GCal → planning_slots sync ───────────────────────────────────────────────
+
+async function syncGCalToPlanning(startDate: string, endDate: string) {
+  const supabase = createSupabaseAdminClient();
+  type TechRow = { id: number; google_calendar_ical_url: string };
+  const { data, error } = await supabase
+    .from("technicians")
+    .select("id, google_calendar_ical_url")
+    .eq("is_active", true)
+    .not("google_calendar_ical_url", "is", null);
+  if (error) throw error;
+
+  const techs = (data ?? []) as TechRow[];
+  const seen = new Set<string>();
+  let created = 0, updated = 0;
+  const errors: string[] = [];
+
+  for (const tech of techs) {
+    const url = normalizeIcalUrl(tech.google_calendar_ical_url);
+    // Si plusieurs techniciens partagent le même calendrier, on sync pour chacun
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) { errors.push(`tech ${tech.id}: HTTP ${res.status}`); continue; }
+      const content = await res.text();
+      if (!content.includes("BEGIN:VCALENDAR")) { errors.push(`tech ${tech.id}: réponse non-iCal`); continue; }
+
+      const events = parseICSContent(content, tech.id).filter(e => e.date >= startDate && e.date <= endDate);
+
+      for (const ev of events) {
+        // Vérifie si ce slot GCal existe déjà
+        const { data: existing } = await supabase
+          .from("planning_slots")
+          .select("id, slot_date, start_time, end_time, free_client_name, free_client_address")
+          .eq("technician_id", tech.id)
+          .eq("gcal_event_uid", ev.uid)
+          .maybeSingle();
+
+        const row = {
+          technician_id: tech.id,
+          gcal_event_uid: ev.uid,
+          free_client_name: ev.summary,
+          free_client_address: ev.location ?? null,
+          slot_date: ev.date,
+          start_time: ev.startTime + ":00",
+          end_time: ev.endTime + ":00",
+          status: "scheduled",
+          has_location_change: false,
+          has_time_change: false,
+          has_discount: false,
+        };
+
+        if (!existing) {
+          await supabase.from("planning_slots").insert(row);
+          created++;
+        } else {
+          // Met à jour titre, adresse, horaires si changés dans GCal
+          const changed =
+            existing.free_client_name !== ev.summary ||
+            existing.free_client_address !== (ev.location ?? null) ||
+            (existing.slot_date as string) !== ev.date ||
+            (existing.start_time as string).slice(0, 5) !== ev.startTime ||
+            (existing.end_time as string).slice(0, 5) !== ev.endTime;
+          if (changed) {
+            await supabase.from("planning_slots").update({
+              free_client_name: ev.summary,
+              free_client_address: ev.location ?? null,
+              slot_date: ev.date,
+              start_time: ev.startTime + ":00",
+              end_time: ev.endTime + ":00",
+            }).eq("id", existing.id as number);
+            updated++;
+          }
+        }
+      }
+    } catch (err) {
+      errors.push(`tech ${tech.id}: ${err instanceof Error ? err.message : "erreur réseau"}`);
+    }
+    seen.add(url);
+  }
+
+  return { created, updated, errors };
 }
 
 export const planningRouter = router({
@@ -266,4 +352,17 @@ export const planningRouter = router({
     if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
     return { success: true };
   }),
+
+  gcalSync: adminProcedure
+    .input(z.object({
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        return await syncGCalToPlanning(input.startDate, input.endDate);
+      } catch (err) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : "Erreur sync GCal." });
+      }
+    }),
 });
