@@ -47,7 +47,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ReactNode, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ============================================================
@@ -200,13 +200,150 @@ function PhotoGrid({ photos, onZoom }: { photos: LocalPhoto[]; onZoom: (url: str
   );
 }
 
+const ANNOTATION_COLORS = ["#ef4444", "#000000", "#ffffff", "#fbbf24", "#3b82f6", "#22c55e"];
+
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [drawMode, setDrawMode] = useState(false);
+  const [color, setColor] = useState("#ef4444");
+  const [isDrawing, setIsDrawing] = useState(false);
+  const lastPos = useRef<{ x: number; y: number } | null>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!imgLoaded || !canvasRef.current || !imgRef.current) return;
+    canvasRef.current.width = imgRef.current.offsetWidth;
+    canvasRef.current.height = imgRef.current.offsetHeight;
+  }, [imgLoaded]);
+
+  const getPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    if ("touches" in e) {
+      const t = e.touches[0] || (e as React.TouchEvent).changedTouches[0];
+      return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    }
+    return { x: (e as React.MouseEvent).clientX - rect.left, y: (e as React.MouseEvent).clientY - rect.top };
+  };
+
+  const startDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!drawMode) return;
+    e.preventDefault();
+    setIsDrawing(true);
+    lastPos.current = getPos(e);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!drawMode || !isDrawing || !canvasRef.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext("2d")!;
+    const pos = getPos(e);
+    const last = lastPos.current;
+    if (!last) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastPos.current = pos;
+  };
+
+  const endDraw = () => { setIsDrawing(false); lastPos.current = null; };
+
+  const clearCanvas = () => {
+    if (!canvasRef.current) return;
+    canvasRef.current.getContext("2d")!.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+  };
+
+  const downloadAnnotated = () => {
+    const img = imgRef.current;
+    const canvas = canvasRef.current;
+    if (!img || !canvas) return;
+    const out = document.createElement("canvas");
+    out.width = img.naturalWidth;
+    out.height = img.naturalHeight;
+    const ctx = out.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    ctx.save();
+    ctx.scale(img.naturalWidth / canvas.width, img.naturalHeight / canvas.height);
+    ctx.drawImage(canvas, 0, 0);
+    ctx.restore();
+    const a = document.createElement("a");
+    a.href = out.toDataURL("image/jpeg", 0.92);
+    a.download = "photo-annotee.jpg";
+    a.click();
+  };
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
-      <button className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white/80 hover:bg-white/20 hover:text-white transition-colors" onClick={onClose}>
-        <X className="h-6 w-6" />
-      </button>
-      <img src={src} className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+    <div
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/90 p-4"
+      onClick={!drawMode ? onClose : undefined}
+    >
+      <div className="relative" onClick={e => e.stopPropagation()}>
+        <img
+          ref={imgRef}
+          src={src}
+          className="max-h-[80vh] max-w-[90vw] object-contain rounded-lg shadow-2xl block"
+          onLoad={() => setImgLoaded(true)}
+          crossOrigin="anonymous"
+        />
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 rounded-lg"
+          style={{ cursor: drawMode ? "crosshair" : "default", touchAction: drawMode ? "none" : "auto" }}
+          onMouseDown={startDraw}
+          onMouseMove={draw}
+          onMouseUp={endDraw}
+          onMouseLeave={endDraw}
+          onTouchStart={startDraw as unknown as React.TouchEventHandler<HTMLCanvasElement>}
+          onTouchMove={draw as unknown as React.TouchEventHandler<HTMLCanvasElement>}
+          onTouchEnd={endDraw}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2 px-4" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+        >
+          <X className="h-4 w-4" /> Fermer
+        </button>
+        <button
+          onClick={() => setDrawMode(m => !m)}
+          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors ${drawMode ? "bg-primary text-white" : "bg-white/10 text-white/80 hover:bg-white/20"}`}
+        >
+          <Pencil className="h-4 w-4" /> {drawMode ? "Arrêter" : "Annoter"}
+        </button>
+        {drawMode && (
+          <>
+            <div className="flex gap-1">
+              {ANNOTATION_COLORS.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  style={{ background: c }}
+                  className={`h-7 w-7 rounded-full border-2 transition-all ${color === c ? "border-white scale-125" : "border-white/20 hover:border-white/60"}`}
+                />
+              ))}
+            </div>
+            <button
+              onClick={clearCanvas}
+              className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+            >
+              Effacer
+            </button>
+            <button
+              onClick={downloadAnnotated}
+              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+            >
+              <Download className="h-3.5 w-3.5" /> Sauvegarder
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

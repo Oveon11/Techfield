@@ -1097,10 +1097,32 @@ export function ProjectsPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState<CreateWithClientFormState>(INITIAL_CREATE_FORM);
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
+  const [dupConfirmOpen, setDupConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [archiveTab, setArchiveTab] = useState<"actifs" | "archives">("actifs");
   const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
   const [serviceFilter, setServiceFilter] = useState<"all" | ProjectServiceType>("all");
+
+  const doCreateWithClient = () => createWithClient.mutate({
+    ...createForm,
+    clientPhone: createForm.clientPhone || null,
+    clientAddress: createForm.clientAddress || null,
+    description: createForm.description || null,
+    startDate: createForm.startDate || null,
+    plannedEndDate: createForm.plannedEndDate || null,
+    quoteNumber: createForm.quoteNumber || null,
+    color: createForm.color || null,
+  });
+
+  const handleCreateProject = () => {
+    const titleLow = createForm.title.trim().toLowerCase();
+    const clientLow = createForm.clientName.trim().toLowerCase();
+    const isDuplicate = (projectsQuery.data ?? []).some(
+      p => p.title.trim().toLowerCase() === titleLow && (p.clientName ?? "").trim().toLowerCase() === clientLow
+    );
+    if (isDuplicate) { setDupConfirmOpen(true); return; }
+    doCreateWithClient();
+  };
 
   const projectDetailQuery = trpc.management.projects.getById.useQuery(
     { projectId: editingId ?? 0 },
@@ -1282,16 +1304,7 @@ export function ProjectsPage() {
                   </div>
                   <DialogFooter className="pt-2 border-t border-border/60">
                     <Button
-                      onClick={() => createWithClient.mutate({
-                        ...createForm,
-                        clientPhone: createForm.clientPhone || null,
-                        clientAddress: createForm.clientAddress || null,
-                        description: createForm.description || null,
-                        startDate: createForm.startDate || null,
-                        plannedEndDate: createForm.plannedEndDate || null,
-                        quoteNumber: createForm.quoteNumber || null,
-                        color: createForm.color || null,
-                      })}
+                      onClick={handleCreateProject}
                       disabled={createWithClient.isPending || !createForm.clientName.trim() || !createForm.title.trim()}
                     >
                       Enregistrer
@@ -1302,6 +1315,26 @@ export function ProjectsPage() {
             ) : null
           }
         />
+
+        {/* AlertDialog doublon */}
+        <AlertDialog open={dupConfirmOpen} onOpenChange={setDupConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" /> Doublon détecté
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Un chantier intitulé <strong>« {createForm.title} »</strong> pour le client <strong>« {createForm.clientName} »</strong> existe déjà. Créer quand même ?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setDupConfirmOpen(false); doCreateWithClient(); }}>
+                Créer quand même
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Archive tabs */}
         <div className="flex items-center gap-2">
@@ -2053,6 +2086,16 @@ export function ProjectDetailPage() {
     onError: error => toast.error(error.message),
   });
 
+  const updateClientName = trpc.management.clients.updateName.useMutation({
+    onSuccess: async () => {
+      toast.success("Nom client mis à jour.");
+      setEditClientNameOpen(false);
+      await invalidateAll();
+      await projectQuery.refetch();
+    },
+    onError: e => toast.error(e.message),
+  });
+
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDetailOpen, setDeleteDetailOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
@@ -2060,6 +2103,8 @@ export function ProjectDetailPage() {
   const [closeDate, setCloseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [closeTime, setCloseTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [editForm, setEditForm] = useState<ProjectFormState>(INITIAL_PROJECT_FORM);
+  const [editClientNameOpen, setEditClientNameOpen] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
 
   useMemo(() => {
     const detail = projectQuery.data;
@@ -2118,6 +2163,35 @@ export function ProjectDetailPage() {
       {/* Hidden dialogs */}
       {canManage && (
         <>
+          {/* Edit client name */}
+          <Dialog open={editClientNameOpen} onOpenChange={setEditClientNameOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Modifier le nom du client</DialogTitle>
+                <DialogDescription>Cette modification s'applique à la fiche client.</DialogDescription>
+              </DialogHeader>
+              <div className="py-2">
+                <Label className="mb-1.5 block text-sm">Nom du client</Label>
+                <Input
+                  value={newClientName}
+                  onChange={e => setNewClientName(e.target.value)}
+                  placeholder="Nom du client"
+                  onKeyDown={e => { if (e.key === "Enter" && newClientName.trim()) updateClientName.mutate({ clientId: project.clientId!, companyName: newClientName.trim() }); }}
+                  autoFocus
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditClientNameOpen(false)}>Annuler</Button>
+                <Button
+                  disabled={updateClientName.isPending || !newClientName.trim() || newClientName.trim() === project.clientName}
+                  onClick={() => updateClientName.mutate({ clientId: project.clientId!, companyName: newClientName.trim() })}
+                >
+                  {updateClientName.isPending ? "Enregistrement…" : "Enregistrer"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
@@ -2272,9 +2346,18 @@ export function ProjectDetailPage() {
               <StatusBadge value={project.status} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 group">
                 <Building2 className="h-3.5 w-3.5 shrink-0" />
                 {project.clientName}
+                {canManage && (
+                  <button
+                    onClick={() => { setNewClientName(project.clientName ?? ""); setEditClientNameOpen(true); }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-slate-100 text-muted-foreground hover:text-foreground"
+                    title="Modifier le nom du client"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
               </span>
               {project.siteName ? (
                 <span className="flex items-center gap-1.5">

@@ -15,6 +15,7 @@ import {
   HeartPulse,
   Trash2,
   UserX,
+  Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ const ENTRY_TYPES: { value: EntryType; label: string; icon: React.ElementType; c
 const BREAK_OPTIONS = [
   { value: 0, label: "0m" },
   { value: 15, label: "15m" },
+  { value: 20, label: "20m" },
   { value: 30, label: "30m" },
   { value: 45, label: "45m" },
   { value: 60, label: "1h" },
@@ -94,7 +96,7 @@ const defaultForm = (): SaveForm => ({
   entryType: "travail",
   startTime: "08:00",
   endTime: "",
-  breakMinutes: 30,
+  breakMinutes: 20,
   projectId: null,
   panier: true,
   note: "",
@@ -132,6 +134,9 @@ export default function HoursPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [form, setForm] = useState<SaveForm>(defaultForm());
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
+  const [hrMode, setHrMode] = useState(false);
+  const [hrTechIds, setHrTechIds] = useState<Set<number>>(new Set());
+  const [hrDate, setHrDate] = useState<string>("");
   const [exportMode, setExportMode] = useState<"mois" | "plage">("mois");
   const [exportStart, setExportStart] = useState("");
   const [exportEnd, setExportEnd] = useState("");
@@ -142,6 +147,11 @@ export default function HoursPage() {
 
   const techniciansQuery = trpc.management.timeEntries.listTechnicians.useQuery(undefined, { enabled: role === "admin" });
   const myTechProfileQuery = trpc.management.timeEntries.myTechnicianId.useQuery(undefined, { enabled: role === "technicien" });
+
+  const updateContractHoursMut = trpc.management.timeEntries.updateContractHours.useMutation({
+    onSuccess: async () => { toast.success("Catégorie mise à jour."); await utils.management.timeEntries.listTechnicians.invalidate(); },
+    onError: e => toast.error(e.message),
+  });
 
   const myTechId: number | null = useMemo(() => {
     if (role === "admin") return selectedTechId;
@@ -162,11 +172,6 @@ export default function HoursPage() {
   );
 
   const saveMutation = trpc.management.timeEntries.save.useMutation({
-    onSuccess: async () => {
-      toast.success("Heures enregistrées.");
-      await utils.management.timeEntries.list.invalidate({ technicianId: myTechId!, year, month });
-      setAddOpen(false);
-    },
     onError: e => toast.error(e.message),
   });
 
@@ -209,8 +214,12 @@ export default function HoursPage() {
     return total;
   }), [weeks, entriesByDate]);
 
+  const selectedTech = techniciansQuery.data?.find(t => t.id === selectedTechId);
+  const contractHours: "35h" | "39h" = (selectedTech?.contractHours as "35h" | "39h") ?? "39h";
+  const weeklyTarget = contractHours === "35h" ? 35 : 39;
+
   const monthTotal = weekTotals.reduce((a, b) => a + b, 0);
-  const hasOvertime = weekTotals.some(w => w > 35);
+  const hasOvertime = weekTotals.some(w => w > weeklyTarget);
 
   const prevMonth = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
@@ -226,19 +235,32 @@ export default function HoursPage() {
     setDetailOpen(true);
   };
 
-  const handleSave = () => {
-    if (!myTechId || !selectedDate) return;
-    saveMutation.mutate({
-      technicianId: myTechId,
-      date: selectedDate,
-      entryType: form.entryType,
-      startTime: form.entryType === "travail" ? form.startTime : null,
-      endTime: form.entryType === "travail" ? (form.endTime || null) : null,
-      breakMinutes: form.entryType === "travail" ? form.breakMinutes : 0,
-      projectId: form.projectId,
-      panier: form.panier,
-      note: form.note || null,
-    });
+  const handleSave = async () => {
+    if (!selectedDate) return;
+    const techIds = (role === "admin" && hrMode && hrTechIds.size > 0)
+      ? Array.from(hrTechIds)
+      : myTechId ? [myTechId] : [];
+    if (techIds.length === 0) return;
+    try {
+      for (const techId of techIds) {
+        await saveMutation.mutateAsync({
+          technicianId: techId,
+          date: selectedDate,
+          entryType: form.entryType,
+          startTime: form.entryType === "travail" ? form.startTime : null,
+          endTime: form.entryType === "travail" ? (form.endTime || null) : null,
+          breakMinutes: form.entryType === "travail" ? form.breakMinutes : 0,
+          projectId: form.projectId,
+          panier: form.panier,
+          note: form.note || null,
+        });
+      }
+      toast.success(techIds.length > 1 ? `Saisie effectuée pour ${techIds.length} techniciens.` : "Heures enregistrées.");
+      if (myTechId) await utils.management.timeEntries.list.invalidate({ technicianId: myTechId, year, month });
+      setAddOpen(false);
+    } catch {
+      // Erreur affichée par onError
+    }
   };
 
   const exportPDF = () => {
@@ -297,6 +319,7 @@ export default function HoursPage() {
         }, 0);
       }, 0)
     );
+    const pdfWeeklyTarget = weeklyTarget;
     const pdfTotal = pdfWeekTotals.reduce((a, b) => a + b, 0);
 
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -333,7 +356,7 @@ export default function HoursPage() {
 
     pdfWeeks.forEach((week, wi) => {
       const weekHours = pdfWeekTotals[wi];
-      const weekOver = weekHours > 35;
+      const weekOver = weekHours > pdfWeeklyTarget;
 
       doc.setFillColor(241, 245, 249);
       doc.rect(ML, y, pageW - ML * 2, 4.5, "F");
@@ -423,13 +446,12 @@ export default function HoursPage() {
     doc.setFontSize(9);
     doc.text(`Total heures travaillées : ${fmtH(pdfTotal)}`, ML + 2, y + 4.8);
     doc.text(`Paniers repas : ${totalPaniers}`, pageW / 2, y + 4.8, { align: "center" });
-    if (pdfWeekTotals.some(w => w > 35)) doc.text("⚠ Heures supplémentaires", pageW - ML - 2, y + 4.8, { align: "right" });
+    if (pdfWeekTotals.some(w => w > weeklyTarget)) doc.text("⚠ Heures supplémentaires", pageW - ML - 2, y + 4.8, { align: "right" });
     doc.setTextColor(0, 0, 0);
 
     doc.save(pdfFileName);
   };
 
-  const selectedTech = techniciansQuery.data?.find(t => t.id === selectedTechId);
   const detailEntries = detailDate ? (entriesByDate.get(detailDate) ?? []) : [];
   const detailDay = detailDate ? new Date(detailDate + "T12:00:00") : null;
 
@@ -488,27 +510,91 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Admin: technician selector */}
+      {/* Admin: technician selector / Mode RH */}
       {role === "admin" && techniciansQuery.data && (
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Clock className="h-4 w-4" />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Clock className="h-4 w-4" />
+            </div>
+            {!hrMode ? (
+              <div className="flex items-center gap-2">
+                <Select
+                  value={selectedTechId?.toString() ?? ""}
+                  onValueChange={v => setSelectedTechId(Number(v))}
+                >
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Choisir un technicien" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {techniciansQuery.data.map(t => (
+                      <SelectItem key={t.id} value={t.id.toString()}>
+                        {t.firstName} {t.lastName} {t.employeeCode ? `(${t.employeeCode})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTech && (
+                  <div className="flex items-center gap-1 rounded-lg border border-border overflow-hidden text-xs font-semibold">
+                    {(["35h", "39h"] as const).map(opt => (
+                      <button
+                        key={opt}
+                        onClick={() => updateContractHoursMut.mutate({ technicianId: selectedTech.id, contractHours: opt })}
+                        className={`px-2.5 py-1.5 transition-colors ${contractHours === opt ? "bg-primary text-white" : "text-muted-foreground hover:bg-slate-50"}`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {techniciansQuery.data.map(t => {
+                  const sel = hrTechIds.has(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setHrTechIds(prev => {
+                        const next = new Set(prev);
+                        if (sel) next.delete(t.id); else next.add(t.id);
+                        return next;
+                      })}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${sel ? "border-primary bg-primary text-white" : "border-slate-200 bg-white text-slate-600 hover:border-primary/50"}`}
+                    >
+                      {t.firstName} {t.lastName}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <Button
+              variant={hrMode ? "default" : "outline"}
+              size="sm"
+              className="gap-1.5 ml-auto"
+              onClick={() => { setHrMode(m => !m); setHrTechIds(new Set()); }}
+            >
+              <Users className="h-3.5 w-3.5" />
+              {hrMode ? "Mode individuel" : "Mode RH"}
+            </Button>
           </div>
-          <Select
-            value={selectedTechId?.toString() ?? ""}
-            onValueChange={v => setSelectedTechId(Number(v))}
-          >
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Choisir un technicien" />
-            </SelectTrigger>
-            <SelectContent>
-              {techniciansQuery.data.map(t => (
-                <SelectItem key={t.id} value={t.id.toString()}>
-                  {t.firstName} {t.lastName} {t.employeeCode ? `(${t.employeeCode})` : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {hrMode && (
+            <div className="flex flex-wrap items-center gap-2 pl-11">
+              <input
+                type="date"
+                value={hrDate}
+                onChange={e => setHrDate(e.target.value)}
+                className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <Button
+                size="sm"
+                disabled={hrTechIds.size === 0 || !hrDate}
+                onClick={() => { setSelectedDate(hrDate); setForm(defaultForm()); setAddOpen(true); }}
+              >
+                Saisir · {hrTechIds.size} technicien{hrTechIds.size !== 1 ? "s" : ""}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -552,7 +638,7 @@ export default function HoursPage() {
             <tbody>
               {weeks.map((week, wi) => {
                 const weekTotal = weekTotals[wi];
-                const isOver35 = weekTotal > 35;
+                const isOver35 = weekTotal > weeklyTarget;
                 // 5 columns: Mon(0)..Fri(4) — weekends excluded
                 const padded = Array.from({ length: 5 }, (_, i) =>
                   week.find(d => (d.getDay() + 6) % 7 === i) ?? null
@@ -582,7 +668,7 @@ export default function HoursPage() {
                             <span className={`text-[11px] font-medium leading-none ${isToday ? "text-primary font-bold" : "text-slate-700"}`}>
                               {day.getDate()}
                             </span>
-                            {myTechId && (role === "admin" || (role === "technicien" && isDateEditableByTechnician(ds))) && (
+                            {((role === "admin" && (hrMode ? hrTechIds.size > 0 : !!myTechId)) || (role === "technicien" && !!myTechId && isDateEditableByTechnician(ds))) && (
                               <button
                                 onClick={e => { e.stopPropagation(); openAdd(ds); }}
                                 className="rounded p-0.5 text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors leading-none"
@@ -618,7 +704,7 @@ export default function HoursPage() {
                         {fmtH(weekTotal)}
                       </p>
                       {isOver35 && (
-                        <p className="text-[9px] text-rose-500">+{fmtH(weekTotal - 35)} sup</p>
+                        <p className="text-[9px] text-rose-500">+{fmtH(weekTotal - weeklyTarget)} sup</p>
                       )}
                     </td>
                   </tr>
@@ -709,11 +795,16 @@ export default function HoursPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-primary" />
-              Saisie des heures
+              {role === "admin" && hrMode ? "Saisie RH groupée" : "Saisie des heures"}
             </DialogTitle>
             {selectedDate && (
               <p className="text-sm text-muted-foreground">
                 {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+              </p>
+            )}
+            {role === "admin" && hrMode && hrTechIds.size > 0 && (
+              <p className="text-xs font-semibold text-primary">
+                {hrTechIds.size} technicien{hrTechIds.size !== 1 ? "s" : ""} sélectionné{hrTechIds.size !== 1 ? "s" : ""}
               </p>
             )}
           </DialogHeader>
@@ -845,8 +936,14 @@ export default function HoursPage() {
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setAddOpen(false)}>Fermer</Button>
-            <Button onClick={handleSave} disabled={saveMutation.isPending} className="bg-foreground text-background hover:bg-foreground/90">
-              {saveMutation.isPending ? "Enregistrement…" : "Valider"}
+            <Button
+              onClick={handleSave}
+              disabled={saveMutation.isPending || (role === "admin" && hrMode && hrTechIds.size === 0)}
+              className="bg-foreground text-background hover:bg-foreground/90"
+            >
+              {saveMutation.isPending
+                ? "Enregistrement…"
+                : (role === "admin" && hrMode && hrTechIds.size > 1 ? `Valider · ${hrTechIds.size} tech.` : "Valider")}
             </Button>
           </DialogFooter>
         </DialogContent>

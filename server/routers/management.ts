@@ -74,6 +74,7 @@ import {
   listTimeEntries,
   listTimeEntriesRange,
   listTechniciansForAdmin,
+  updateTechnicianContractHours,
 } from "../integrations/supabase/db/time-entries";
 import {
   createIntervention,
@@ -573,6 +574,24 @@ export const managementRouter = router({
       await logActivity(db, ctx.user.id, "client", createdId, "client.created", `Client créé: ${input.companyName}`);
       return { success: true, id: createdId };
     }),
+    updateName: adminProcedure
+      .input(z.object({ clientId: z.number().int().positive(), companyName: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          if (SUPABASE_ENV.isConfigured && ctx.supabase) {
+            const { error } = await ctx.supabase.from("clients").update({ company_name: input.companyName, updated_at: new Date().toISOString() }).eq("id", input.clientId);
+            if (error) throw new Error(error.message);
+            return { success: true };
+          }
+          const db = await requireDb();
+          await db.update(clients).set({ companyName: input.companyName }).where(eq(clients.id, input.clientId));
+          await logActivity(db, ctx.user.id, "client", input.clientId, "client.updated", `Nom client mis à jour: ${input.companyName}`);
+          return { success: true };
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour client." });
+        }
+      }),
   }),
 
   sites: router({
@@ -1820,5 +1839,15 @@ export const managementRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Erreur." });
       }
     }),
+    updateContractHours: adminProcedure
+      .input(z.object({ technicianId: z.number().int().positive(), contractHours: z.enum(["35h", "39h"]) }))
+      .mutation(async ({ ctx, input }) => {
+        const scope = await getScope(ctx.user.openId);
+        try {
+          return await updateTechnicianContractHours(scope, input.technicianId, input.contractHours);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur mise à jour." });
+        }
+      }),
   }),
 });

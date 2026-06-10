@@ -118,7 +118,7 @@ export async function listTechniciansForAdmin(scope: AccessScope) {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("technicians")
-    .select("id, first_name, last_name, employee_code")
+    .select("id, first_name, last_name, employee_code, contract_hours")
     .eq("is_active", true)
     .order("last_name");
   if (error) throw error;
@@ -129,6 +129,18 @@ export async function listTechniciansForAdmin(scope: AccessScope) {
       firstName: String(row.first_name ?? ""),
       lastName: String(row.last_name ?? ""),
       employeeCode: (row.employee_code as string | null) ?? null,
+      contractHours: (row.contract_hours as string | null) ?? "39h",
     };
   });
+}
+
+export async function updateTechnicianContractHours(scope: AccessScope, technicianId: number, contractHours: "35h" | "39h") {
+  if (scope.user.role !== "admin") throw new Error("Accès refusé.");
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("technicians")
+    .update({ contract_hours: contractHours })
+    .eq("id", technicianId);
+  if (error) throw error;
+  return { success: true };
 }

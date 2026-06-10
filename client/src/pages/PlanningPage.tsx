@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, MapPin, Clock, Tag,
-  AlertTriangle, ChevronDown, ChevronRight as ChevronRightIcon, Layers,
+  AlertTriangle, Layers,
   X, Phone, User, Building2, FileText, ExternalLink, Pencil, Trash2,
   ZoomIn, ZoomOut, ArrowUpRight, GripVertical, EyeOff,
 } from "lucide-react";
@@ -102,13 +102,14 @@ export default function PlanningPage() {
   const canManage = !!permissions?.manageInterventions;
   const [, setLocation] = useLocation();
 
-  const [view, setView]           = useState<ViewMode>("semaine");
+  const [view, setView]           = useState<ViewMode>(() => typeof window !== "undefined" && window.innerWidth < 640 ? "jour" : "semaine");
   const [monday, setMonday]       = useState<Date>(() => getMondayOf(new Date()));
   const [selDay, setSelDay]       = useState<string>(() => toDateStr(new Date()));
   const [monthRef, setMonthRef]   = useState<Date>(() => getMonthStart(new Date()));
   const [zoom, setZoom]           = useState(1);
   const [hiddenTechs, setHiddenTechs] = useState<Set<number>>(new Set());
   const [techOrder, setTechOrder] = useState<number[]>([]);
+  const [clientSearch, setClientSearch] = useState("");
   const prefsLoaded = useRef(false);
   // Charger les préférences dès que l'userId est connu (une seule fois)
   useEffect(()=>{
@@ -213,6 +214,7 @@ export default function PlanningPage() {
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
   const [editSlot,   setEditSlot]   = useState<Slot|null>(null);
   const [deleteSlot, setDeleteSlot] = useState<Slot|null>(null);
+  const [duplicateSource, setDuplicateSource] = useState<Slot|null>(null);
 
   const formatNavLabel = () => {
     if (view==="semaine") {
@@ -287,6 +289,16 @@ export default function PlanningPage() {
       .filter(t=>!hiddenTechs.has(t.id));
   },[technicians,techOrder,hiddenTechs]);
 
+  // Filtre slots par recherche client
+  const filteredSlots = React.useMemo(()=>{
+    const q = clientSearch.trim().toLowerCase();
+    if (!q) return slots;
+    return slots.filter(s=>{
+      const hay = [s.clientName, s.projectName, s.freeClientName].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  },[slots, clientSearch]);
+
   const isLoading = slotsLoading || techLoading;
 
   const VIEW_BUTTONS: {key:ViewMode;label:string}[] = [
@@ -298,7 +310,31 @@ export default function PlanningPage() {
   return (
     <DashboardLayout>
       <div className="flex flex-col gap-4">
-        {/* ── Header ── */}
+        {/* ── Filtre techniciens (en premier sur mobile) ── */}
+        {!isLoading && technicians.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 order-first sm:order-none">
+            {technicians.map(t=>{
+              const hidden = hiddenTechs.has(t.id);
+              return(
+                <button key={t.id}
+                  onClick={()=>setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;})}
+                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15"}`}
+                >
+                  {hidden && <EyeOff className="h-3 w-3"/>}
+                  {t.firstName[0]}{t.lastName[0]} · {t.firstName}
+                </button>
+              );
+            })}
+            {hiddenTechs.size>0&&(
+              <button onClick={()=>setHiddenTechs(new Set())}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors">
+                Tout afficher
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── Header nav + contrôles ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary"/>
@@ -337,34 +373,28 @@ export default function PlanningPage() {
           </div>
         </div>
 
-        {/* ── Filtre techniciens ── */}
-        {!isLoading && technicians.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            {technicians.map(t=>{
-              const hidden = hiddenTechs.has(t.id);
-              return(
-                <button key={t.id}
-                  onClick={()=>setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;})}
-                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15"}`}
-                >
-                  {hidden && <EyeOff className="h-3 w-3"/>}
-                  {t.firstName[0]}{t.lastName[0]} · {t.firstName}
-                </button>
-              );
-            })}
-            {hiddenTechs.size>0&&(
-              <button onClick={()=>setHiddenTechs(new Set())}
-                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors">
-                Tout afficher
-              </button>
-            )}
-          </div>
-        )}
+        {/* ── Recherche client ── */}
+        <div className="relative max-w-xs">
+          <Input
+            placeholder="Rechercher un client…"
+            value={clientSearch}
+            onChange={e=>setClientSearch(e.target.value)}
+            className="pl-8 text-sm h-8"
+          />
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </span>
+          {clientSearch&&(
+            <button onClick={()=>setClientSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5"/>
+            </button>
+          )}
+        </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
-          <WeekView slots={slots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom}
+          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -375,7 +405,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : view==="jour" ? (
-          <DayView slots={slots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom}
+          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -385,7 +415,7 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : (
-          <MonthGrid slots={slots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} onClickSlot={setDetailSlot}/>
+          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} onClickSlot={setDetailSlot}/>
         )}
 
         {(createOpen||quickCreate!==null)&&(
@@ -399,6 +429,19 @@ export default function PlanningPage() {
             defaultEndTime={quickCreate?.end}
             onSave={handleSaveCreate} saving={createMut.isPending}/>
         )}
+        {duplicateSource&&(
+          <SlotFormDialog open
+            onClose={()=>setDuplicateSource(null)}
+            technicians={technicians} projects={projects}
+            existingSlots={slots}
+            defaultDate={toDateStr(addDays(new Date(duplicateSource.slotDate+"T00:00:00"),1))}
+            defaultTechId={duplicateSource.technicianId}
+            defaultStartTime={duplicateSource.startTime}
+            defaultEndTime={duplicateSource.endTime}
+            duplicateSource={duplicateSource}
+            onSave={rows=>{rows.forEach(r=>createMut.mutate(r));setDuplicateSource(null);}}
+            saving={createMut.isPending}/>
+        )}
         {editSlot&&(
           <SlotFormDialog open onClose={()=>setEditSlot(null)} technicians={technicians} projects={projects}
             existingSlots={slots} initialSlot={editSlot}
@@ -408,6 +451,7 @@ export default function PlanningPage() {
           <SlotDetailDialog slot={detailSlot}
             onClose={()=>setDetailSlot(null)}
             onEdit={()=>{setEditSlot(detailSlot);setDetailSlot(null);}}
+            onDuplicate={()=>{setDuplicateSource(detailSlot);setDetailSlot(null);}}
             onDelete={()=>{setDeleteSlot(detailSlot);setDetailSlot(null);}}
             onOpenProject={id=>{setDetailSlot(null);setLocation(`/chantiers/${id}`);}}
             canManage={canManage}/>
@@ -521,10 +565,6 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
   const rowRefs = useRef<Record<number,HTMLDivElement|null>>({});
   const [rowDraggingId, setRowDraggingId] = useState<number|null>(null);
   const [rowDropIdx, setRowDropIdx] = useState<number|null>(null);
-
-  // Focus technicien (un seul à la fois — masque les autres)
-  const [focusedTech,setFocusedTech]=useState<number|null>(null);
-  const toggleFocus=(id:number)=>setFocusedTech(p=>p===id?null:id);
 
   // Heure courante en minutes — mise à jour toutes les 30 s
   const [nowMin,setNowMin]=useState(()=>{const n=new Date();return n.getHours()*60+n.getMinutes();});
@@ -728,22 +768,15 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
       {technicians.map((tech,rowIdx)=>{
         const ml=maxLanes(tech.id);
         const rowH=ml*LANE_H+8;
-        const isExp=focusedTech===tech.id;
         const isRowDragging=rowDraggingId===tech.id;
         const showDropBefore=rowDropIdx===rowIdx&&rowDraggingId!==null&&rowDraggingId!==tech.id;
-        // Clients uniques de la semaine pour ce technicien (mode focus)
-        const weekClients=isExp ? Array.from(new Set(
-          slots.filter(s=>s.technicianId===tech.id)
-            .map(s=>s.freeClientName??s.clientName??s.projectName)
-            .filter((c):c is string=>!!c)
-        )) : [];
         return(
           <div key={tech.id} ref={el=>{rowRefs.current[tech.id]=el;}}
             className={`border-b-2 border-slate-200 last:border-b-0 relative ${isRowDragging?"opacity-40":""}`}>
           {showDropBefore&&<div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-50"/>}
           <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
-            <div style={{height:rowH}} className={`flex items-start gap-2 px-3 py-2 border-r border-border/40 transition-colors ${isExp?"bg-primary/5":"bg-slate-50/70"}`}>
+            <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 border-r border-border/40 bg-slate-50/70">
               {onReorder&&(
                 <div
                   className="mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0 transition-colors"
@@ -752,27 +785,12 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                   <GripVertical className="h-4 w-4"/>
                 </div>
               )}
-              <button onClick={()=>toggleFocus(tech.id)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded flex items-center justify-center hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors">
-                {isExp?<ChevronDown className="h-3 w-3"/>:<ChevronRightIcon className="h-3 w-3"/>}
-              </button>
-              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0 mt-0.5">
                 {tech.firstName[0]}{tech.lastName[0]}
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="text-sm font-semibold text-foreground leading-tight truncate">{tech.firstName} {tech.lastName}</p>
-                {isExp && weekClients.length>0 ? (
-                  <div className="flex flex-col gap-px mt-0.5">
-                    {weekClients.slice(0,4).map((c,i)=>(
-                      <span key={i} className="text-[9px] font-medium text-primary/80 leading-snug truncate">{c}</span>
-                    ))}
-                    {weekClients.length>4&&<span className="text-[8px] text-muted-foreground">+{weekClients.length-4} autres</span>}
-                  </div>
-                ) : isExp ? (
-                  <p className="text-[9px] text-muted-foreground">Aucune affectation</p>
-                ) : (
-                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
-                )}
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
               </div>
             </div>
             {/* Day cells */}
@@ -858,11 +876,6 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
                             <div className="font-semibold leading-tight truncate">{emoji&&<span className="mr-0.5">{emoji}</span>}{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
                             {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className="text-white/85 text-[9px] leading-tight truncate">{slot.projectName}</div>}
                             {(zoom>=0.8||isInteracting)&&<div className="text-white/70 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
-                            {isExp&&!isInteracting&&(
-                              <div className="mt-auto self-start rounded-full bg-black/35 px-1.5 py-0.5 text-[8px] font-bold text-white leading-none tracking-tight">
-                                {displayStart}–{displayEnd}
-                              </div>
-                            )}
                             <div className="flex gap-0.5 mt-auto">
                               {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
                               {slot.hasTimeChange&&<Clock className="h-2 w-2 text-white/80"/>}
@@ -888,70 +901,6 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,onClickSlot,o
               );
             })}
           </div>
-          {isExp&&(()=>{
-            const techSlotsAll=slots.filter(s=>s.technicianId===tech.id);
-            const projKeys=Array.from(new Set(
-              techSlotsAll.map(s=>s.projectId?`p:${s.projectId}`:`f:${s.freeClientName??""}`)
-            ));
-            if(projKeys.length===0) return(
-              <div className="border-t border-border/10 bg-slate-50/40 py-2 px-4 text-[11px] text-muted-foreground/50 italic">
-                Aucun créneau cette semaine
-              </div>
-            );
-            const subRowH=LANE_H+6;
-            return projKeys.map(key=>{
-              const keySlots=techSlotsAll.filter(s=>
-                key.startsWith("p:")
-                  ?s.projectId===Number(key.slice(2))
-                  :s.freeClientName===(key==="f:"?null:key.slice(2))
-              );
-              const firstSlot=keySlots[0];
-              const label=firstSlot?(slotLabel(firstSlot)??"Sans chantier"):"Sans chantier";
-              const {bgClass:lbc,bgStyle:lbs}=firstSlot?slotBgStyle(firstSlot):{bgClass:"bg-slate-400",bgStyle:undefined as React.CSSProperties|undefined};
-              return(
-                <div key={key} className="border-t border-border/10 bg-white/80"
-                  style={{display:"grid",gridTemplateColumns:colTemplate}}>
-                  <div style={{height:subRowH}}
-                    className="flex items-center gap-2 pl-12 pr-3 border-r border-border/20 bg-slate-50/50">
-                    <div className={`h-5 w-5 rounded-full ${lbc} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}
-                      style={lbs}>
-                      {label.slice(0,2).toUpperCase()}
-                    </div>
-                    <span className="text-[11px] font-medium text-foreground/80 truncate">{label}</span>
-                  </div>
-                  {dayColumns.map(d=>{
-                    const isToday=d===today;
-                    const dayKeySlots=computeLanes(keySlots.filter(s=>s.slotDate===d));
-                    return(
-                      <div key={d} style={{height:subRowH}}
-                        className={`relative border-l-2 border-slate-100 ${isToday?"bg-primary/[0.02]":""}`}>
-                        {Array.from({length:H_TOTAL-1},(_,i)=>{
-                          const isGrad=(i+1)%3===0;
-                          return<div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}}
-                            className={`absolute top-0 bottom-0 border-l ${isGrad?"border-border/20":"border-border/8"} pointer-events-none`}/>;
-                        })}
-                        {dayKeySlots.map(slot=>{
-                          const start=timeToMin(slot.startTime);
-                          const end=timeToMin(slot.endTime);
-                          const leftPct=(start-H_START*60)/(H_TOTAL*60)*100;
-                          const widthPct=(end-start)/(H_TOTAL*60)*100;
-                          const{bgClass:bc,bgStyle:bs}=slotBgStyle(slot);
-                          return(
-                            <div key={slot.id}
-                              style={{left:`${leftPct}%`,width:`max(${widthPct}%,2px)`,top:3,height:subRowH-6,...(bs??{})}}
-                              className={`absolute rounded-lg ${bc} text-white text-[9px] shadow-sm cursor-pointer overflow-hidden px-1.5 py-0.5 flex items-center hover:brightness-110 transition-all z-10`}
-                              onClick={e=>{e.stopPropagation();onClickSlot(slot);}}>
-                              <span className="truncate font-semibold">{slot.startTime}–{slot.endTime}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            });
-          })()}
           </div>
         );
       })}
@@ -992,9 +941,6 @@ function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
   const year=monthRef.getFullYear();
   const month=monthRef.getMonth();
   const today=toDateStr(new Date());
-  const[expandedTechs,setExpandedTechs]=useState<Set<number>>(new Set());
-  const toggleTech=(id:number)=>setExpandedTechs(s=>{const n=new Set(s);n.has(id)?n.delete(id):n.add(id);return n;});
-
   // All Mon-Fri days in the month's weeks
   const firstDay=new Date(year,month,1);
   const lastDay=new Date(year,month+1,0);
@@ -1057,22 +1003,13 @@ function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
         {/* Tech rows */}
         {technicians.length===0&&<div className="py-16 text-center text-sm text-muted-foreground">Aucun technicien actif.</div>}
         {technicians.map(tech=>{
-          const isExp=expandedTechs.has(tech.id);
           const techSlots=slots.filter(s=>s.technicianId===tech.id);
-          const projKeys=isExp?Array.from(new Set(
-            techSlots.map(s=>s.projectId?`p:${s.projectId}`:`f:${s.freeClientName??""}`)
-          )):[];
 
           return(
             <div key={tech.id} className="border-b border-slate-200 last:border-b-0">
-              {/* Main tech row */}
               <div style={{display:"grid",gridTemplateColumns:colTemplate}}
-                className={`${isExp?"bg-primary/5":"hover:bg-slate-50/60"} transition-colors`}>
+                className="hover:bg-slate-50/60 transition-colors">
                 <div className="flex items-center gap-2 px-3 py-2 border-r border-border/40">
-                  <button onClick={()=>toggleTech(tech.id)}
-                    className="h-4 w-4 rounded flex items-center justify-center hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors shrink-0">
-                    {isExp?<ChevronDown className="h-3 w-3"/>:<ChevronRightIcon className="h-3 w-3"/>}
-                  </button>
                   <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                     {tech.firstName[0]}{tech.lastName[0]}
                   </div>
@@ -1082,7 +1019,7 @@ function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
                   const isToday=d===today;
                   const date=new Date(d+"T00:00:00");
                   const isCurrentMonth=date.getMonth()===month;
-                  const daySlots=isExp?[]:techSlots.filter(s=>s.slotDate===d);
+                  const daySlots=techSlots.filter(s=>s.slotDate===d);
                   return(
                     <div key={d}
                       className={`border-l border-slate-100 py-1 px-0.5 flex flex-col gap-0.5 min-h-[40px] ${isToday?"bg-primary/[0.03]":""}${!isCurrentMonth?" opacity-50 bg-slate-50/40":""}`}>
@@ -1106,52 +1043,6 @@ function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
                   );
                 })}
               </div>
-              {/* Sub-rows per project/client when expanded */}
-              {isExp&&projKeys.map(key=>{
-                const keySlots=techSlots.filter(s=>
-                  key.startsWith("p:")?s.projectId===Number(key.slice(2)):s.freeClientName===(key==="f:"?null:key.slice(2))
-                );
-                const firstSlot=keySlots[0];
-                const label=firstSlot?(slotLabel(firstSlot)??"Sans chantier"):"Sans chantier";
-                const{bgClass:lbc,bgStyle:lbs}=firstSlot?slotBgStyle(firstSlot):{bgClass:"bg-slate-400",bgStyle:undefined as React.CSSProperties|undefined};
-                return(
-                  <div key={key} style={{display:"grid",gridTemplateColumns:colTemplate}}
-                    className="border-t border-border/10">
-                    <div className="flex items-center gap-2 pl-12 pr-3 py-1.5 border-r border-border/20 bg-white">
-                      <div className={`h-5 w-5 rounded-full ${lbc} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}
-                        style={lbs}>
-                        {label.slice(0,2).toUpperCase()}
-                      </div>
-                      <span className="text-[11px] font-medium text-foreground/80 truncate">{label}</span>
-                    </div>
-                    {days.map(d=>{
-                      const isToday=d===today;
-                      const cSlots=keySlots.filter(s=>s.slotDate===d);
-                      return(
-                        <div key={d}
-                          className={`border-l border-slate-50 py-1 px-0.5 flex flex-col gap-0.5 min-h-[32px] bg-white ${isToday?"bg-primary/[0.015]":""}`}>
-                          {cSlots.map(s=>{
-                            const{bgClass:bc,bgStyle:bs}=slotBgStyle(s);
-                            return(
-                              <Tooltip key={s.id} delayDuration={300}>
-                                <TooltipTrigger asChild>
-                                  <button onClick={()=>onClickSlot(s)}
-                                    className={`w-full h-2.5 rounded-sm ${bc} hover:brightness-110 transition-all shrink-0`}
-                                    style={bs}/>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="flex flex-col gap-0.5">
-                                  <p className="font-semibold text-xs">{slotLabel(s)??"Sans chantier"}</p>
-                                  <p className="text-[11px] opacity-70">{s.startTime}–{s.endTime}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
             </div>
           );
         })}
@@ -1162,8 +1053,8 @@ function MonthGrid({slots,technicians,monthRef,canManage,onClickSlot}:{
 
 // ─── Slot Detail Dialog ───────────────────────────────────────────────────────
 
-function SlotDetailDialog({slot,onClose,onEdit,onDelete,onOpenProject,canManage}:{
-  slot:Slot;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;
+function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProject,canManage}:{
+  slot:Slot;onClose:()=>void;onEdit:()=>void;onDuplicate:()=>void;onDelete:()=>void;
   onOpenProject:(id:number)=>void;canManage:boolean;
 }){
   const color=slotColor(slot.projectServiceType);
@@ -1279,9 +1170,12 @@ function SlotDetailDialog({slot,onClose,onEdit,onDelete,onOpenProject,canManage}
         </div>
 
         {canManage&&(
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 flex-wrap">
             <Button variant="outline" size="sm" className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={onDelete}>
               <Trash2 className="h-3.5 w-3.5"/> Supprimer
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={onDuplicate}>
+              <Layers className="h-3.5 w-3.5"/> Dupliquer
             </Button>
             <Button size="sm" className="gap-1.5" onClick={onEdit}><Pencil className="h-3.5 w-3.5"/> Modifier</Button>
           </DialogFooter>
@@ -1301,22 +1195,23 @@ type SlotFormRow = {
   discountNote?:string|null;changeNote?:string|null;
 };
 
-function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initialSlot,defaultDate,defaultTechId,defaultStartTime,defaultEndTime,onSave,saving}:{
+function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initialSlot,duplicateSource,defaultDate,defaultTechId,defaultStartTime,defaultEndTime,onSave,saving}:{
   open:boolean;onClose:()=>void;
   technicians:Technician[];projects:{id:number;name:string;reference:string|null;clientName:string|null}[];
-  existingSlots:Slot[];initialSlot?:Slot|null;defaultDate?:string;
+  existingSlots:Slot[];initialSlot?:Slot|null;duplicateSource?:Slot|null;defaultDate?:string;
   defaultTechId?:number;defaultStartTime?:string;defaultEndTime?:string;
   onSave:(rows:SlotFormRow[])=>void;saving:boolean;
 }){
+  const src = duplicateSource ?? null;
   const [selectedTechIds,setSelectedTechIds]=useState<Set<number>>(
     new Set(initialSlot?[initialSlot.technicianId]:defaultTechId?[defaultTechId]:technicians.slice(0,1).map(t=>t.id))
   );
-  const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):"none");
-  const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??"");
+  const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):src?.projectId?String(src.projectId):"none");
+  const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??src?.freeClientName??"");
   const [date,setDate]=useState(initialSlot?.slotDate??defaultDate??toDateStr(new Date()));
   const [startTime,setStartTime]=useState(initialSlot?.startTime??defaultStartTime??"08:00");
   const [endTime,setEndTime]=useState(initialSlot?.endTime??defaultEndTime??"10:00");
-  const [notes,setNotes]=useState(initialSlot?.notes??"");
+  const [notes,setNotes]=useState(initialSlot?.notes??src?.notes??"");
   const [status,setStatus]=useState<SlotFormRow["status"]>((initialSlot?.status as SlotFormRow["status"])??"scheduled");
   const [hasLocChange,setHasLocChange]=useState(initialSlot?.hasLocationChange??false);
   const [hasTimeChange,setHasTimeChange]=useState(initialSlot?.hasTimeChange??false);
