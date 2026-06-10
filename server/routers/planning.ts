@@ -153,6 +153,26 @@ async function fetchAndEnrichSlots(
 
 // ─── GCal → planning_slots sync ───────────────────────────────────────────────
 
+function extractPhone(text: string | null): string | null {
+  if (!text) return null;
+  const m = text.match(/(?:\+33|0033|0)[1-9](?:[\s.\-]?\d{2}){4}/);
+  return m ? m[0].replace(/[\s.\-]/g, " ").trim() : null;
+}
+
+function clampStartTime(startTime: string, endTime: string): { start: string; end: string } {
+  const MIN = 8 * 60; // 08:00 in minutes
+  const [sh, sm] = startTime.split(":").map(Number);
+  const startMin = sh * 60 + sm;
+  if (startMin >= MIN) return { start: startTime, end: endTime };
+  const [eh, em] = endTime.split(":").map(Number);
+  const endMin = eh * 60 + em;
+  const duration = endMin - startMin;
+  const newStart = MIN;
+  const newEnd = Math.min(newStart + duration, 19 * 60);
+  const pad = (n: number) => `${Math.floor(n / 60).toString().padStart(2, "0")}:${(n % 60).toString().padStart(2, "0")}`;
+  return { start: pad(newStart), end: pad(Math.max(newEnd, newStart + 30)) };
+}
+
 async function syncGCalToPlanning(startDate: string, endDate: string) {
   const supabase = createSupabaseAdminClient();
   type TechRow = { id: number; google_calendar_ical_url: string };
@@ -164,15 +184,13 @@ async function syncGCalToPlanning(startDate: string, endDate: string) {
   if (error) throw error;
 
   const techs = (data ?? []) as TechRow[];
-  const seen = new Set<string>();
   let created = 0, updated = 0;
   const errors: string[] = [];
 
   for (const tech of techs) {
     const url = normalizeIcalUrl(tech.google_calendar_ical_url);
-    // Si plusieurs techniciens partagent le même calendrier, on sync pour chacun
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
       if (!res.ok) { errors.push(`tech ${tech.id}: HTTP ${res.status}`); continue; }
       const content = await res.text();
       if (!content.includes("BEGIN:VCALENDAR")) { errors.push(`tech ${tech.id}: réponse non-iCal`); continue; }
@@ -180,10 +198,12 @@ async function syncGCalToPlanning(startDate: string, endDate: string) {
       const events = parseICSContent(content, tech.id).filter(e => e.date >= startDate && e.date <= endDate);
 
       for (const ev of events) {
-        // Vérifie si ce slot GCal existe déjà
+        const phone = extractPhone(ev.description) ?? extractPhone(ev.location);
+        const times = clampStartTime(ev.startTime, ev.endTime);
+
         const { data: existing } = await supabase
           .from("planning_slots")
-          .select("id, slot_date, start_time, end_time, free_client_name, free_client_address")
+          .select("id, slot_date, start_time, end_time, free_client_name, free_client_address, free_client_phone")
           .eq("technician_id", tech.id)
           .eq("gcal_event_uid", ev.uid)
           .maybeSingle();
@@ -193,9 +213,10 @@ async function syncGCalToPlanning(startDate: string, endDate: string) {
           gcal_event_uid: ev.uid,
           free_client_name: ev.summary,
           free_client_address: ev.location ?? null,
+          free_client_phone: phone,
           slot_date: ev.date,
-          start_time: ev.startTime + ":00",
-          end_time: ev.endTime + ":00",
+          start_time: times.start + ":00",
+          end_time: times.end + ":00",
           status: "scheduled",
           has_location_change: false,
           has_time_change: false,
@@ -206,20 +227,21 @@ async function syncGCalToPlanning(startDate: string, endDate: string) {
           await supabase.from("planning_slots").insert(row);
           created++;
         } else {
-          // Met à jour titre, adresse, horaires si changés dans GCal
           const changed =
             existing.free_client_name !== ev.summary ||
             existing.free_client_address !== (ev.location ?? null) ||
+            (existing.free_client_phone as string | null) !== phone ||
             (existing.slot_date as string) !== ev.date ||
-            (existing.start_time as string).slice(0, 5) !== ev.startTime ||
-            (existing.end_time as string).slice(0, 5) !== ev.endTime;
+            (existing.start_time as string).slice(0, 5) !== times.start ||
+            (existing.end_time as string).slice(0, 5) !== times.end;
           if (changed) {
             await supabase.from("planning_slots").update({
               free_client_name: ev.summary,
               free_client_address: ev.location ?? null,
+              free_client_phone: phone,
               slot_date: ev.date,
-              start_time: ev.startTime + ":00",
-              end_time: ev.endTime + ":00",
+              start_time: times.start + ":00",
+              end_time: times.end + ":00",
             }).eq("id", existing.id as number);
             updated++;
           }
@@ -228,7 +250,6 @@ async function syncGCalToPlanning(startDate: string, endDate: string) {
     } catch (err) {
       errors.push(`tech ${tech.id}: ${err instanceof Error ? err.message : "erreur réseau"}`);
     }
-    seen.add(url);
   }
 
   return { created, updated, errors };

@@ -295,9 +295,10 @@ export default function PlanningPage() {
   const triggerGCalSync = React.useCallback(() => {
     if (gcalSyncMut.isPending) return;
     setGcalSyncing(true);
-    const oneYearAgo = toDateStr(addDays(new Date(), -365));
-    const lastSunday = toDateStr(addDays(getMondayOf(new Date()), -1));
-    gcalSyncMut.mutate({startDate: oneYearAgo, endDate: lastSunday});
+    // Couvre juin 2025 → lundi de la semaine courante inclus (8 juin 2026)
+    const startDate = "2025-06-01";
+    const endDate = toDateStr(getMondayOf(new Date()));
+    gcalSyncMut.mutate({startDate, endDate});
   }, [gcalSyncMut]);
 
   // Auto-sync au chargement (une fois par session, admin seulement)

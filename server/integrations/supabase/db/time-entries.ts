@@ -184,6 +184,7 @@ export interface GCalEvent {
   startTime: string;
   endTime: string;
   location: string | null;
+  description: string | null;
 }
 
 export function normalizeIcalUrl(input: string): string {
@@ -213,6 +214,7 @@ export function parseICSContent(content: string, technicianId: number): GCalEven
           startTime: start.time,
           endTime: end.time === start.time ? addOneHourServer(start.time) : end.time,
           location: cur.LOCATION ? cur.LOCATION.replace(/\\,/g, ",").replace(/\\n/g, " ").trim() : null,
+          description: cur.DESCRIPTION ? cur.DESCRIPTION.replace(/\\n/g, " ").replace(/\\,/g, ",").trim() : null,
         });
       }
       continue;
