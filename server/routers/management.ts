@@ -887,6 +887,8 @@ export const managementRouter = router({
           sitePostalCode: null as string | null,
           siteCity: null as string | null,
           color: null as string | null,
+          address: null as string | null,
+          phone: null as string | null,
           technicianIds: assignmentRows.map(item => item.technicianId),
           assignedTechnicianNames: assignmentRows.map(item => `${item.firstName} ${item.lastName}`.trim()),
         };

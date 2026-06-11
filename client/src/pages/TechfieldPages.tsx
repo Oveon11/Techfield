@@ -2121,36 +2121,39 @@ export function ProjectDetailPage() {
           </div>
 
           {/* Row 3: contact rapide */}
-          {(project.clientPhone || project.siteAddress || project.siteCity) && (
-            <div className="rounded-xl border border-border/60 bg-white px-5 py-4 shadow-sm">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Contact &amp; Adresse</p>
-              <div className="flex flex-wrap gap-4">
-                {project.clientPhone && (
-                  <a href={`tel:${project.clientPhone}`}
-                    className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-2.5 hover:bg-muted/40 transition-colors">
-                    <Phone className="h-4 w-4 text-primary shrink-0"/>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Téléphone</p>
-                      <p className="font-semibold text-sm text-foreground">{project.clientPhone}</p>
-                    </div>
-                  </a>
-                )}
-                {(project.siteAddress || project.siteCity) && (
-                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([project.siteAddress, project.sitePostalCode, project.siteCity].filter(Boolean).join(", "))}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-2.5 hover:bg-muted/40 transition-colors">
-                    <MapPin className="h-4 w-4 text-primary shrink-0"/>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Adresse chantier</p>
-                      <p className="font-semibold text-sm text-foreground leading-snug">
-                        {[project.siteAddress, project.sitePostalCode, project.siteCity].filter(Boolean).join(", ")}
-                      </p>
-                    </div>
-                  </a>
-                )}
+          {(() => {
+            const displayPhone = project.phone || project.clientPhone;
+            const displayAddress = project.address || (project.siteAddress || project.siteCity ? [project.siteAddress, project.sitePostalCode, project.siteCity].filter(Boolean).join(", ") : null);
+            if (!displayPhone && !displayAddress) return null;
+            return (
+              <div className="rounded-xl border border-border/60 bg-white px-5 py-4 shadow-sm">
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Contact &amp; Adresse</p>
+                <div className="flex flex-wrap gap-4">
+                  {displayPhone && (
+                    <a href={`tel:${displayPhone}`}
+                      className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-2.5 hover:bg-muted/40 transition-colors">
+                      <Phone className="h-4 w-4 text-primary shrink-0"/>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Téléphone</p>
+                        <p className="font-semibold text-sm text-foreground">{displayPhone}</p>
+                      </div>
+                    </a>
+                  )}
+                  {displayAddress && (
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(displayAddress)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-2.5 hover:bg-muted/40 transition-colors">
+                      <MapPin className="h-4 w-4 text-primary shrink-0"/>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5">Adresse chantier</p>
+                        <p className="font-semibold text-sm text-foreground leading-snug">{displayAddress}</p>
+                      </div>
+                    </a>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         <Tabs defaultValue="journal">
