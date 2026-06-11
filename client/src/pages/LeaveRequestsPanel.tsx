@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { OVEON_LOGO_B64 } from "@/lib/oveon-logo";
 import { trpc } from "@/lib/trpc";
 import { jsPDF } from "jspdf";
 import {
@@ -174,6 +175,7 @@ function generateRequestPDF(req: RequestDoc) {
   let y = 20;
 
   // ── Header ──
+  try { doc.addImage("data:image/png;base64," + OVEON_LOGO_B64, "PNG", 155, 12, 35, 14); } catch { /* logo load failed */ }
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(37, 99, 235);
@@ -406,6 +408,7 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
       : `${MONTHS_FR[exportMonth - 1]} ${exportYear}`;
 
     let y = 18;
+    try { doc.addImage("data:image/png;base64," + OVEON_LOGO_B64, "PNG", W - ML - 40, 10, 40, 16); } catch { /* logo load failed */ }
     doc.setFont("helvetica","bold"); doc.setFontSize(13);
     doc.text("Récapitulatif des congés", ML, y); y += 7;
     doc.setFont("helvetica","normal"); doc.setFontSize(9);
@@ -588,6 +591,7 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                           contractHours: req.contractHours, startDate: req.startDate, endDate: req.endDate,
                           days: req.days, comment: req.comment, adminComment: req.adminComment,
                           status: req.status, approvedAt: req.approvedAt, createdAt: req.createdAt,
+                          techSignature: req.techSignature, adminSignature: req.adminSignature,
                         })}>
                         <FileDown className="h-3.5 w-3.5"/> Document
                       </Button>
@@ -609,6 +613,7 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                           days: req.days, comment: req.comment, adminComment: req.adminComment,
                           status: req.status, approvedAt: req.approvedAt, createdAt: req.createdAt,
                           adminName: meQuery.data?.name ?? null,
+                          techSignature: req.techSignature, adminSignature: req.adminSignature,
                         })}>
                         <FileDown className="h-3.5 w-3.5"/> Document
                       </Button>
@@ -772,7 +777,7 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                 days: countDays(form.startDate, form.endDate), comment: form.comment || null,
                 adminComment: null, status: "pending", approvedAt: null, createdAt: new Date().toISOString(),
               };
-              createMut.mutate({ startDate: form.startDate, endDate: form.endDate, comment: form.comment || null });
+              createMut.mutate({ startDate: form.startDate, endDate: form.endDate, comment: form.comment || null, techSignature: techSig });
             }}
               disabled={createMut.isPending || !form.startDate || !form.endDate || form.endDate < form.startDate || form.startDate < minDate}>
               {createMut.isPending ? "Envoi…" : "Envoyer"}
@@ -806,7 +811,7 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                   days: req.days, comment: req.comment, adminComment: approveComment || null,
                   status: "approved", approvedAt: null, createdAt: req.createdAt,
                 };
-                approveMut.mutate({ id: approveId!, adminComment: approveComment || null });
+                approveMut.mutate({ id: approveId!, adminComment: approveComment || null, adminSignature: adminSig });
               }}
               disabled={approveMut.isPending}>
               {approveMut.isPending ? "Validation…" : "Confirmer"}

@@ -335,12 +335,14 @@ function mapLeaveRow(r: Record<string, unknown>) {
     adminComment: (r.admin_comment as string | null) ?? null,
     approvedAt: (r.approved_at as string | null) ?? null,
     createdAt: String(r.created_at ?? ""),
+    techSignature: (r.tech_signature as string | null) ?? null,
+    adminSignature: (r.admin_signature as string | null) ?? null,
   };
 }
 
 export async function createLeaveRequest(
   scope: AccessScope,
-  input: { startDate: string; endDate: string; comment: string | null },
+  input: { startDate: string; endDate: string; comment: string | null; techSignature?: string | null },
 ) {
   if (scope.user.role === "client") throw new Error("Accès refusé.");
   if (!scope.technicianProfile?.id && scope.user.role !== "admin")
@@ -369,6 +371,7 @@ export async function createLeaveRequest(
       start_date: input.startDate,
       end_date: input.endDate,
       comment: input.comment,
+      tech_signature: input.techSignature ?? null,
     })
     .select("id")
     .single();
@@ -404,6 +407,7 @@ export async function approveLeaveRequest(
   scope: AccessScope,
   id: number,
   adminComment: string | null,
+  adminSignature?: string | null,
 ) {
   if (scope.user.role !== "admin") throw new Error("Accès refusé.");
   const supabase = createSupabaseAdminClient();
@@ -422,6 +426,7 @@ export async function approveLeaveRequest(
     .update({
       status: "approved",
       admin_comment: adminComment,
+      admin_signature: adminSignature ?? null,
       approved_by_user_id: scope.user.id,
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

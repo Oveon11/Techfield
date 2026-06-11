@@ -1945,7 +1945,7 @@ export const managementRouter = router({
 
     leaveRequests: router({
       create: protectedProcedure
-        .input(z.object({ startDate: z.string(), endDate: z.string(), comment: z.string().nullable() }))
+        .input(z.object({ startDate: z.string(), endDate: z.string(), comment: z.string().nullable(), techSignature: z.string().optional().nullable() }))
         .mutation(async ({ ctx, input }) => {
           const scope = await getScope(ctx.user.openId);
           try { return await createLeaveRequest(scope, input); }
@@ -1961,10 +1961,10 @@ export const managementRouter = router({
         }),
 
       approve: adminProcedure
-        .input(z.object({ id: z.number().int().positive(), adminComment: z.string().nullable() }))
+        .input(z.object({ id: z.number().int().positive(), adminComment: z.string().nullable(), adminSignature: z.string().optional().nullable() }))
         .mutation(async ({ ctx, input }) => {
           const scope = await getScope(ctx.user.openId);
-          try { return await approveLeaveRequest(scope, input.id, input.adminComment); }
+          try { return await approveLeaveRequest(scope, input.id, input.adminComment, input.adminSignature); }
           catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : "Erreur." }); }
         }),
 

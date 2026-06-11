@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
+import { OVEON_LOGO_B64 } from "@/lib/oveon-logo";
 
 type EntryType = "travail" | "conge" | "cfa" | "maladie" | "absence";
 
@@ -333,6 +334,7 @@ export default function HoursPage() {
     const headers = ["Date", "Type", "Début", "Fin", "Pause", "Heures", "Chantier", "Panier", "Note"];
 
     let y = 18;
+    try { doc.addImage("data:image/png;base64," + OVEON_LOGO_B64, "PNG", pageW - ML - 40, 10, 40, 16); } catch { /* logo load failed */ }
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
