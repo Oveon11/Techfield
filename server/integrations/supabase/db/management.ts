@@ -337,7 +337,7 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
 
   let query = supabase
     .from("projects")
-    .select("id, reference, title, status, progress_percent, service_type, color, start_date, planned_end_date, created_at, clients(company_name), sites(site_name), project_assignments(technicians(first_name, last_name))")
+    .select("id, reference, title, status, progress_percent, service_type, color, address, phone, start_date, planned_end_date, created_at, clients(company_name, phone), sites(site_name), project_assignments(technicians(first_name, last_name))")
     .order("created_at", { ascending: false });
 
   if (scope.user.role === "client" && scope.clientContactProfile) {
@@ -351,12 +351,15 @@ export async function getSupabaseProjectsList(scope: AccessScope) {
 
   return (data ?? []).map((row: unknown) => {
     const item = row as Record<string, unknown>;
+    const client = getSingleRelation(item, "clients");
     return {
       ...mapProjectRow(item),
       serviceType: (item.service_type as string | undefined) ?? "autre",
       color: (item.color as string | null) ?? null,
       startDate: (item.start_date as string | null) ?? null,
       plannedEndDate: (item.planned_end_date as string | null) ?? null,
+      address: (item.address as string | null) ?? null,
+      phone: (item.phone as string | null) ?? (client?.phone as string | null) ?? null,
     };
   });
 }

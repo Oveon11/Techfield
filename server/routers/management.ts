@@ -806,7 +806,7 @@ export const managementRouter = router({
           .leftJoin(sites, eq(projects.siteId, sites.id))
           .where(inArray(projects.id, projectIds))
           .orderBy(desc(projects.createdAt));
-        return rows.map(r => ({ ...r, startDate: null as string | null, plannedEndDate: null as string | null }));
+        return rows.map(r => ({ ...r, startDate: null as string | null, plannedEndDate: null as string | null, address: null as string | null, phone: null as string | null }));
       }
 
       const rows = await db
@@ -831,7 +831,7 @@ export const managementRouter = router({
         .leftJoin(sites, eq(projects.siteId, sites.id))
         .where(scope.user.role === "client" && scope.clientContactProfile ? eq(projects.clientId, scope.clientContactProfile.clientId) : undefined)
         .orderBy(desc(projects.createdAt));
-      return rows.map(r => ({ ...r, startDate: null as string | null, plannedEndDate: null as string | null }));
+      return rows.map(r => ({ ...r, startDate: null as string | null, plannedEndDate: null as string | null, address: null as string | null, phone: null as string | null }));
     }),
     getById: protectedProcedure
       .input(z.object({ projectId: z.number().int().positive() }))

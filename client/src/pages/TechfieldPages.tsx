@@ -1190,7 +1190,17 @@ export function ProjectsPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1 min-w-0"><Wrench className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.title}</span></span>
-                      {project.siteName && <span className="flex items-center gap-1 min-w-0"><MapPin className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.siteName}</span></span>}
+                      {(project.address || project.siteName) && (
+                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(project.address || project.siteName || "")}`} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 min-w-0 hover:text-primary transition-colors" onClick={e => e.stopPropagation()}>
+                          <MapPin className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.address || project.siteName}</span>
+                        </a>
+                      )}
+                      {project.phone && (
+                        <a href={`tel:${project.phone}`} className="flex items-center gap-1 hover:text-primary transition-colors" onClick={e => e.stopPropagation()}>
+                          <Phone className="h-3 w-3 shrink-0 text-slate-400" />{project.phone}
+                        </a>
+                      )}
                       <span className="flex items-center gap-1 text-slate-400"><FileText className="h-3 w-3 shrink-0" />{project.reference}</span>
                     </div>
                   </div>
