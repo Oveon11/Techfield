@@ -409,13 +409,8 @@ export const planningRouter = router({
 
   /** ID technicien du user connecté (null si admin/client) */
   getMyTechnicianId: protectedProcedure.query(async({ctx})=>{
-    const supabase = createSupabaseAdminClient();
-    const {data} = await supabase
-      .from("technician_profiles")
-      .select("technician_id")
-      .eq("user_id", ctx.user.openId)
-      .maybeSingle();
-    return {technicianId: data?.technician_id ? Number(data.technician_id) : null};
+    const scope = await getUserAccessProfile(ctx.user.openId);
+    return {technicianId: scope?.technicianProfile?.id ?? null};
   }),
 
   search: protectedProcedure.input(z.object({q: z.string().min(1).max(200)})).query(async({ctx,input})=>{
