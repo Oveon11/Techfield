@@ -441,10 +441,11 @@ export default function PlanningPage() {
             <div className="hidden sm:flex flex-wrap items-center gap-2">
               {(()=>{
                 const realFilters=new Set(Array.from(activeCategoryFilters).filter(c=>c!=="unassigned"));
+                const onlyUnassigned=activeCategoryFilters.size>0&&realFilters.size===0;
                 return technicians.map(t=>{
                   const hidden=hiddenTechs.has(t.id);
                   const hasGcal=!!gcalUrlMap.get(t.id);
-                  const inActiveCat=realFilters.size===0||realFilters.has(t.category as string);
+                  const inActiveCat=!onlyUnassigned&&(realFilters.size===0||realFilters.has(t.category as string));
                   const isPinned=pinnedTechs.has(t.id);
                   const chipClass=inActiveCat
                     ?(hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15")
