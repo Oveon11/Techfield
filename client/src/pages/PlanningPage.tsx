@@ -104,6 +104,8 @@ export default function PlanningPage() {
   const { permissions, userId, role } = useRoleMatrix();
   const canManage = !!permissions?.manageInterventions;
   const isTechnicien = role === "technicien";
+  // Techniciens ont manageInterventions=true mais ne peuvent pas modifier le planning
+  const canEditPlanning = canManage && !isTechnicien;
   const [, setLocation] = useLocation();
 
   const [view, setView]           = useState<ViewMode>(() => typeof window !== "undefined" && window.innerWidth < 640 ? "jour" : "semaine");
@@ -418,7 +420,7 @@ export default function PlanningPage() {
             Tout
           </button>
           {(["installation","sav","unassigned"] as const)
-            .filter(cat=>cat!=="unassigned"||canManage)
+            .filter(cat=>cat!=="unassigned"||canEditPlanning)
             .map(cat=>{
               const labels={installation:"Installation",sav:"SAV / Dépannage",unassigned:"À affecter"};
               const active=activeCategoryFilters.has(cat);
@@ -496,7 +498,7 @@ export default function PlanningPage() {
                         {hidden&&inActiveCat&&<EyeOff className="h-3 w-3"/>}
                         {t.firstName[0]}{t.lastName[0]} · {t.firstName}
                       </button>
-                      {canManage&&(
+                      {canEditPlanning&&(
                         <button
                           onClick={()=>{setGcalUrlInput(gcalUrlMap.get(t.id)??"");setGcalUrlOpen(t.id);}}
                           className={`rounded-full p-1 transition-colors ${hasGcal?"text-green-600 hover:bg-green-50":"text-slate-300 hover:text-slate-500 hover:bg-slate-100"}`}
@@ -566,7 +568,7 @@ export default function PlanningPage() {
                 <button onClick={()=>setZoom(z=>Math.min(2,z+0.1))} className="rounded-lg p-1.5 hover:bg-muted transition-colors" title="Zoomer"><ZoomIn className="h-3.5 w-3.5"/></button>
               </div>
             )}
-            {canManage&&(
+            {canEditPlanning&&(
               <Button size="sm" onClick={()=>setCreateOpen(true)} className="gap-1.5 shadow-sm">
                 <Plus className="h-4 w-4"/> Créer
               </Button>
@@ -575,7 +577,7 @@ export default function PlanningPage() {
         </div>
 
         {/* ── Bannière alerte créneaux non affectés ── */}
-        {canManage && unassignedUpcoming.length > 0 && (
+        {canEditPlanning && unassignedUpcoming.length > 0 && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3">
             <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
             <div className="flex-1 min-w-0">
@@ -600,31 +602,31 @@ export default function PlanningPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
-          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
-            showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
+          <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canEditPlanning} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
+            showUnassignedRow={canEditPlanning&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
-            onCellClick={canManage?(techId,date,start,end)=>setQuickCreate({techId,date,start,end}):undefined}
+            onCellClick={canEditPlanning?(techId,date,start,end)=>setQuickCreate({techId,date,start,end}):undefined}
             onDayClick={d=>{setSelDay(d);setView("jour");}}
-            onReorder={canManage?setTechOrder:undefined}
+            onReorder={canEditPlanning?setTechOrder:undefined}
           />
         ) : view==="jour" ? (
-          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
-            showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
+          <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canEditPlanning} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
+            showUnassignedRow={canEditPlanning&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
-            onCellClick={canManage?(techId,date,start,end)=>setQuickCreate({techId,date,start,end}):undefined}
-            onReorder={canManage?setTechOrder:undefined}
+            onCellClick={canEditPlanning?(techId,date,start,end)=>setQuickCreate({techId,date,start,end}):undefined}
+            onReorder={canEditPlanning?setTechOrder:undefined}
           />
         ) : (
-          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}
-            showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
+          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canEditPlanning} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}
+            showUnassignedRow={canEditPlanning&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
           />
         )}
           </div>
@@ -676,7 +678,7 @@ export default function PlanningPage() {
               setDetailSlot(null);
               setLocation("/chantiers");
             }}
-            canManage={canManage}/>
+            canManage={canEditPlanning}/>
         )}
         <AlertDialog open={!!deleteSlot} onOpenChange={o=>!o&&setDeleteSlot(null)}>
           <AlertDialogContent>
