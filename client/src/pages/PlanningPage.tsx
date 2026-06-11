@@ -255,18 +255,50 @@ export default function PlanningPage() {
 
   const touchStartX = useRef<number|null>(null);
   const touchStartY = useRef<number|null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeSnapping, setSwipeSnapping] = useState(false);
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+
+  // touchmove impératif (passive:false) pour pouvoir bloquer le scroll page
+  useEffect(()=>{
+    const el = gridWrapRef.current;
+    if(!el) return;
+    const onMove = (e: TouchEvent) => {
+      if(touchStartX.current===null||touchStartY.current===null) return;
+      const dx = e.touches[0].clientX - touchStartX.current;
+      const dy = e.touches[0].clientY - touchStartY.current;
+      if(Math.abs(dx)>8&&Math.abs(dx)>Math.abs(dy)*1.2){
+        e.preventDefault();
+        // résistance légère : le grid suit mais freine
+        const maxPull = typeof window!=="undefined" ? window.innerWidth*0.45 : 180;
+        setSwipeOffset(Math.sign(dx)*Math.min(Math.abs(dx)*0.75, maxPull));
+      }
+    };
+    el.addEventListener("touchmove", onMove, {passive:false});
+    return()=>el.removeEventListener("touchmove", onMove);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
+    setSwipeSnapping(false);
   };
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null || touchStartY.current === null) return;
+    if(touchStartX.current===null||touchStartY.current===null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     touchStartX.current = null;
     touchStartY.current = null;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx < 0) goNext(); else goPrev();
+    if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){
+      // Navigation + reset instantané (le nouveau contenu s'affiche)
+      if(dx<0) goNext(); else goPrev();
+      setSwipeOffset(0);
+    } else {
+      // Pas assez de swipe → retour animé
+      setSwipeSnapping(true);
+      setSwipeOffset(0);
+      setTimeout(()=>setSwipeSnapping(false), 220);
     }
   };
 
@@ -562,7 +594,9 @@ export default function PlanningPage() {
           </div>
         )}
 
-        <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={{touchAction:"pan-y"}}>
+        <div ref={gridWrapRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
+          style={{touchAction:"pan-y",overflow:"hidden"}}>
+          <div style={{transform:`translateX(${swipeOffset}px)`,transition:swipeSnapping?"transform 0.22s ease-out":"none",willChange:"transform"}}>
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
@@ -573,9 +607,9 @@ export default function PlanningPage() {
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
-            onCellClick={(techId,date,start,end)=>setQuickCreate({techId,date,start,end})}
+            onCellClick={canManage?(techId,date,start,end)=>setQuickCreate({techId,date,start,end}):undefined}
             onDayClick={d=>{setSelDay(d);setView("jour");}}
-            onReorder={setTechOrder}
+            onReorder={canManage?setTechOrder:undefined}
           />
         ) : view==="jour" ? (
           <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
@@ -585,14 +619,15 @@ export default function PlanningPage() {
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
               else moveMut.mutate({id,slotDate:date,startTime:start,endTime:end,...prev});
             }}
-            onCellClick={(techId,date,start,end)=>setQuickCreate({techId,date,start,end})}
-            onReorder={setTechOrder}
+            onCellClick={canManage?(techId,date,start,end)=>setQuickCreate({techId,date,start,end}):undefined}
+            onReorder={canManage?setTechOrder:undefined}
           />
         ) : (
           <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}
             showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
           />
         )}
+          </div>
         </div>
 
         {(createOpen||quickCreate!==null)&&(
@@ -854,7 +889,7 @@ type GridProps = {
 // Shared timeline grid — percentage-based, fits parent width
 function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],gcalEvents=[],showUnassignedRow=false,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
-  const LABEL_W = 176;
+  const LABEL_W = typeof window!=="undefined"&&window.innerWidth<640 ? 68 : 176;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
   // zoom>1 → largeur fixe en px, déclenche le scroll horizontal
   const COL_W = zoom > 1.05 ? Math.round(150 * zoom) : undefined;
@@ -1083,19 +1118,19 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
           {showDropBefore&&<div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-50"/>}
           <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
             {/* Label */}
-            <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 border-r border-border/40 bg-slate-50/70">
+            <div style={{height:rowH}} className="flex items-center justify-center sm:items-start sm:justify-start sm:gap-2 px-1 sm:px-3 py-2 border-r border-border/40 bg-slate-50/70">
               {onReorder&&(
                 <div
-                  className="mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0 transition-colors"
+                  className="hidden sm:flex mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0 transition-colors"
                   onMouseDown={e=>{e.preventDefault();e.stopPropagation();rowDragRef.current={techId:tech.id};setRowDraggingId(tech.id);setRowDropIdx(rowIdx);rowDropIdxRef.current=rowIdx;}}
                 >
                   <GripVertical className="h-4 w-4"/>
                 </div>
               )}
-              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0 mt-0.5">
+              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0 sm:mt-0.5">
                 {tech.firstName[0]}{tech.lastName[0]}
               </div>
-              <div className="min-w-0 flex-1 overflow-hidden">
+              <div className="hidden sm:block min-w-0 flex-1 overflow-hidden">
                 <p className="text-sm font-semibold text-foreground leading-tight truncate">{tech.firstName} {tech.lastName}</p>
                 <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
               </div>
@@ -1255,11 +1290,11 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
           <div className="border-t-2 border-amber-200">
             <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
               {/* Label */}
-              <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 border-r border-amber-200/60 bg-amber-50/60">
-                <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0 mt-0.5">
+              <div style={{height:rowH}} className="flex items-center justify-center sm:items-start sm:justify-start sm:gap-2 px-1 sm:px-3 py-2 border-r border-amber-200/60 bg-amber-50/60">
+                <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0 sm:mt-0.5">
                   <AlertTriangle className="h-3.5 w-3.5"/>
                 </div>
-                <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="hidden sm:block min-w-0 flex-1 overflow-hidden">
                   <p className="text-sm font-semibold text-amber-800 leading-tight">À affecter</p>
                   <p className="text-[9px] text-amber-600 uppercase tracking-wide">{unassignedSlots.length} créneau{unassignedSlots.length>1?"x":""}</p>
                 </div>
@@ -1460,11 +1495,11 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
             <div key={tech.id} className="border-b border-slate-200 last:border-b-0">
               <div style={{display:"grid",gridTemplateColumns:colTemplate}}
                 className="hover:bg-slate-50/60 transition-colors">
-                <div className="flex items-center gap-2 px-3 py-2 border-r border-border/40">
+                <div className="flex items-center justify-center sm:justify-start sm:gap-2 px-1 sm:px-3 py-2 border-r border-border/40">
                   <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                     {tech.firstName[0]}{tech.lastName[0]}
                   </div>
-                  <p className="text-sm font-semibold text-foreground truncate">{tech.firstName} {tech.lastName}</p>
+                  <p className="hidden sm:block text-sm font-semibold text-foreground truncate">{tech.firstName} {tech.lastName}</p>
                 </div>
                 {days.map(d=>{
                   const isToday=d===today;
@@ -1519,11 +1554,11 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
             <div className="border-t-2 border-amber-200">
               <div style={{display:"grid",gridTemplateColumns:colTemplate}}
                 className="hover:bg-amber-50/60 transition-colors">
-                <div className="flex items-center gap-2 px-3 py-2 border-r border-amber-200/60 bg-amber-50/50">
+                <div className="flex items-center justify-center sm:justify-start sm:gap-2 px-1 sm:px-3 py-2 border-r border-amber-200/60 bg-amber-50/50">
                   <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0">
                     <AlertTriangle className="h-3.5 w-3.5"/>
                   </div>
-                  <p className="text-sm font-semibold text-amber-800 truncate">À affecter</p>
+                  <p className="hidden sm:block text-sm font-semibold text-amber-800 truncate">À affecter</p>
                 </div>
                 {days.map(d=>{
                   const daySlots=unassignedSlots.filter(s=>s.slotDate===d);
