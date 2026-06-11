@@ -101,8 +101,9 @@ type GCalEvent = {technicianId:number;uid:string;summary:string;date:string;star
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const { permissions, userId } = useRoleMatrix();
+  const { permissions, userId, role } = useRoleMatrix();
   const canManage = !!permissions?.manageInterventions;
+  const isTechnicien = role === "technicien";
   const [, setLocation] = useLocation();
 
   const [view, setView]           = useState<ViewMode>(() => typeof window !== "undefined" && window.innerWidth < 640 ? "jour" : "semaine");
@@ -117,6 +118,11 @@ export default function PlanningPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeCategoryFilters, setActiveCategoryFilters] = useState<Set<string>>(new Set());
   const [pinnedTechs, setPinnedTechs] = useState<Set<number>>(new Set());
+  const [techShowAll, setTechShowAll] = useState(false);
+  const {data:myTechProfile} = trpc.planning.getMyTechnicianId.useQuery(
+    undefined, {enabled:isTechnicien, staleTime:Infinity}
+  );
+  const myTechId = myTechProfile?.technicianId ?? null;
   const prefsLoaded = useRef(false);
   // Charger les préférences dès que l'userId est connu (une seule fois)
   useEffect(()=>{
@@ -333,15 +339,18 @@ export default function PlanningPage() {
     const orderMap = new Map(techOrder.map((id,i)=>[id,i]));
     const realFilters = new Set(Array.from(activeCategoryFilters).filter(c=>c!=="unassigned"));
     const onlyUnassigned = activeCategoryFilters.size > 0 && realFilters.size === 0;
+    // Vue technicien par défaut (pas de filtre actif et pas "Tout" explicitement cliqué)
+    const isTechDefaultView = isTechnicien && myTechId !== null && !techShowAll && activeCategoryFilters.size === 0;
     return [...technicians]
       .sort((a,b)=>(orderMap.has(a.id)?orderMap.get(a.id)!:9999)-(orderMap.has(b.id)?orderMap.get(b.id)!:9999))
       .filter(t=>{
         if(hiddenTechs.has(t.id)) return false;
+        if(isTechDefaultView) return t.id === myTechId || pinnedTechs.has(t.id);
         if(onlyUnassigned) return pinnedTechs.has(t.id);
         if(realFilters.size===0) return true;
         return realFilters.has(t.category as string)||pinnedTechs.has(t.id);
       });
-  },[technicians,techOrder,hiddenTechs,activeCategoryFilters,pinnedTechs]);
+  },[technicians,techOrder,hiddenTechs,activeCategoryFilters,pinnedTechs,isTechnicien,myTechId,techShowAll]);
 
   // Filtre slots par recherche client
   const filteredSlots = React.useMemo(()=>{
@@ -372,25 +381,27 @@ export default function PlanningPage() {
         {/* ── Filtre catégorie ── */}
         <div className="flex items-center gap-1.5 flex-wrap order-first sm:order-none">
           {/* Tout */}
-          <button onClick={()=>{setActiveCategoryFilters(new Set());setPinnedTechs(new Set());}}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${activeCategoryFilters.size===0?"bg-slate-800 text-white border-slate-800":"border-slate-200 text-slate-500 hover:border-slate-400"}`}>
+          <button onClick={()=>{setActiveCategoryFilters(new Set());setPinnedTechs(new Set());setTechShowAll(true);}}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${activeCategoryFilters.size===0&&(techShowAll||!isTechnicien)?"bg-slate-800 text-white border-slate-800":"border-slate-200 text-slate-500 hover:border-slate-400"}`}>
             Tout
           </button>
-          {(["installation","sav","unassigned"] as const).map(cat=>{
-            const labels={installation:"Installation",sav:"SAV / Dépannage",unassigned:"À affecter"};
-            const active=activeCategoryFilters.has(cat);
-            const colors={
-              installation: active?"bg-blue-600 text-white border-blue-600":"border-blue-200 text-blue-600 hover:border-blue-400",
-              sav: active?"bg-violet-600 text-white border-violet-600":"border-violet-200 text-violet-600 hover:border-violet-400",
-              unassigned: active?"bg-amber-500 text-white border-amber-500":"border-amber-200 text-amber-600 hover:border-amber-400",
-            };
-            return(
-              <button key={cat} onClick={()=>setActiveCategoryFilters(s=>{const n=new Set(s);if(n.has(cat))n.delete(cat);else n.add(cat);return n;})}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${colors[cat]}`}>
-                {labels[cat]}
-              </button>
-            );
-          })}
+          {(["installation","sav","unassigned"] as const)
+            .filter(cat=>cat!=="unassigned"||canManage)
+            .map(cat=>{
+              const labels={installation:"Installation",sav:"SAV / Dépannage",unassigned:"À affecter"};
+              const active=activeCategoryFilters.has(cat);
+              const colors={
+                installation: active?"bg-blue-600 text-white border-blue-600":"border-blue-200 text-blue-600 hover:border-blue-400",
+                sav: active?"bg-violet-600 text-white border-violet-600":"border-violet-200 text-violet-600 hover:border-violet-400",
+                unassigned: active?"bg-amber-500 text-white border-amber-500":"border-amber-200 text-amber-600 hover:border-amber-400",
+              };
+              return(
+                <button key={cat} onClick={()=>{setActiveCategoryFilters(s=>{const n=new Set(s);if(n.has(cat))n.delete(cat);else n.add(cat);return n;});setTechShowAll(false);}}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${colors[cat]}`}>
+                  {labels[cat]}
+                </button>
+              );
+            })}
         </div>
 
         {/* ── Filtre techniciens (en premier sur mobile) ── */}
@@ -556,7 +567,7 @@ export default function PlanningPage() {
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
           <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
-            showUnassignedRow={activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned")}
+            showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -568,7 +579,7 @@ export default function PlanningPage() {
           />
         ) : view==="jour" ? (
           <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
-            showUnassignedRow={activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned")}
+            showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -579,7 +590,7 @@ export default function PlanningPage() {
           />
         ) : (
           <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}
-            showUnassignedRow={activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned")}
+            showUnassignedRow={canManage&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
           />
         )}
         </div>
