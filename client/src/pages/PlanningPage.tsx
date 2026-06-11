@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { ImportCalendarDialog, type ImportedEvent } from "./ImportCalendarDialog";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -116,7 +115,8 @@ export default function PlanningPage() {
   const [clientSearch, setClientSearch] = useState("");
   const [techFilterOpen, setTechFilterOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<"all"|"installation"|"sav"|"unassigned">("all");
+  const [activeCategoryFilters, setActiveCategoryFilters] = useState<Set<string>>(new Set());
+  const [pinnedTechs, setPinnedTechs] = useState<Set<number>>(new Set());
   const prefsLoaded = useRef(false);
   // Charger les préférences dès que l'userId est connu (une seule fois)
   useEffect(()=>{
@@ -282,30 +282,7 @@ export default function PlanningPage() {
     onError: e => setGcalTestResult({ok:false,httpStatus:null,error:e.message,eventCount:0,preview:null}),
   });
 
-  const [gcalSyncing, setGcalSyncing] = useState(false);
-  const [gcalLastSync, setGcalLastSync] = useState<string|null>(null);
-  const gcalSyncMut = trpc.planning.gcalSync.useMutation({
-    onSuccess: (r) => {
-      inv();
-      setGcalSyncing(false);
-      setGcalLastSync(new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}));
-      if (r.created > 0 || r.updated > 0)
-        toast.success(`Google Calendar synchronisé — ${r.created} créé${r.created>1?"s":""}, ${r.updated} mis à jour`);
-    },
-    onError: (e) => { setGcalSyncing(false); toast.error("Erreur sync GCal : " + e.message); },
-  });
-
-  const triggerGCalSync = React.useCallback(() => {
-    if (gcalSyncMut.isPending) return;
-    setGcalSyncing(true);
-    const startDate = "2025-06-01";
-    const endDate = toDateStr(getMondayOf(new Date()));
-    gcalSyncMut.mutate({startDate, endDate});
-  }, [gcalSyncMut]);
-
   const [createOpen, setCreateOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importing, setImporting]   = useState(false);
   const [quickCreate, setQuickCreate] = useState<{techId:number;date:string;start:string;end:string}|null>(null);
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
   const [editSlot,   setEditSlot]   = useState<Slot|null>(null);
@@ -351,47 +328,18 @@ export default function PlanningPage() {
     setEditSlot(null);
   };
 
-  const handleImportCalendar = async (events: ImportedEvent[], technicianId: number) => {
-    setImporting(true);
-    let ok = 0, skip = 0;
-    for (const ev of events) {
-      try {
-        await createMut.mutateAsync({
-          technicianId,
-          slotDate: ev.date,
-          startTime: ev.startTime,
-          endTime: ev.endTime,
-          freeClientName: ev.summary,
-          projectId: null,
-          notes: [ev.description, ev.location].filter(Boolean).join(" — ") || null,
-          status: "scheduled",
-          hasLocationChange: false,
-          hasTimeChange: false,
-          hasDiscount: false,
-        });
-        ok++;
-      } catch { skip++; }
-    }
-    setImporting(false);
-    setImportOpen(false);
-    if (ok > 0) toast.success(`${ok} créneau${ok > 1 ? "x" : ""} importé${ok > 1 ? "s" : ""} depuis Google Calendar.`);
-    if (skip > 0) toast.error(`${skip} événement${skip > 1 ? "s" : ""} ignoré${skip > 1 ? "s" : ""} (conflit ou erreur).`);
-    inv();
-  };
-
   // Techniciens triés + filtrés selon l'ordre, la visibilité et la catégorie
   const sortedVisibleTechs = React.useMemo(()=>{
     const orderMap = new Map(techOrder.map((id,i)=>[id,i]));
+    const realFilters = new Set(Array.from(activeCategoryFilters).filter(c=>c!=="unassigned"));
     return [...technicians]
       .sort((a,b)=>(orderMap.has(a.id)?orderMap.get(a.id)!:9999)-(orderMap.has(b.id)?orderMap.get(b.id)!:9999))
-      .filter(t=>!hiddenTechs.has(t.id))
       .filter(t=>{
-        if(categoryFilter==="installation") return t.category==="installation";
-        if(categoryFilter==="sav") return t.category==="sav";
-        if(categoryFilter==="unassigned") return false;
-        return true;
+        if(hiddenTechs.has(t.id)) return false;
+        if(realFilters.size===0) return true;
+        return realFilters.has(t.category as string)||pinnedTechs.has(t.id);
       });
-  },[technicians,techOrder,hiddenTechs,categoryFilter]);
+  },[technicians,techOrder,hiddenTechs,activeCategoryFilters,pinnedTechs]);
 
   // Filtre slots par recherche client
   const filteredSlots = React.useMemo(()=>{
@@ -430,16 +378,21 @@ export default function PlanningPage() {
       <div className="flex flex-col gap-4">
         {/* ── Filtre catégorie ── */}
         <div className="flex items-center gap-1.5 flex-wrap order-first sm:order-none">
-          {(["all","installation","sav","unassigned"] as const).map(cat=>{
-            const labels={all:"Tout",installation:"Installation",sav:"SAV / Dépannage",unassigned:"À affecter"};
+          {/* Tout */}
+          <button onClick={()=>{setActiveCategoryFilters(new Set());setPinnedTechs(new Set());}}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${activeCategoryFilters.size===0?"bg-slate-800 text-white border-slate-800":"border-slate-200 text-slate-500 hover:border-slate-400"}`}>
+            Tout
+          </button>
+          {(["installation","sav","unassigned"] as const).map(cat=>{
+            const labels={installation:"Installation",sav:"SAV / Dépannage",unassigned:"À affecter"};
+            const active=activeCategoryFilters.has(cat);
             const colors={
-              all: categoryFilter==="all"?"bg-slate-800 text-white border-slate-800":"border-slate-200 text-slate-500 hover:border-slate-400",
-              installation: categoryFilter==="installation"?"bg-blue-600 text-white border-blue-600":"border-blue-200 text-blue-600 hover:border-blue-400",
-              sav: categoryFilter==="sav"?"bg-violet-600 text-white border-violet-600":"border-violet-200 text-violet-600 hover:border-violet-400",
-              unassigned: categoryFilter==="unassigned"?"bg-amber-500 text-white border-amber-500":"border-amber-200 text-amber-600 hover:border-amber-400",
+              installation: active?"bg-blue-600 text-white border-blue-600":"border-blue-200 text-blue-600 hover:border-blue-400",
+              sav: active?"bg-violet-600 text-white border-violet-600":"border-violet-200 text-violet-600 hover:border-violet-400",
+              unassigned: active?"bg-amber-500 text-white border-amber-500":"border-amber-200 text-amber-600 hover:border-amber-400",
             };
             return(
-              <button key={cat} onClick={()=>setCategoryFilter(cat)}
+              <button key={cat} onClick={()=>setActiveCategoryFilters(s=>{const n=new Set(s);if(n.has(cat))n.delete(cat);else n.add(cat);return n;})}
                 className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${colors[cat]}`}>
                 {labels[cat]}
               </button>
@@ -448,7 +401,7 @@ export default function PlanningPage() {
         </div>
 
         {/* ── Filtre techniciens (en premier sur mobile) ── */}
-        {!isLoading && technicians.length > 0 && categoryFilter!=="unassigned" && (
+        {!isLoading && technicians.length > 0 && !(activeCategoryFilters.size===1&&activeCategoryFilters.has("unassigned")) && (
           <div className="flex flex-wrap items-center gap-2 order-first sm:order-none">
             {/* Mobile tech filter */}
             <div className="sm:hidden relative">
@@ -484,32 +437,43 @@ export default function PlanningPage() {
             </div>
             {/* Desktop chips */}
             <div className="hidden sm:flex flex-wrap items-center gap-2">
-              {technicians.map(t=>{
-                const hidden = hiddenTechs.has(t.id);
-                const hasGcal = !!gcalUrlMap.get(t.id);
-                return(
-                  <div key={t.id} className="flex items-center gap-0.5">
-                    <button
-                      onClick={()=>setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;})}
-                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15"}`}
-                    >
-                      {hidden && <EyeOff className="h-3 w-3"/>}
-                      {t.firstName[0]}{t.lastName[0]} · {t.firstName}
-                    </button>
-                    {canManage&&(
+              {(()=>{
+                const realFilters=new Set(Array.from(activeCategoryFilters).filter(c=>c!=="unassigned"));
+                return technicians.map(t=>{
+                  const hidden=hiddenTechs.has(t.id);
+                  const hasGcal=!!gcalUrlMap.get(t.id);
+                  const inActiveCat=realFilters.size===0||realFilters.has(t.category as string);
+                  const isPinned=pinnedTechs.has(t.id);
+                  const chipClass=inActiveCat
+                    ?(hidden?"border-slate-200 bg-slate-100 text-slate-400 line-through":"border-primary/30 bg-primary/8 text-primary hover:bg-primary/15")
+                    :(isPinned?"border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100":"border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600");
+                  return(
+                    <div key={t.id} className="flex items-center gap-0.5">
                       <button
-                        onClick={()=>{setGcalUrlInput(gcalUrlMap.get(t.id)??"");setGcalUrlOpen(t.id);}}
-                        className={`rounded-full p-1 transition-colors ${hasGcal?"text-green-600 hover:bg-green-50":"text-slate-300 hover:text-slate-500 hover:bg-slate-100"}`}
-                        title={hasGcal?"Calendrier Google lié":"Lier Google Calendar"}
+                        onClick={()=>{
+                          if(inActiveCat) setHiddenTechs(s=>{const n=new Set(s);if(hidden)n.delete(t.id);else n.add(t.id);return n;});
+                          else setPinnedTechs(s=>{const n=new Set(s);if(isPinned)n.delete(t.id);else n.add(t.id);return n;});
+                        }}
+                        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${chipClass}`}
                       >
-                        <Link2 className="h-3 w-3"/>
+                        {hidden&&inActiveCat&&<EyeOff className="h-3 w-3"/>}
+                        {t.firstName[0]}{t.lastName[0]} · {t.firstName}
                       </button>
-                    )}
-                  </div>
-                );
-              })}
-              {hiddenTechs.size>0&&(
-                <button onClick={()=>setHiddenTechs(new Set())}
+                      {canManage&&(
+                        <button
+                          onClick={()=>{setGcalUrlInput(gcalUrlMap.get(t.id)??"");setGcalUrlOpen(t.id);}}
+                          className={`rounded-full p-1 transition-colors ${hasGcal?"text-green-600 hover:bg-green-50":"text-slate-300 hover:text-slate-500 hover:bg-slate-100"}`}
+                          title={hasGcal?"Calendrier Google lié":"Lier Google Calendar"}
+                        >
+                          <Link2 className="h-3 w-3"/>
+                        </button>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+              {(hiddenTechs.size>0||pinnedTechs.size>0)&&(
+                <button onClick={()=>{setHiddenTechs(new Set());setPinnedTechs(new Set());}}
                   className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors">
                   Tout afficher
                 </button>
@@ -566,23 +530,9 @@ export default function PlanningPage() {
               </div>
             )}
             {canManage&&(
-              <>
-                <Button size="sm" variant="outline"
-                  onClick={triggerGCalSync}
-                  disabled={gcalSyncing}
-                  className="gap-1.5 shadow-sm"
-                  title={gcalLastSync ? `Dernière sync : ${gcalLastSync}` : "Synchroniser Google Calendar"}
-                >
-                  <Link2 className={`h-4 w-4 ${gcalSyncing?"animate-pulse":""}`}/>
-                  <span className="hidden sm:inline">{gcalSyncing?"Sync…":"Sync GCal"}</span>
-                </Button>
-                <Button size="sm" variant="outline" onClick={()=>setImportOpen(true)} className="gap-1.5 shadow-sm" title="Importer .ics (ponctuel)">
-                  <CalendarDays className="h-4 w-4"/> <span className="hidden sm:inline">Importer</span>
-                </Button>
-                <Button size="sm" onClick={()=>setCreateOpen(true)} className="gap-1.5 shadow-sm">
-                  <Plus className="h-4 w-4"/> Créer
-                </Button>
-              </>
+              <Button size="sm" onClick={()=>setCreateOpen(true)} className="gap-1.5 shadow-sm">
+                <Plus className="h-4 w-4"/> Créer
+              </Button>
             )}
           </div>
         </div>
@@ -600,7 +550,7 @@ export default function PlanningPage() {
                 {unassignedUpcoming.length>3?` · +${unassignedUpcoming.length-3} autre${unassignedUpcoming.length-3>1?"s":""}…`:""}
               </p>
             </div>
-            <button onClick={()=>setCategoryFilter("unassigned")}
+            <button onClick={()=>setActiveCategoryFilters(new Set(["unassigned"]))}
               className="text-xs font-semibold text-amber-700 hover:text-amber-900 whitespace-nowrap underline underline-offset-2">
               Voir tout
             </button>
@@ -612,7 +562,7 @@ export default function PlanningPage() {
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
           <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
-            showUnassignedRow={categoryFilter==="all"||categoryFilter==="unassigned"}
+            showUnassignedRow={activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned")}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -624,7 +574,7 @@ export default function PlanningPage() {
           />
         ) : view==="jour" ? (
           <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
-            showUnassignedRow={categoryFilter==="all"||categoryFilter==="unassigned"}
+            showUnassignedRow={activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned")}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -635,7 +585,7 @@ export default function PlanningPage() {
           />
         ) : (
           <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}
-            showUnassignedRow={categoryFilter==="all"||categoryFilter==="unassigned"}
+            showUnassignedRow={activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned")}
           />
         )}
         </div>
@@ -852,13 +802,6 @@ export default function PlanningPage() {
         );
       })()}
 
-      <ImportCalendarDialog
-        open={importOpen}
-        onClose={()=>setImportOpen(false)}
-        technicians={technicians}
-        onImport={handleImportCalendar}
-        importing={importing}
-      />
     </DashboardLayout>
   );
 }
