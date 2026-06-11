@@ -407,6 +407,65 @@ export const planningRouter = router({
     }));
   }),
 
+  search: protectedProcedure.input(z.object({q: z.string().min(1).max(200)})).query(async({ctx,input})=>{
+    await getScope(ctx.user.openId);
+    const supabase = createSupabaseAdminClient();
+    const q = input.q.trim();
+    if(!q) return [];
+    const likeQ = `%${q}%`;
+
+    const [{data:projMatches},{data:clientMatches}] = await Promise.all([
+      supabase.from("projects").select("id").ilike("title",likeQ).limit(100),
+      supabase.from("clients").select("id,company_name").ilike("company_name",likeQ).limit(50),
+    ]);
+    let projIdsFromClients:number[]=[];
+    if((clientMatches??[]).length>0){
+      const cIds=(clientMatches!).map((c:Record<string,unknown>)=>c.id as number);
+      const {data:cp}=await supabase.from("projects").select("id").in("client_id",cIds).limit(200);
+      projIdsFromClients=(cp??[]).map((p:Record<string,unknown>)=>p.id as number);
+    }
+    const {data:techMatches}=await supabase.from("technicians").select("id").or(`first_name.ilike.${likeQ},last_name.ilike.${likeQ}`).limit(20);
+    const allProjIds=Array.from(new Set((projMatches??[]).map((p:Record<string,unknown>)=>p.id as number).concat(projIdsFromClients)));
+    const allTechIds=(techMatches??[]).map((t:Record<string,unknown>)=>t.id as number);
+
+    const orParts:string[]=[];
+    orParts.push(`free_client_name.ilike.${likeQ}`);
+    if(allProjIds.length>0) orParts.push(`project_id.in.(${allProjIds.join(",")})`);
+    if(allTechIds.length>0) orParts.push(`technician_id.in.(${allTechIds.join(",")})`);
+
+    const {data:raw,error}=await supabase
+      .from("planning_slots")
+      .select("id,technician_id,project_id,free_client_name,free_client_address,free_client_phone,gcal_event_uid,slot_date,start_time,end_time,notes,status,has_location_change,has_time_change,has_discount,discount_note,change_note,prev_date,prev_start_time,prev_end_time,created_at,updated_at")
+      .or(orParts.join(","))
+      .order("slot_date",{ascending:false})
+      .limit(60);
+    if(error) throw new TRPCError({code:"INTERNAL_SERVER_ERROR",message:error.message});
+    if(!raw?.length) return [];
+    const slots=(raw as Record<string,unknown>[]);
+    const techIds=Array.from(new Set(slots.filter(s=>s.technician_id!=null).map(s=>s.technician_id as number)));
+    const projectIds=Array.from(new Set(slots.filter(s=>s.project_id).map(s=>s.project_id as number)));
+    const [techRes,projRes]=await Promise.all([
+      techIds.length?supabase.from("technicians").select("id,first_name,last_name").in("id",techIds):{data:[]},
+      projectIds.length?supabase.from("projects").select("id,title,reference,service_type,color,address,phone,client_id,sites(address_line_1,city)").in("id",projectIds):{data:[]},
+    ]);
+    const techMap=Object.fromEntries(((techRes.data??[]) as Record<string,unknown>[]).map(t=>[t.id,`${t.first_name} ${t.last_name}`]));
+    const projArr=(projRes.data??[]) as Record<string,unknown>[];
+    const clientIds=Array.from(new Set(projArr.filter(p=>p.client_id).map(p=>p.client_id as number)));
+    const clientRes=clientIds.length?await supabase.from("clients").select("id,company_name,phone,billing_address,city").in("id",clientIds):{data:[]};
+    const clientMap=Object.fromEntries(((clientRes.data??[]) as Record<string,unknown>[]).map(c=>[c.id,c]));
+    const projMap=Object.fromEntries(projArr.map(p=>{
+      const cl=clientMap[p.client_id as number] as Record<string,unknown>|undefined;
+      const site=p.sites as Record<string,unknown>|null;
+      const siteAddress=site?[site.address_line_1,site.city].filter(Boolean).join(", "):"";
+      return [p.id,{name:p.title,ref:p.reference,serviceType:p.service_type,color:(p.color as string|null)??null,address:(p.address as string|null)||siteAddress||"",phone:(p.phone as string|null)??null,clientName:cl?.company_name??null,clientPhone:cl?.phone??null,clientAddress:cl?[cl.billing_address,cl.city].filter(Boolean).join(", "):null}];
+    }));
+    return slots.map(s=>{
+      const techName=techMap[s.technician_id as number]??null;
+      const proj=s.project_id?projMap[s.project_id as number]:null;
+      return mapSlot({...s,technician_name:techName,project_name:proj?.name??null,project_ref:proj?.ref??null,project_address:proj?.address??null,project_service_type:proj?.serviceType??null,project_color:proj?.color??null,client_name:proj?.clientName??null,client_phone:proj?.phone??proj?.clientPhone??null,client_address:proj?.clientAddress??null});
+    });
+  }),
+
   gcalSync: adminProcedure
     .input(z.object({
       startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

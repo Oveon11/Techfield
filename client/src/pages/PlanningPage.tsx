@@ -353,19 +353,10 @@ export default function PlanningPage() {
     });
   },[slots, clientSearch]);
 
-  const groupedResults = React.useMemo(()=>{
-    const q=clientSearch.trim().toLowerCase();
-    if(!q) return [];
-    const matched=slots.filter(s=>{
-      const hay=[s.clientName,s.projectName,s.freeClientName].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-    const byDate=new Map<string,Slot[]>();
-    matched.forEach(s=>{const ex=byDate.get(s.slotDate)??[];byDate.set(s.slotDate,[...ex,s]);});
-    return Array.from(byDate.entries())
-      .sort(([a],[b])=>a.localeCompare(b))
-      .map(([date,slotsForDate])=>({date,slots:slotsForDate.sort((a,b)=>a.startTime.localeCompare(b.startTime))}));
-  },[slots,clientSearch]);
+  const {data:searchResults=[],isLoading:searchLoading} = trpc.planning.search.useQuery(
+    {q:clientSearch.trim()},
+    {enabled:clientSearch.trim().length>=2, staleTime:30_000}
+  );
 
   const isLoading = slotsLoading || techLoading;
 
@@ -560,7 +551,7 @@ export default function PlanningPage() {
           </div>
         )}
 
-        <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={{touchAction:"pan-y"}}>
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
@@ -669,43 +660,37 @@ export default function PlanningPage() {
               <div className="h-1 w-10 rounded-full bg-slate-200"/>
             </div>
             {/* Results */}
-            <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 min-h-0">
+            <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1.5 min-h-0">
               {!clientSearch.trim()&&(
                 <p className="text-center text-sm text-muted-foreground py-10">Tapez pour rechercher un client ou chantier…</p>
               )}
-              {clientSearch.trim()&&groupedResults.length===0&&(
+              {clientSearch.trim().length>=2&&searchResults.length===0&&!searchLoading&&(
                 <p className="text-center text-sm text-muted-foreground py-10">Aucun résultat pour « {clientSearch} »</p>
               )}
-              {groupedResults.map(({date,slots:dateSlots})=>(
-                <div key={date}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1.5 px-1">
-                    {new Date(date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
-                  </p>
-                  <div className="space-y-1.5">
-                    {dateSlots.map(s=>{
-                      const {bgClass,bgStyle}=slotBgStyle(s);
-                      return(
-                        <button key={s.id}
-                          onClick={()=>{setDetailSlot(s);setSearchOpen(false);setClientSearch("");}}
-                          className="w-full flex items-center gap-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors px-3 py-2.5 text-left">
-                          <span className="text-sm font-bold text-foreground w-12 shrink-0">{s.startTime}</span>
-                          <div className={`w-1 h-8 rounded-full shrink-0 ${bgClass}`} style={bgStyle}/>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm truncate text-foreground">{slotLabel(s)??"Sans chantier"}</p>
-                            <p className="text-xs text-muted-foreground truncate">{s.startTime}–{s.endTime}{(s.projectAddress||s.clientAddress)?` · ${s.projectAddress||s.clientAddress}`:""}</p>
-                          </div>
-                          {s.technicianName&&(
-                            <div className="shrink-0 text-right">
-                              <p className="text-xs font-medium text-foreground truncate max-w-[80px]">{s.technicianName.split(" ")[0]}</p>
-                              <p className="text-xs text-muted-foreground">{Math.round((timeToMin(s.endTime)-timeToMin(s.startTime))/60*10)/10}h</p>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+              {searchLoading&&clientSearch.trim().length>=2&&(
+                <p className="text-center text-sm text-muted-foreground py-6">Recherche…</p>
+              )}
+              {searchResults.map(s=>{
+                const {bgClass,bgStyle}=slotBgStyle(s);
+                const clientLabel=s.freeClientName??s.clientName??null;
+                const dateLabel=new Date(s.slotDate+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
+                const techLabel=s.technicianName?s.technicianName.split(" ")[0]:null;
+                return(
+                  <button key={s.id}
+                    onClick={()=>{setDetailSlot(s);setSearchOpen(false);setClientSearch("");}}
+                    className="w-full flex items-center gap-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors px-3 py-2.5 text-left">
+                    <div className={`w-1 h-8 rounded-full shrink-0 ${bgClass}`} style={bgStyle??undefined}/>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate text-foreground">{clientLabel??(s.projectName??"Sans client")}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {dateLabel} · {s.startTime}–{s.endTime}
+                        {s.projectName&&clientLabel?` · ${s.projectName}`:""}
+                        {techLabel?` · ${techLabel}`:" · À affecter"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
             {/* Search input */}
             <div className="border-t border-border/50 px-4 py-3">
@@ -867,6 +852,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
   // Drag / resize
   const dragRef  = useRef<{id:number;technicianId:number|null;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number;targetTechId:number|null;targetDate:string}|null>(null);
   const resizeRef = useRef<{id:number;technicianId:number|null;date:string;origStart:number;origEnd:number;dayColRef:Element|null;mouseX:number;edge:"start"|"end"}|null>(null);
+  const justInteracted = useRef(false);
   const [draggingId,setDraggingId]=useState<number|null>(null);
   const [preview,setPreview]=useState<Record<number,{start:number;end:number}>>({});
   const [dragTarget,setDragTarget]=useState<{techId:number|null;date:string;start:number;end:number}|null>(null);
@@ -917,6 +903,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
       const changedTech=targetTechId!==technicianId;
       const changedDate=targetDate!==date;
       if(pv&&(pv.start!==timeToMin(origSStr)||pv.end!==timeToMin(origEStr)||changedTech||changedDate)){
+        justInteracted.current=true;
         onMove(id,targetDate,minToTime(pv.start),minToTime(pv.end),{prevDate:date,prevStartTime:origSStr,prevEndTime:origEStr},changedTech?targetTechId:undefined);
       }
       dragRef.current=null;setDraggingId(null);setPreview({});setDragTarget(null);
@@ -926,7 +913,10 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
       const pv=preview[id];
       if(pv){
         const slot=slots.find(x=>x.id===id);
-        if(slot)onMove(id,date,minToTime(pv.start),minToTime(pv.end),{prevStartTime:slot.startTime,prevEndTime:slot.endTime});
+        if(slot){
+          justInteracted.current=true;
+          onMove(id,date,minToTime(pv.start),minToTime(pv.end),{prevStartTime:slot.startTime,prevEndTime:slot.endTime});
+        }
       }
       resizeRef.current=null;setPreview({});
     }
@@ -985,13 +975,6 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
         ns=Math.round(Math.max(H_START*60,Math.min(cursorMin-dur/2,H_END*60-dur))/15)*15;
       }
 
-      if(tTechId!==null){
-        const others=slotsRef.current
-          .filter(s=>s.id!==id&&s.technicianId===tTechId&&s.slotDate===tDate)
-          .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
-        ns=snapToFreeSlot(ns,dur,others,origStart);
-      }
-
       dragRef.current.targetTechId=tTechId;
       dragRef.current.targetDate=tDate;
       setDragTarget({techId:tTechId,date:tDate,start:ns,end:ns+dur});
@@ -1004,26 +987,10 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
       const dx=e.clientX-resizeRef.current.mouseX;
       const dm=Math.round(dx/rect.width*H_TOTAL*60/15)*15;
       if(edge==="end"){
-        let newEnd=Math.max(origStart+15,Math.min(origEnd+dm,H_END*60));
-        if(technicianId!==null){
-          const others=slotsRef.current
-            .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
-            .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
-          for(const o of others){
-            if(o.startMin>=origStart&&newEnd>o.startMin) newEnd=o.startMin;
-          }
-        }
+        const newEnd=Math.max(origStart+15,Math.min(origEnd+dm,H_END*60));
         setPreview(p=>({...p,[id]:{start:origStart,end:newEnd}}));
       }else{
-        let newStart=Math.min(origEnd-15,Math.max(origStart+dm,H_START*60));
-        if(technicianId!==null){
-          const others=slotsRef.current
-            .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
-            .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
-          for(const o of others){
-            if(o.endMin<=origEnd&&newStart<o.endMin) newStart=o.endMin;
-          }
-        }
+        const newStart=Math.min(origEnd-15,Math.max(origStart+dm,H_START*60));
         setPreview(p=>({...p,[id]:{start:newStart,end:origEnd}}));
       }
     }
@@ -1217,7 +1184,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                           <div
                             style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height,...(bgStyle??{})}}
                             className={`absolute rounded-lg ${bgClass} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
-                            onClick={e=>{e.stopPropagation();if(!isInteracting)onClickSlot(slot);}}
+                            onClick={e=>{e.stopPropagation();if(justInteracted.current){justInteracted.current=false;return;}if(!isInteracting)onClickSlot(slot);}}
                             onMouseDown={canManage?e=>{
                               e.preventDefault();e.stopPropagation();
                               const colEl=dayColRefs.current[`${tech.id}-${d}`];
@@ -1341,7 +1308,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                             <div
                               style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
                               className={`absolute rounded-lg bg-amber-500 text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:brightness-110 transition-all z-10"}`}
-                              onClick={e=>{e.stopPropagation();if(!isInteracting)onClickSlot(slot);}}
+                              onClick={e=>{e.stopPropagation();if(justInteracted.current){justInteracted.current=false;return;}if(!isInteracting)onClickSlot(slot);}}
                               onMouseDown={canManage?e=>{
                                 e.preventDefault();e.stopPropagation();
                                 const colEl=dayColRefs.current[`unassigned-${d}`];
@@ -1587,7 +1554,7 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
   const label=slotLabel(slot)??"Créneau sans chantier";
   return(
     <Dialog open onOpenChange={o=>!o&&onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start gap-3">
             <div className={`h-10 w-10 rounded-xl ${color} flex items-center justify-center shrink-0`}>
