@@ -1097,10 +1097,10 @@ export function ProjectsPage() {
           </CardContent>
         </SurfaceCard>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="flex flex-col gap-2">
           {filteredProjects.length ? (
             filteredProjects.map(project => (
-              <div key={project.id} className={`flex flex-col gap-3 rounded-2xl border border-slate-100 border-l-4 ${serviceBorder(project.serviceType)} bg-white p-5 shadow-sm transition-all hover:border-slate-200 hover:shadow-md`}>
+              <div key={project.id} className={`rounded-xl border border-l-4 ${serviceBorder(project.serviceType)} border-slate-100 bg-white px-4 py-3 shadow-sm transition-all hover:shadow-md`}>
                 {/* Hidden dialogs — triggered by state */}
                 {canManage && (
                   <>
@@ -1176,79 +1176,62 @@ export function ProjectsPage() {
                   </>
                 )}
 
-                {/* Top row: service badge + CLIENT NAME + admin dropdown */}
-                <div className="flex items-start gap-3">
-                  <ServiceTypePill type={project.serviceType} />
-                  <p className="min-w-0 flex-1 font-semibold leading-snug text-foreground">{project.clientName}</p>
-                  {canManage && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="-mt-0.5 shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {archiveTab === "actifs" && (
-                          <DropdownMenuItem onSelect={() => setEditingId(project.id)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Éditer
+                {/* Compact card layout */}
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ServiceTypePill type={project.serviceType} />
+                      <p className="font-semibold text-sm leading-tight text-foreground truncate flex-1">{project.clientName}</p>
+                      {project.plannedEndDate && project.status === "en_cours" && new Date(project.plannedEndDate) < new Date() && (
+                        <span className="shrink-0 inline-flex items-center gap-0.5 rounded border border-rose-200 bg-rose-50 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-600">
+                          <AlertTriangle className="h-2.5 w-2.5" /> Retard
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1 min-w-0"><Wrench className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.title}</span></span>
+                      {project.siteName && <span className="flex items-center gap-1 min-w-0"><MapPin className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.siteName}</span></span>}
+                      <span className="flex items-center gap-1 text-slate-400"><FileText className="h-3 w-3 shrink-0" />{project.reference}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Link href={`/chantiers/${project.id}`}>
+                      <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-bold uppercase tracking-wide border-slate-200 hover:bg-slate-50">Ouvrir</Button>
+                    </Link>
+                    {canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {archiveTab === "actifs" && (
+                            <DropdownMenuItem onSelect={() => setEditingId(project.id)}>
+                              <Pencil className="mr-2 h-4 w-4" /> Éditer
+                            </DropdownMenuItem>
+                          )}
+                          {archiveTab === "actifs" ? (
+                            <DropdownMenuItem onSelect={() => archiveProject.mutate({ projectId: project.id, status: "archive", progressPercent: project.progressPercent ?? 0 })}>
+                              <Archive className="mr-2 h-4 w-4" /> Archiver
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onSelect={() => unarchiveProject.mutate({ projectId: project.id, status: "planifie", progressPercent: project.progressPercent ?? 0 })}>
+                              <ArchiveRestore className="mr-2 h-4 w-4" /> Réactiver
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onSelect={() => setDeletingId(project.id)} className="text-rose-600 focus:text-rose-600">
+                            <Trash2 className="mr-2 h-4 w-4" /> Supprimer
                           </DropdownMenuItem>
-                        )}
-                        {archiveTab === "actifs" ? (
-                          <DropdownMenuItem onSelect={() => archiveProject.mutate({ projectId: project.id, status: "archive", progressPercent: project.progressPercent ?? 0 })}>
-                            <Archive className="mr-2 h-4 w-4" />
-                            Archiver
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onSelect={() => unarchiveProject.mutate({ projectId: project.id, status: "planifie", progressPercent: project.progressPercent ?? 0 })}>
-                            <ArchiveRestore className="mr-2 h-4 w-4" />
-                            Réactiver
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onSelect={() => setDeletingId(project.id)} className="text-rose-600 focus:text-rose-600">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-
-                {/* Info row */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <Wrench className="h-3.5 w-3.5 shrink-0" />
-                    {project.title}
-                  </span>
-                  {project.siteName ? (
-                    <span className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      {project.siteName}
-                    </span>
-                  ) : null}
-                  <span className="text-xs text-slate-400">{project.reference}</span>
-                </div>
-
-                {/* Bottom row: status + open button */}
-                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <StatusBadge value={project.status} />
-                    {project.plannedEndDate && project.status === "en_cours" && new Date(project.plannedEndDate) < new Date() && (
-                      <span className="inline-flex items-center gap-1 rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600">
-                        <AlertTriangle className="h-3 w-3" /> Retard
-                      </span>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
-                  <Link href={`/chantiers/${project.id}`}>
-                    <Button size="sm" className="bg-primary font-semibold text-white shadow-sm shadow-primary/30 hover:bg-primary/90">
-                      Voir
-                    </Button>
-                  </Link>
                 </div>
               </div>
             ))
           ) : (
-            <div className="xl:col-span-2">
+            <div>
               <EmptyState
                 title={projectsQuery.data?.length ? "Aucun chantier ne correspond aux filtres" : "Aucun chantier enregistré"}
                 description={projectsQuery.data?.length
