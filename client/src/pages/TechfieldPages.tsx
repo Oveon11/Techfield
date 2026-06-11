@@ -810,6 +810,7 @@ type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine
 
 type ProjectFormState = {
   clientId: string;
+  clientName: string;
   siteId: string;
   title: string;
   serviceType: ProjectServiceType;
@@ -830,6 +831,7 @@ type ProjectFormState = {
 
 const INITIAL_PROJECT_FORM: ProjectFormState = {
   clientId: "",
+  clientName: "",
   siteId: "",
   title: "",
   serviceType: "autre",
@@ -928,12 +930,7 @@ function ProjectFormFields({
     <div className="grid gap-4 md:grid-cols-2">
       <div className="space-y-2">
         <Label>Client</Label>
-        <Select value={form.clientId} onValueChange={value => setForm(prev => ({ ...prev, clientId: value }))}>
-          <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-          <SelectContent>
-            {clients.map(client => <SelectItem key={client.id} value={String(client.id)}>{client.companyName}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <Input value={form.clientName} onChange={e => setForm(prev => ({ ...prev, clientName: e.target.value }))} placeholder="Nom du client" />
       </div>
       <div className="space-y-2">
         <Label>Site</Label>
@@ -1160,6 +1157,7 @@ export function ProjectsPage() {
     if (!detail || editingId === null) return;
     setEditForm({
       clientId: String(detail.clientId ?? ""),
+      clientName: (detail as {clientName?:string|null}).clientName ?? "",
       siteId: detail.siteId ? String(detail.siteId) : "",
       title: detail.title ?? "",
       serviceType: detail.serviceType ?? "autre",
@@ -1383,7 +1381,6 @@ export function ProjectsPage() {
           </button>
         </div>
 
-        {archiveTab === "actifs" && (
         <SurfaceCard>
           <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
             <div className="relative flex-1">
@@ -1413,7 +1410,6 @@ export function ProjectsPage() {
             </div>
           </CardContent>
         </SurfaceCard>
-        )}
 
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredProjects.length ? (
@@ -1439,6 +1435,7 @@ export function ProjectsPage() {
                               ...editForm,
                               projectId: project.id,
                               clientId: Number(editForm.clientId),
+                              clientName: editForm.clientName || null,
                               siteId: editForm.siteId ? Number(editForm.siteId) : null,
                               quoteNumber: editForm.quoteNumber || null,
                               color: editForm.color || null,
@@ -2138,6 +2135,7 @@ export function ProjectDetailPage() {
     if (!detail) return;
     setEditForm({
       clientId: String(detail.clientId ?? ""),
+      clientName: (detail as {clientName?:string|null}).clientName ?? "",
       siteId: detail.siteId ? String(detail.siteId) : "",
       title: detail.title ?? "",
       serviceType: detail.serviceType ?? "autre",

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -328,6 +329,7 @@ export default function PlanningPage() {
   const [editSlot,   setEditSlot]   = useState<Slot|null>(null);
   const [deleteSlot, setDeleteSlot] = useState<Slot|null>(null);
   const [duplicateSource, setDuplicateSource] = useState<Slot|null>(null);
+  const [convertSlot, setConvertSlot] = useState<Slot|null>(null);
 
   const formatNavLabel = () => {
     if (view==="semaine") {
@@ -668,16 +670,7 @@ export default function PlanningPage() {
             onDuplicate={()=>{setDuplicateSource(detailSlot);setDetailSlot(null);}}
             onDelete={()=>{setDeleteSlot(detailSlot);setDetailSlot(null);}}
             onOpenProject={id=>{setDetailSlot(null);setLocation(`/chantiers/${id}`);}}
-            onCreateProject={()=>{
-              const s=detailSlot;
-              sessionStorage.setItem("tf-prefill-chantier",JSON.stringify({
-                clientName:s.freeClientName??"",
-                clientPhone:s.freeClientPhone??"",
-                clientAddress:s.freeClientAddress??"",
-              }));
-              setDetailSlot(null);
-              setLocation("/chantiers");
-            }}
+            onCreateProject={()=>{setConvertSlot(detailSlot);setDetailSlot(null);}}
             canManage={canEditPlanning}/>
         )}
         <AlertDialog open={!!deleteSlot} onOpenChange={o=>!o&&setDeleteSlot(null)}>
@@ -694,6 +687,7 @@ export default function PlanningPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        {convertSlot&&<ConvertSlotToProjectDialog slot={convertSlot} onClose={()=>setConvertSlot(null)}/>}
       </div>
       {searchOpen&&(
         <>
@@ -1615,6 +1609,98 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
         })()}
       </div>
     </div>
+  );
+}
+
+// ─── Convert Slot → Project Dialog ───────────────────────────────────────────
+
+function ConvertSlotToProjectDialog({slot,onClose}:{slot:Slot;onClose:()=>void}){
+  const utils = trpc.useUtils();
+  const [clientName,setClientName] = useState(slot.freeClientName??"");
+  const [clientPhone,setClientPhone] = useState(slot.freeClientPhone??"");
+  const [clientAddress,setClientAddress] = useState(slot.freeClientAddress??"");
+  const [title,setTitle] = useState(slot.freeClientName?`Chantier ${slot.freeClientName}`:"");
+  const [serviceType,setServiceType] = useState("autre");
+
+  const updateSlotMut = trpc.planning.update.useMutation();
+  const createMut = trpc.management.projects.createWithClient.useMutation({
+    onSuccess: async(res)=>{
+      await updateSlotMut.mutateAsync({
+        id:slot.id,
+        projectId:res.id,
+        freeClientName:null,
+        freeClientAddress:null,
+        freeClientPhone:null,
+      });
+      utils.planning.invalidate();
+      toast.success(`Chantier ${res.reference} créé`);
+      onClose();
+    },
+    onError:e=>toast.error(e.message),
+  });
+
+  const isPending = createMut.isPending||updateSlotMut.isPending;
+
+  return(
+    <Dialog open onOpenChange={o=>!o&&onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Créer le chantier</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="space-y-1">
+            <Label>Nom du client</Label>
+            <Input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="Nom du client"/>
+          </div>
+          <div className="space-y-1">
+            <Label>Téléphone</Label>
+            <Input type="tel" value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="06 00 00 00 00"/>
+          </div>
+          <div className="space-y-1">
+            <Label>Adresse</Label>
+            <Input value={clientAddress} onChange={e=>setClientAddress(e.target.value)} placeholder="Adresse du chantier"/>
+          </div>
+          <div className="space-y-1">
+            <Label>Intitulé du chantier</Label>
+            <Input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Intitulé…"/>
+          </div>
+          <div className="space-y-1">
+            <Label>Type de service</Label>
+            <Select value={serviceType} onValueChange={setServiceType}>
+              <SelectTrigger><SelectValue/></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="clim">Climatisation</SelectItem>
+                <SelectItem value="pac">PAC</SelectItem>
+                <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
+                <SelectItem value="pv">Photovoltaïque</SelectItem>
+                <SelectItem value="vmc">VMC</SelectItem>
+                <SelectItem value="autre">Autre</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={onClose} disabled={isPending}>Annuler</Button>
+          <Button
+            onClick={()=>createMut.mutate({
+              clientName:clientName.trim()||"Client",
+              clientPhone:clientPhone.trim()||null,
+              clientAddress:clientAddress.trim()||null,
+              title:title.trim()||clientName.trim()||"Nouveau chantier",
+              serviceType,
+              status:"en_cours",
+              progressPercent:0,
+              estimatedHours:"0.00",
+              actualHours:"0.00",
+              budgetAmount:"0.00",
+            })}
+            disabled={isPending||!clientName.trim()}
+          >
+            {isPending?"Création…":"Créer le chantier"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

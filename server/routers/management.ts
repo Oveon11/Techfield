@@ -181,6 +181,7 @@ const createProjectSchema = z.object({
 
 const updateProjectSchema = createProjectSchema.extend({
   projectId: z.number().int().positive(),
+  clientName: z.string().optional().nullable(),
 });
 
 const createProjectWithClientSchema = z.object({
@@ -1008,6 +1009,7 @@ export const managementRouter = router({
           color: input.color || null,
           address: input.address || null,
           phone: input.phone || null,
+          clientName: input.clientName || null,
         });
         return { success: true };
       }

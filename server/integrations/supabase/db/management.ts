@@ -529,6 +529,7 @@ type UpdateProjectInput = {
   color?: string | null;
   address?: string | null;
   phone?: string | null;
+  clientName?: string | null;
 };
 
 export async function updateSupabaseProject(input: UpdateProjectInput) {
@@ -558,6 +559,14 @@ export async function updateSupabaseProject(input: UpdateProjectInput) {
 
   if (updateError) {
     throw updateError;
+  }
+
+  if (input.clientName) {
+    const { error: clientUpdateError } = await supabase
+      .from("clients")
+      .update({ company_name: input.clientName })
+      .eq("id", input.clientId);
+    if (clientUpdateError) throw clientUpdateError;
   }
 
   // Sync project_assignments: delete then re-insert.
