@@ -138,4 +138,36 @@ export const userManagementRouter = router({
     if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
     return { success: true };
   }),
+
+  update: adminProcedure.input(z.object({
+    id: z.number(),
+    openId: z.string().min(1),
+    firstName: z.string().min(1).max(50),
+    lastName: z.string().min(1).max(50),
+    username: z.string().min(2).max(50).regex(/^[a-z0-9]+$/),
+    role: z.enum(["admin", "technicien", "client"]),
+    password: z.string().length(6).regex(/^\d{6}$/).optional(),
+  })).mutation(async ({ input }) => {
+    const supabase = createSupabaseAdminClient();
+    const newEmail = toInternalEmail(input.username);
+    const name = `${input.firstName} ${input.lastName}`.trim();
+    const authUpdate: Record<string, unknown> = { email: newEmail };
+    if (input.password) authUpdate.password = input.password;
+    const { error: authErr } = await supabase.auth.admin.updateUserById(input.openId, authUpdate);
+    if (authErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: authErr.message });
+    const { error: dbErr } = await supabase.from("users").update({ name, email: newEmail, role: input.role }).eq("id", input.id);
+    if (dbErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: dbErr.message });
+    return { success: true };
+  }),
+
+  delete: adminProcedure.input(z.object({
+    id: z.number(),
+    openId: z.string().min(1),
+  })).mutation(async ({ input }) => {
+    const supabase = createSupabaseAdminClient();
+    await supabase.auth.admin.deleteUser(input.openId).catch(() => {});
+    const { error } = await supabase.from("users").delete().eq("id", input.id);
+    if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+    return { success: true };
+  }),
 });

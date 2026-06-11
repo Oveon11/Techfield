@@ -77,9 +77,10 @@ const SERVICE_EMOJI: Record<string,string> = {
   clim:"❄️",pac:"♨️",chauffe_eau:"🚿",pv:"☀️",vmc:"💨",autre:"🔧",
 };
 function slotColor(serviceType: string|null) { return SERVICE_COLORS[serviceType??""]??"bg-primary"; }
-function slotBgStyle(slot: {projectColor:string|null;projectServiceType:string|null}): {bgClass:string;bgStyle:React.CSSProperties|undefined} {
-  if (slot.projectColor) return {bgClass:"",bgStyle:{backgroundColor:slot.projectColor}};
-  return {bgClass:slotColor(slot.projectServiceType),bgStyle:undefined};
+function slotBgStyle(slot: {projectColor:string|null;projectServiceType:string|null;projectId?:number|null}): {bgClass:string;bgStyle:React.CSSProperties|undefined;textClass:string;dotClass:string} {
+  if (!slot.projectId) return {bgClass:"bg-white border border-slate-200 shadow-sm",bgStyle:undefined,textClass:"text-slate-800",dotClass:"bg-slate-300"};
+  if (slot.projectColor) return {bgClass:"",bgStyle:{backgroundColor:slot.projectColor},textClass:"text-white",dotClass:""};
+  return {bgClass:slotColor(slot.projectServiceType),bgStyle:undefined,textClass:"text-white",dotClass:""};
 }
 function slotLabel(slot: Slot) { return slot.freeClientName ?? slot.clientName ?? slot.projectName ?? null; }
 
@@ -714,7 +715,7 @@ export default function PlanningPage() {
                 <p className="text-center text-sm text-muted-foreground py-6">Recherche…</p>
               )}
               {searchResults.map(s=>{
-                const {bgClass,bgStyle}=slotBgStyle(s);
+                const {bgClass,bgStyle,dotClass}=slotBgStyle(s);
                 const clientLabel=s.freeClientName??s.clientName??null;
                 const dateLabel=new Date(s.slotDate+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
                 const techLabel=s.technicianName?s.technicianName.split(" ")[0]:null;
@@ -722,7 +723,7 @@ export default function PlanningPage() {
                   <button key={s.id}
                     onClick={()=>{setDetailSlot(s);setSearchOpen(false);setClientSearch("");}}
                     className="w-full flex items-center gap-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors px-3 py-2.5 text-left">
-                    <div className={`w-1 h-8 rounded-full shrink-0 ${bgClass}`} style={bgStyle??undefined}/>
+                    <div className={`w-1 h-8 rounded-full shrink-0 ${dotClass||bgClass}`} style={dotClass?undefined:bgStyle??undefined}/>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm truncate text-foreground">{clientLabel??(s.projectName??"Sans client")}</p>
                       <p className="text-xs text-muted-foreground truncate">
@@ -1213,7 +1214,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                     if(!src||( src.technicianId===tech.id&&src.slotDate===d))return null;
                     const lp=(dragTarget.start-H_START*60)/(H_TOTAL*60)*100;
                     const wp=(dragTarget.end-dragTarget.start)/(H_TOTAL*60)*100;
-                    const {bgClass:gc,bgStyle:gs}=slotBgStyle(src);
+                    const {bgClass:gc,bgStyle:gs,dotClass:_gd}=slotBgStyle(src);
                     return(
                       <div key="ghost" style={{left:`${lp}%`,width:`max(${wp}%,2px)`,top:3,height:LANE_H-6,...(gs??{})}}
                         className={`absolute rounded-lg ${gc} opacity-75 text-white text-[10px] shadow-xl ring-2 ring-white/60 z-30 pointer-events-none px-1.5 py-1 flex flex-col`}>
@@ -1232,7 +1233,8 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                     const widthPct=(end-start)/(H_TOTAL*60)*100;
                     const top=slot.lane*LANE_H+3;
                     const height=LANE_H-6;
-                    const {bgClass,bgStyle}=slotBgStyle(slot);
+                    const {bgClass,bgStyle,textClass}=slotBgStyle(slot);
+                    const isFreeSlot=!slot.projectId;
                     const label=slotLabel(slot)??"Sans chantier";
                     const isDragging=draggingId===slot.id;
                     const isInteracting=!!pv;
@@ -1245,7 +1247,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                         <TooltipTrigger asChild>
                           <div
                             style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height,...(bgStyle??{})}}
-                            className={`absolute rounded-lg ${bgClass} text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-110 transition-all"}`}
+                            className={`absolute rounded-lg ${bgClass} ${textClass} text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:shadow-md z-10 hover:brightness-[1.02] transition-all"}`}
                             onClick={e=>{e.stopPropagation();if(justInteracted.current){justInteracted.current=false;return;}if(!isInteracting)onClickSlot(slot);}}
                             onMouseDown={canManage?e=>{
                               e.preventDefault();e.stopPropagation();
@@ -1261,12 +1263,12 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                               </div>
                             )}
                             <div className="font-semibold leading-tight truncate">{emoji&&<span className="mr-0.5">{emoji}</span>}{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
-                            {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className="text-white/85 text-[9px] leading-tight truncate">{slot.projectName}</div>}
-                            {(zoom>=0.8||isInteracting)&&<div className="text-white/70 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
+                            {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className={`${isFreeSlot?"text-slate-500":"text-white/85"} text-[9px] leading-tight truncate`}>{slot.projectName}</div>}
+                            {(zoom>=0.8||isInteracting)&&<div className={`${isFreeSlot?"text-slate-400":"text-white/70"} text-[9px] leading-tight`}>{displayStart}–{displayEnd}</div>}
                             <div className="flex gap-0.5 mt-auto">
-                              {slot.hasLocationChange&&<MapPin className="h-2 w-2 text-white/80"/>}
-                              {slot.hasTimeChange&&<Clock className="h-2 w-2 text-white/80"/>}
-                              {slot.hasDiscount&&<Tag className="h-2 w-2 text-white/80"/>}
+                              {slot.hasLocationChange&&<MapPin className={`h-2 w-2 ${isFreeSlot?"text-slate-400":"text-white/80"}`}/>}
+                              {slot.hasTimeChange&&<Clock className={`h-2 w-2 ${isFreeSlot?"text-slate-400":"text-white/80"}`}/>}
+                              {slot.hasDiscount&&<Tag className={`h-2 w-2 ${isFreeSlot?"text-slate-400":"text-white/80"}`}/>}
                             </div>
                             {canManage&&(
                               <>
@@ -1548,13 +1550,13 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
                         </Tooltip>
                       ))}
                       {daySlots.map(s=>{
-                        const{bgClass,bgStyle}=slotBgStyle(s);
+                        const{bgClass,bgStyle,dotClass}=slotBgStyle(s);
                         return(
                           <Tooltip key={s.id} delayDuration={300}>
                             <TooltipTrigger asChild>
                               <button onClick={()=>onClickSlot(s)}
-                                className={`w-full h-3 rounded-sm ${bgClass} hover:brightness-110 transition-all shrink-0 shadow-sm`}
-                                style={bgStyle}/>
+                                className={`w-full h-3 rounded-sm ${dotClass||bgClass} hover:brightness-110 transition-all shrink-0 shadow-sm border ${dotClass?"border-slate-200":"border-transparent"}`}
+                                style={dotClass?undefined:bgStyle}/>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="flex flex-col gap-0.5">
                               <p className="font-semibold text-xs">{slotLabel(s)??"Sans chantier"}</p>
@@ -1892,6 +1894,13 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
     return new Set(technicians.slice(0,1).map(t=>t.id));
   });
   const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):src?.projectId?String(src.projectId):"none");
+  const [projSearch,setProjSearch]=useState(()=>{
+    const id=initialSlot?.projectId??src?.projectId??null;
+    if(!id) return "";
+    const p=projects.find(x=>x.id===id);
+    return p?`${p.clientName?p.clientName+" · ":""}${p.name}`:""
+  });
+  const [projDropOpen,setProjDropOpen]=useState(false);
   const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??src?.freeClientName??"");
   const [freeClientAddress,setFreeClientAddress]=useState(initialSlot?.freeClientAddress??src?.freeClientAddress??"");
   const [freeClientPhone,setFreeClientPhone]=useState(initialSlot?.freeClientPhone??src?.freeClientPhone??"");
@@ -1977,17 +1986,44 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
           {/* Chantier */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Chantier <span className="text-muted-foreground font-normal">(optionnel)</span></label>
-            <Select value={projId} onValueChange={setProjId}>
-              <SelectTrigger><SelectValue placeholder="Aucun"/></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Aucun chantier —</SelectItem>
-                {projects.map(p=>(
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.clientName?`${p.clientName} · `:""}{p.name}{p.reference?` (${p.reference})`:""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative">
+              <Input
+                placeholder="Rechercher par nom client…"
+                value={projSearch}
+                onChange={e=>{setProjSearch(e.target.value);setProjDropOpen(true);}}
+                onFocus={()=>setProjDropOpen(true)}
+                className="pr-8"
+              />
+              {projSearch&&(
+                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={()=>{setProjSearch("");setProjId("none");setProjDropOpen(false);}}>
+                  <X className="h-4 w-4"/>
+                </button>
+              )}
+              {projDropOpen&&<div className="fixed inset-0 z-40" onClick={()=>setProjDropOpen(false)}/>}
+              {projDropOpen&&(
+                <div className="absolute top-full z-50 mt-1 w-full rounded-xl border border-border bg-white shadow-xl overflow-hidden">
+                  <div className="max-h-52 overflow-y-auto">
+                    <button type="button"
+                      className="w-full px-3 py-2 text-left text-sm text-muted-foreground hover:bg-slate-50 transition-colors border-b border-border/40"
+                      onClick={()=>{setProjId("none");setProjSearch("");setProjDropOpen(false);}}>
+                      — Aucun chantier —
+                    </button>
+                    {projects.filter(p=>!projSearch.trim()||(p.clientName??"").toLowerCase().includes(projSearch.toLowerCase())||p.name.toLowerCase().includes(projSearch.toLowerCase())).slice(0,30).map(p=>(
+                      <button type="button" key={p.id}
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors flex flex-col ${String(p.id)===projId?"bg-primary/5 font-medium":""}`}
+                        onClick={()=>{setProjId(String(p.id));setProjSearch(`${p.clientName?p.clientName+" · ":""}${p.name}`);setProjDropOpen(false);}}>
+                        <span className="font-medium text-foreground">{p.clientName??"—"}</span>
+                        <span className="text-xs text-muted-foreground">{p.name}{p.reference?` · ${p.reference}`:""}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {projId!=="none"&&!projDropOpen&&(
+              <p className="text-xs text-primary font-medium">Chantier sélectionné</p>
+            )}
           </div>
           {/* Nom client libre (si pas de chantier) */}
           {projId==="none"&&(

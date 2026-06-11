@@ -27,7 +27,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { Check, Copy, KeyRound, Plus, RefreshCw, UserX, UserCheck } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Check, Copy, KeyRound, Plus, RefreshCw, Settings, Trash2, UserX, UserCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -238,6 +239,148 @@ function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+// ─── Edit user dialog ────────────────────────────────────────────────────────
+
+type UserRow = { id: number; openId: string; name: string | null; username: string | null; email: string | null; role: "admin" | "technicien" | "client"; accountStatus: "active" | "invited" | "suspended" };
+
+function EditUserDialog({ user, onDone }: { user: UserRow; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const parts = (user.name ?? "").trim().split(" ");
+  const [firstName, setFirstName] = useState(parts[0] ?? "");
+  const [lastName, setLastName] = useState(parts.slice(1).join(" ") ?? "");
+  const [username, setUsername] = useState(user.username ?? "");
+  const [role, setRole] = useState<"admin" | "technicien" | "client">(user.role);
+  const [changePassword, setChangePassword] = useState(false);
+  const [password, setPassword] = useState(() => generatePassword());
+
+  const utils = trpc.useUtils();
+
+  const updateMut = trpc.users.update.useMutation({
+    onSuccess: () => { toast.success("Utilisateur mis à jour."); utils.users.list.invalidate(); setOpen(false); onDone(); },
+    onError: e => toast.error(e.message),
+  });
+
+  const deleteMut = trpc.users.delete.useMutation({
+    onSuccess: () => { toast.success("Utilisateur supprimé."); utils.users.list.invalidate(); setOpen(false); onDone(); },
+    onError: e => toast.error(e.message),
+  });
+
+  const canSave = firstName.trim() && lastName.trim() && username.trim() && (!changePassword || password.length === 6) && !updateMut.isPending;
+
+  return (
+    <>
+      <button
+        className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground"
+        onClick={() => setOpen(true)}
+        title="Réglages"
+      >
+        <Settings className="h-3.5 w-3.5" /> Réglages
+      </button>
+
+      <Dialog open={open} onOpenChange={v => { setOpen(v); }}>
+        <DialogContent className="max-w-md flex flex-col max-h-[90dvh] p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
+            <DialogTitle>Modifier l'utilisateur</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Prénom</Label>
+                <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Léo" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Nom</Label>
+                <Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Benkatta" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Identifiant</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={username}
+                  onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+                  placeholder="leo03"
+                  className="font-mono"
+                />
+                <CopyButton value={username} />
+              </div>
+              <p className="text-xs text-muted-foreground">Lettres minuscules et chiffres uniquement.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Rôle</Label>
+              <Select value={role} onValueChange={v => setRole(v as typeof role)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="technicien">Technicien</SelectItem>
+                  <SelectItem value="client">Client</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={changePassword} onChange={e => setChangePassword(e.target.checked)} className="rounded" />
+                <span className="text-sm font-medium">Changer le mot de passe</span>
+              </label>
+              {changePassword && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label>Nouveau mot de passe (6 chiffres)</Label>
+                    <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => setPassword(generatePassword())}>
+                      <RefreshCw className="h-3 w-3" /> Régénérer
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input value={password} onChange={e => setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" className="font-mono tracking-widest text-lg" placeholder="000000" />
+                    <CopyButton value={password} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-destructive/20">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-destructive hover:underline"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="h-4 w-4" /> Supprimer cet utilisateur
+              </button>
+            </div>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t shrink-0 gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={() => updateMut.mutate({ id: user.id, openId: user.openId, firstName: firstName.trim(), lastName: lastName.trim(), username, role, ...(changePassword ? { password } : {}) })} disabled={!canSave}>
+              {updateMut.isPending ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer {user.name ?? user.username} ?</AlertDialogTitle>
+            <AlertDialogDescription>Cette action est irréversible. Le compte sera définitivement supprimé.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90 text-white" onClick={() => deleteMut.mutate({ id: user.id, openId: user.openId })} disabled={deleteMut.isPending}>
+              {deleteMut.isPending ? "Suppression…" : "Supprimer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 // ─── Reset password dialog ───────────────────────────────────────────────────
 
 function ResetPasswordDialog({ user }: { user: { openId: string; name: string | null; username: string | null; email: string | null } }) {
@@ -423,7 +566,7 @@ export default function UsersPage() {
 
                     <TableCell className="pr-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <ResetPasswordDialog user={{ openId: u.openId, name: u.name, username: u.username, email: u.email }} />
+                        <EditUserDialog user={u} onDone={() => {}} />
                         <button
                           className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground"
                           title={u.accountStatus === "suspended" ? "Activer" : "Suspendre"}
