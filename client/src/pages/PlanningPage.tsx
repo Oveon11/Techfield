@@ -283,7 +283,7 @@ export default function PlanningPage() {
   });
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [quickCreate, setQuickCreate] = useState<{techId:number;date:string;start:string;end:string}|null>(null);
+  const [quickCreate, setQuickCreate] = useState<{techId:number|null;date:string;start:string;end:string}|null>(null);
   const [detailSlot, setDetailSlot] = useState<Slot|null>(null);
   const [editSlot,   setEditSlot]   = useState<Slot|null>(null);
   const [deleteSlot, setDeleteSlot] = useState<Slot|null>(null);
@@ -850,8 +850,8 @@ type GridProps = {
   gcalEvents?:GCalEvent[];
   showUnassignedRow?:boolean;
   onClickSlot:(s:Slot)=>void;
-  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
-  onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
+  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number|null)=>void;
+  onCellClick?:(technicianId:number|null,date:string,startTime:string,endTime:string)=>void;
   onReorder?:(orderedIds:number[])=>void;
 };
 
@@ -865,11 +865,11 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
   const today = toDateStr(new Date());
 
   // Drag / resize
-  const dragRef  = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number;targetTechId:number;targetDate:string}|null>(null);
-  const resizeRef = useRef<{id:number;technicianId:number;date:string;origStart:number;origEnd:number;dayColRef:Element|null;mouseX:number;edge:"start"|"end"}|null>(null);
+  const dragRef  = useRef<{id:number;technicianId:number|null;date:string;origStart:number;origEnd:number;origSStr:string;origEStr:string;dayColRef:Element|null;mouseX:number;targetTechId:number|null;targetDate:string}|null>(null);
+  const resizeRef = useRef<{id:number;technicianId:number|null;date:string;origStart:number;origEnd:number;dayColRef:Element|null;mouseX:number;edge:"start"|"end"}|null>(null);
   const [draggingId,setDraggingId]=useState<number|null>(null);
   const [preview,setPreview]=useState<Record<number,{start:number;end:number}>>({});
-  const [dragTarget,setDragTarget]=useState<{techId:number;date:string;start:number;end:number}|null>(null);
+  const [dragTarget,setDragTarget]=useState<{techId:number|null;date:string;start:number;end:number}|null>(null);
   const dayColRefs = useRef<Record<string,HTMLDivElement|null>>({});
   // ref vers les slots courants pour y accéder dans onMouseMove sans le mettre en dépendance
   const slotsRef = useRef(slots);
@@ -959,14 +959,16 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
         const r=el.getBoundingClientRect();
         if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
           const dash=key.indexOf("-");
-          tTechId=Number(key.slice(0,dash));
+          const prefix=key.slice(0,dash);
+          tTechId=prefix==="unassigned"?null:Number(prefix);
           tDate=key.slice(dash+1);
           targetRect=r;
           break;
         }
       }
       if(!targetRect){
-        const el=dayColRefs.current[`${tTechId}-${tDate}`];
+        const refKey=tTechId===null?`unassigned-${tDate}`:`${tTechId}-${tDate}`;
+        const el=dayColRefs.current[refKey];
         if(el)targetRect=el.getBoundingClientRect();
       }
       if(!targetRect)return;
@@ -1261,7 +1263,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
       {/* ── Ligne "À affecter" ── */}
       {showUnassignedRow&&(()=>{
         const unassignedSlots=slots.filter(s=>s.technicianId===null);
-        if(unassignedSlots.length===0&&technicians.length>0) return null;
+        if(!canManage&&unassignedSlots.length===0) return null;
         const maxU=Math.max(1,...dayColumns.map(d=>unassignedSlots.filter(s=>s.slotDate===d).length));
         const rowH=maxU*LANE_H+8;
         return(
@@ -1282,30 +1284,77 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                 const isToday=d===toDateStr(new Date());
                 const daySlots=unassignedSlots.filter(s=>s.slotDate===d);
                 return(
-                  <div key={d} style={{height:rowH}}
-                    className={`relative border-l-2 border-amber-200 ${isToday?"bg-amber-50/40":""}`}>
+                  <div key={d}
+                    ref={el=>{dayColRefs.current[`unassigned-${d}`]=el;}}
+                    style={{height:rowH}}
+                    className={`relative border-l-2 border-amber-200 ${isToday?"bg-amber-50/40":""} ${canManage&&onCellClick?"cursor-crosshair":""}`}
+                    onClick={canManage&&onCellClick?e=>{
+                      const rect=e.currentTarget.getBoundingClientRect();
+                      const rawMin=Math.round((e.clientX-rect.left)/rect.width*H_TOTAL*60/15)*15+H_START*60;
+                      const s=Math.max(H_START*60,Math.min(rawMin,H_END*60-60));
+                      const en=Math.min(s+120,H_END*60);
+                      onCellClick(null,d,minToTime(s),minToTime(en));
+                    }:undefined}>
                     {Array.from({length:H_TOTAL-1},(_,i)=>{
                       const isGrad=(i+1)%3===0;
                       return <div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}} className={`absolute top-0 bottom-0 border-l ${isGrad?"border-amber-100/60":"border-amber-100/30"} pointer-events-none`}/>;
                     })}
+                    {/* Ghost quand on drag un slot tech vers la ligne unassigned */}
+                    {draggingId!==null&&dragTarget?.techId===null&&dragTarget?.date===d&&(()=>{
+                      const src=slotsRef.current.find(s=>s.id===draggingId);
+                      if(!src||(src.technicianId===null&&src.slotDate===d))return null;
+                      const lp=(dragTarget.start-H_START*60)/(H_TOTAL*60)*100;
+                      const wp=(dragTarget.end-dragTarget.start)/(H_TOTAL*60)*100;
+                      return(
+                        <div key="ghost" style={{left:`${lp}%`,width:`max(${wp}%,2px)`,top:3,height:LANE_H-6}}
+                          className="absolute rounded-lg bg-amber-400 opacity-75 text-white text-[10px] shadow-xl ring-2 ring-white/60 z-30 pointer-events-none px-1.5 py-1 flex flex-col">
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
+                            <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{minToTime(dragTarget.start)} – {minToTime(dragTarget.end)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {daySlots.map((slot,idx)=>{
-                      const startM=timeToMin(slot.startTime);
-                      const endM=timeToMin(slot.endTime);
+                      const pv=preview[slot.id];
+                      const startM=pv?pv.start:timeToMin(slot.startTime);
+                      const endM=pv?pv.end:timeToMin(slot.endTime);
                       const leftPct=(startM-H_START*60)/(H_TOTAL*60)*100;
                       const widthPct=(endM-startM)/(H_TOTAL*60)*100;
                       const top=idx*LANE_H+3;
                       const height=LANE_H-6;
                       const label=slotLabel(slot)??"Sans chantier";
+                      const isDragging=draggingId===slot.id;
+                      const isInteracting=!!pv;
+                      const isCrossDragging=isDragging&&dragTarget&&(dragTarget.techId!==null||dragTarget.date!==d);
+                      const displayStart=minToTime(startM);
+                      const displayEnd=minToTime(endM);
                       return(
-                        <Tooltip key={slot.id} delayDuration={400}>
+                        <Tooltip key={slot.id} delayDuration={draggingId!==null?999999:400} open={draggingId!==null?false:undefined}>
                           <TooltipTrigger asChild>
                             <div
                               style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
-                              className="absolute rounded-lg bg-amber-500 text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col hover:brightness-110 transition-all z-10"
-                              onClick={e=>{e.stopPropagation();onClickSlot(slot);}}
+                              className={`absolute rounded-lg bg-amber-500 text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col ${isDragging&&!isCrossDragging?"shadow-xl ring-2 ring-white/50 opacity-90 z-20":isCrossDragging?"opacity-25 z-10":isInteracting?"shadow-xl ring-2 ring-white/50 z-20":"hover:brightness-110 transition-all z-10"}`}
+                              onClick={e=>{e.stopPropagation();if(!isInteracting)onClickSlot(slot);}}
+                              onMouseDown={canManage?e=>{
+                                e.preventDefault();e.stopPropagation();
+                                const colEl=dayColRefs.current[`unassigned-${d}`];
+                                dragRef.current={id:slot.id,technicianId:null,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX,targetTechId:null,targetDate:d};
+                                setDraggingId(slot.id);
+                              }:undefined}
                             >
+                              {isInteracting&&!isCrossDragging&&(
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10 pointer-events-none rounded-lg">
+                                  <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{displayStart} – {displayEnd}</span>
+                                </div>
+                              )}
                               <div className="font-semibold leading-tight truncate">{label}</div>
-                              {zoom>=0.8&&<div className="text-white/70 text-[9px] leading-tight">{slot.startTime}–{slot.endTime}</div>}
+                              {(zoom>=0.8||isInteracting)&&<div className="text-white/70 text-[9px] leading-tight">{displayStart}–{displayEnd}</div>}
+                              {canManage&&(
+                                <>
+                                  <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`unassigned-${d}`];resizeRef.current={id:slot.id,technicianId:null,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
+                                  <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`unassigned-${d}`];resizeRef.current={id:slot.id,technicianId:null,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
+                                </>
+                              )}
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="flex flex-col gap-0.5">
@@ -1343,8 +1392,8 @@ function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,gcalEve
   gcalEvents?:GCalEvent[];
   showUnassignedRow?:boolean;
   onClickSlot:(s:Slot)=>void;
-  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
-  onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
+  onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number|null)=>void;
+  onCellClick?:(technicianId:number|null,date:string,startTime:string,endTime:string)=>void;
   onReorder?:(orderedIds:number[])=>void;
 }){
   return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
@@ -1706,13 +1755,13 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
   open:boolean;onClose:()=>void;
   technicians:Technician[];projects:{id:number;name:string;reference:string|null;clientName:string|null}[];
   existingSlots:Slot[];initialSlot?:Slot|null;duplicateSource?:Slot|null;defaultDate?:string;
-  defaultTechId?:number;defaultStartTime?:string;defaultEndTime?:string;
+  defaultTechId?:number|null;defaultStartTime?:string;defaultEndTime?:string;
   onSave:(rows:SlotFormRow[])=>void;saving:boolean;
 }){
   const src = duplicateSource ?? null;
-  const [isUnassignedMode,setIsUnassignedMode]=useState(initialSlot?.technicianId===null);
+  const [isUnassignedMode,setIsUnassignedMode]=useState(initialSlot?.technicianId===null||defaultTechId===null);
   const [selectedTechIds,setSelectedTechIds]=useState<Set<number>>(()=>{
-    if(initialSlot?.technicianId===null) return new Set<number>();
+    if(initialSlot?.technicianId===null||defaultTechId===null) return new Set<number>();
     if(initialSlot?.technicianId) return new Set([initialSlot.technicianId]);
     if(defaultTechId) return new Set([defaultTechId]);
     return new Set(technicians.slice(0,1).map(t=>t.id));
