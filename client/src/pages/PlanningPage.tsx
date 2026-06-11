@@ -597,13 +597,13 @@ export default function PlanningPage() {
         )}
 
         <div ref={gridWrapRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
-          style={{touchAction:"pan-y",overflow:"hidden"}}>
-          <div style={{transform:`translateX(${swipeOffset}px)`,transition:swipeSnapping?"transform 0.22s ease-out":"none",willChange:"transform"}}>
+          style={{touchAction:"pan-y"}}>
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
           <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canEditPlanning} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
             showUnassignedRow={canEditPlanning&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
+            swipeOffset={swipeOffset} swipeSnapping={swipeSnapping}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -616,6 +616,7 @@ export default function PlanningPage() {
         ) : view==="jour" ? (
           <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canEditPlanning} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
             showUnassignedRow={canEditPlanning&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
+            swipeOffset={swipeOffset} swipeSnapping={swipeSnapping}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -629,7 +630,6 @@ export default function PlanningPage() {
             showUnassignedRow={canEditPlanning&&(activeCategoryFilters.size===0||activeCategoryFilters.has("unassigned"))}
           />
         )}
-          </div>
         </div>
 
         {(createOpen||quickCreate!==null)&&(
@@ -882,6 +882,8 @@ type GridProps = {
   approvedLeaves?:ApprovedLeave[];
   gcalEvents?:GCalEvent[];
   showUnassignedRow?:boolean;
+  swipeOffset?:number;
+  swipeSnapping?:boolean;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number|null)=>void;
   onCellClick?:(technicianId:number|null,date:string,startTime:string,endTime:string)=>void;
@@ -889,9 +891,9 @@ type GridProps = {
 };
 
 // Shared timeline grid — percentage-based, fits parent width
-function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],gcalEvents=[],showUnassignedRow=false,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
+function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],gcalEvents=[],showUnassignedRow=false,swipeOffset=0,swipeSnapping=false,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
-  const LABEL_W = typeof window!=="undefined"&&window.innerWidth<640 ? 68 : 176;
+  const LABEL_W = typeof window!=="undefined"&&window.innerWidth<640 ? 90 : 176;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
   // zoom>1 → largeur fixe en px, déclenche le scroll horizontal
   const COL_W = zoom > 1.05 ? Math.round(150 * zoom) : undefined;
@@ -1059,8 +1061,15 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
   });
   const maxLanes=(techId:number)=>Math.max(1,...dayColumns.map(d=>(laneMap.get(`${techId}-${d}`)??[]).reduce((m,s)=>Math.max(m,s.totalLanes),1)));
 
-  const colUnit = COL_W ? `${COL_W}px` : "1fr";
-  const colTemplate = `${LABEL_W}px repeat(${dayColumns.length},${colUnit})`;
+  const dayFlexStyle: React.CSSProperties = COL_W
+    ? {flex:`0 0 ${COL_W}px`}
+    : {flex:"1 1 0",minWidth:0};
+  const swipeInnerStyle: React.CSSProperties = {
+    display:"flex",
+    transform:`translateX(${swipeOffset}px)`,
+    transition:swipeSnapping?"transform 0.22s ease-out":"none",
+    willChange:"transform",
+  };
   // helper pour positionner les labels de graduation sans débordement
   const rulerLabelStyle = (i: number): React.CSSProperties =>
     i === 0          ? {left: "2px"} :
@@ -1071,41 +1080,49 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
     <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
       {/* ── Column headers ── */}
-      <div className="border-b border-border/60 bg-slate-50/80" style={{display:"grid",gridTemplateColumns:colTemplate}}>
-        <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Technicien</div>
-        {dayColumns.map((d,i)=>{
-          const date=new Date(d+"T00:00:00");
-          const isToday=d===today;
-          return(
-            <div key={d} className={`border-l-2 border-slate-200 px-2 py-2 flex flex-col items-center ${isToday?"bg-primary/5":""}`}>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{ALL_DAYS_SHORT[(new Date(d+"T00:00:00").getDay()+6)%7]}</span>
-              <span className={`text-lg font-bold leading-none mt-0.5 ${isToday?"text-primary":"text-foreground"}`}>{date.getDate()}</span>
-            </div>
-          );
-        })}
+      <div className="border-b border-border/60 bg-slate-50/80 flex">
+        <div style={{width:LABEL_W,flexShrink:0}} className="px-2 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden sm:flex items-end">Technicien</div>
+        <div style={{width:LABEL_W,flexShrink:0}} className="sm:hidden"/>
+        <div style={{flex:1,overflow:"hidden"}}>
+          <div style={swipeInnerStyle}>
+            {dayColumns.map((d)=>{
+              const date=new Date(d+"T00:00:00");
+              const isToday=d===today;
+              return(
+                <div key={d} style={dayFlexStyle} className={`border-l-2 border-slate-200 px-2 py-2 flex flex-col items-center ${isToday?"bg-primary/5":""}`}>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{ALL_DAYS_SHORT[(new Date(d+"T00:00:00").getDay()+6)%7]}</span>
+                  <span className={`text-lg font-bold leading-none mt-0.5 ${isToday?"text-primary":"text-foreground"}`}>{date.getDate()}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* ── Hour ruler ── */}
-      <div className="border-b border-border/50 bg-slate-50/70" style={{display:"grid",gridTemplateColumns:colTemplate}}>
-        <div className="px-3 flex items-end pb-1.5"><span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Horaires</span></div>
-        {dayColumns.map(d=>(
-          <div key={d} className="border-l-2 border-slate-200 relative h-8">
-            {/* Tick marks aux graduations intermédiaires */}
-            {Array.from({length:H_TOTAL+1},(_,i)=>(
-              (i % 3 === 0 && i > 0 && i < H_TOTAL) ? (
-                <div key={`tick-${i}`} className="absolute top-0 h-3 border-l border-border/35 pointer-events-none" style={{left:`${i/H_TOTAL*100}%`}}/>
-              ) : null
-            ))}
-            {/* Labels */}
-            {Array.from({length:H_TOTAL+1},(_,i)=>(
-              (i % 3 === 0 || i === H_TOTAL) ? (
-                <span key={i} className="absolute bottom-1.5 text-[10px] font-semibold text-slate-400 tracking-tight" style={rulerLabelStyle(i)}>
-                  {(H_START+i).toString().padStart(2,"0")}h
-                </span>
-              ) : null
+      <div className="border-b border-border/50 bg-slate-50/70 flex">
+        <div style={{width:LABEL_W,flexShrink:0}} className="px-2 flex items-end pb-1.5 hidden sm:flex"><span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Horaires</span></div>
+        <div style={{width:LABEL_W,flexShrink:0}} className="sm:hidden"/>
+        <div style={{flex:1,overflow:"hidden"}}>
+          <div style={swipeInnerStyle}>
+            {dayColumns.map(d=>(
+              <div key={d} style={dayFlexStyle} className="border-l-2 border-slate-200 relative h-8">
+                {Array.from({length:H_TOTAL+1},(_,i)=>(
+                  (i % 3 === 0 && i > 0 && i < H_TOTAL) ? (
+                    <div key={`tick-${i}`} className="absolute top-0 h-3 border-l border-border/35 pointer-events-none" style={{left:`${i/H_TOTAL*100}%`}}/>
+                  ) : null
+                ))}
+                {Array.from({length:H_TOTAL+1},(_,i)=>(
+                  (i % 3 === 0 || i === H_TOTAL) ? (
+                    <span key={i} className="absolute bottom-1.5 text-[10px] font-semibold text-slate-400 tracking-tight" style={rulerLabelStyle(i)}>
+                      {(H_START+i).toString().padStart(2,"0")}h
+                    </span>
+                  ) : null
+                ))}
+              </div>
             ))}
           </div>
-        ))}
+        </div>
       </div>
 
       {/* ── Tech rows ── */}
@@ -1118,9 +1135,9 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
           <div key={tech.id} ref={el=>{rowRefs.current[tech.id]=el;}}
             className={`border-b-2 border-slate-200 last:border-b-0 relative ${isRowDragging?"opacity-40":""}`}>
           {showDropBefore&&<div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-50"/>}
-          <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
-            {/* Label */}
-            <div style={{height:rowH}} className="flex items-center justify-center sm:items-start sm:justify-start sm:gap-2 px-1 sm:px-3 py-2 border-r border-border/40 bg-slate-50/70">
+          <div style={{display:"flex"}}>
+            {/* Label — fixe, ne se déplace pas au swipe */}
+            <div style={{width:LABEL_W,flexShrink:0,height:rowH}} className="flex items-center gap-1.5 px-1.5 sm:px-3 py-2 border-r border-border/40 bg-slate-50/70">
               {onReorder&&(
                 <div
                   className="hidden sm:flex mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0 transition-colors"
@@ -1129,21 +1146,23 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                   <GripVertical className="h-4 w-4"/>
                 </div>
               )}
-              <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0 sm:mt-0.5">
+              <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                 {tech.firstName[0]}{tech.lastName[0]}
               </div>
-              <div className="hidden sm:block min-w-0 flex-1 overflow-hidden">
-                <p className="text-sm font-semibold text-foreground leading-tight truncate">{tech.firstName} {tech.lastName}</p>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="text-[10px] sm:text-sm font-semibold text-foreground leading-tight truncate">{tech.firstName}<span className="hidden sm:inline"> {tech.lastName}</span></p>
+                <p className="hidden sm:block text-[9px] text-muted-foreground uppercase tracking-wide">Technicien</p>
               </div>
             </div>
-            {/* Day cells */}
+            {/* Day cells — se déplacent au swipe */}
+            <div style={{flex:1,overflow:"hidden"}}>
+            <div style={{...swipeInnerStyle,height:rowH}}>
             {dayColumns.map(d=>{
               const isToday=d===today;
               const daySlots=laneMap.get(`${tech.id}-${d}`)??[];
               return(
                 <div key={d} ref={el=>{dayColRefs.current[`${tech.id}-${d}`]=el;}}
-                  style={{height:rowH}}
+                  style={{...dayFlexStyle,height:rowH}}
                   className={`relative border-l-2 border-slate-200 ${isToday?"bg-primary/[0.025]":""} ${canManage&&onCellClick?"cursor-crosshair":""}`}
                   onClick={canManage&&onCellClick?e=>{
                     const rect=e.currentTarget.getBoundingClientRect();
@@ -1273,6 +1292,8 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                 </div>
               );
             })}
+            </div>
+            </div>
           </div>
           </div>
         );
@@ -1290,25 +1311,27 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
         const rowH=maxU*LANE_H+8;
         return(
           <div className="border-t-2 border-amber-200">
-            <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
+            <div style={{display:"flex"}}>
               {/* Label */}
-              <div style={{height:rowH}} className="flex items-center justify-center sm:items-start sm:justify-start sm:gap-2 px-1 sm:px-3 py-2 border-r border-amber-200/60 bg-amber-50/60">
-                <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0 sm:mt-0.5">
+              <div style={{width:LABEL_W,flexShrink:0,height:rowH}} className="flex items-center gap-1.5 px-1.5 sm:px-3 py-2 border-r border-amber-200/60 bg-amber-50/60">
+                <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0">
                   <AlertTriangle className="h-3.5 w-3.5"/>
                 </div>
-                <div className="hidden sm:block min-w-0 flex-1 overflow-hidden">
-                  <p className="text-sm font-semibold text-amber-800 leading-tight">À affecter</p>
-                  <p className="text-[9px] text-amber-600 uppercase tracking-wide">{unassignedSlots.length} créneau{unassignedSlots.length>1?"x":""}</p>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <p className="text-[10px] sm:text-sm font-semibold text-amber-800 leading-tight truncate">À affecter</p>
+                  <p className="hidden sm:block text-[9px] text-amber-600 uppercase tracking-wide">{unassignedSlots.length} créneau{unassignedSlots.length>1?"x":""}</p>
                 </div>
               </div>
               {/* Day cells */}
+              <div style={{flex:1,overflow:"hidden"}}>
+              <div style={{...swipeInnerStyle,height:rowH}}>
               {dayColumns.map(d=>{
                 const isToday=d===toDateStr(new Date());
                 const daySlots=unassignedSlots.filter(s=>s.slotDate===d);
                 return(
                   <div key={d}
                     ref={el=>{dayColRefs.current[`unassigned-${d}`]=el;}}
-                    style={{height:rowH}}
+                    style={{...dayFlexStyle,height:rowH}}
                     className={`relative border-l-2 border-amber-200 ${isToday?"bg-amber-50/40":""} ${canManage&&onCellClick?"cursor-crosshair":""}`}
                     onClick={canManage&&onCellClick?e=>{
                       const rect=e.currentTarget.getBoundingClientRect();
@@ -1390,6 +1413,8 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                   </div>
                 );
               })}
+              </div>
+              </div>
             </div>
           </div>
         );
@@ -1401,24 +1426,26 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,gcalEvents,showUnassignedRow,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
+function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,gcalEvents,showUnassignedRow,swipeOffset,swipeSnapping,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
   void onDayClick;
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} swipeOffset={swipeOffset} swipeSnapping={swipeSnapping} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,gcalEvents,showUnassignedRow,onClickSlot,onMove,onCellClick,onReorder}:{
+function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,gcalEvents,showUnassignedRow,swipeOffset,swipeSnapping,onClickSlot,onMove,onCellClick,onReorder}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
   approvedLeaves?:ApprovedLeave[];
   gcalEvents?:GCalEvent[];
   showUnassignedRow?:boolean;
+  swipeOffset?:number;
+  swipeSnapping?:boolean;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number|null)=>void;
   onCellClick?:(technicianId:number|null,date:string,startTime:string,endTime:string)=>void;
   onReorder?:(orderedIds:number[])=>void;
 }){
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} swipeOffset={swipeOffset} swipeSnapping={swipeSnapping} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Month Grid ───────────────────────────────────────────────────────────────
