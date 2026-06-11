@@ -967,10 +967,13 @@ export function ProjectsPage() {
     const list = projectsQuery.data ?? [];
     const needle = search.trim().toLowerCase();
     return list.filter(project => {
-      if (archiveTab === "archives") return project.status === "archive";
-      if (project.status === "archive") return false;
-      if (statusFilter !== "all" && project.status !== statusFilter) return false;
-      if (serviceFilter !== "all" && project.serviceType !== serviceFilter) return false;
+      if (archiveTab === "archives") {
+        if (project.status !== "archive") return false;
+      } else {
+        if (project.status === "archive") return false;
+        if (statusFilter !== "all" && project.status !== statusFilter) return false;
+        if (serviceFilter !== "all" && project.serviceType !== serviceFilter) return false;
+      }
       if (!needle) return true;
       const haystack = [project.title, project.reference, project.clientName, project.siteName]
         .filter(Boolean)
@@ -1190,10 +1193,10 @@ export function ProjectsPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1 min-w-0"><Wrench className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.title}</span></span>
-                      {(project.address || project.siteName) && (
-                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(project.address || project.siteName || "")}`} target="_blank" rel="noopener noreferrer"
+                      {project.address && (
+                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(project.address)}`} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 min-w-0 hover:text-primary transition-colors" onClick={e => e.stopPropagation()}>
-                          <MapPin className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.address || project.siteName}</span>
+                          <MapPin className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{project.address}</span>
                         </a>
                       )}
                       {project.phone && (
