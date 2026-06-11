@@ -985,10 +985,12 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
         ns=Math.round(Math.max(H_START*60,Math.min(cursorMin-dur/2,H_END*60-dur))/15)*15;
       }
 
-      const others=slotsRef.current
-        .filter(s=>s.id!==id&&s.technicianId===tTechId&&s.slotDate===tDate)
-        .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
-      ns=snapToFreeSlot(ns,dur,others,origStart);
+      if(tTechId!==null){
+        const others=slotsRef.current
+          .filter(s=>s.id!==id&&s.technicianId===tTechId&&s.slotDate===tDate)
+          .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
+        ns=snapToFreeSlot(ns,dur,others,origStart);
+      }
 
       dragRef.current.targetTechId=tTechId;
       dragRef.current.targetDate=tDate;
@@ -1001,21 +1003,26 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
       const rect=dayColRef.getBoundingClientRect();
       const dx=e.clientX-resizeRef.current.mouseX;
       const dm=Math.round(dx/rect.width*H_TOTAL*60/15)*15;
-      const others=slotsRef.current
-        .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
-        .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
       if(edge==="end"){
         let newEnd=Math.max(origStart+15,Math.min(origEnd+dm,H_END*60));
-        // Clampe à la fin : ne peut pas dépasser le début du slot suivant
-        for(const o of others){
-          if(o.startMin>=origStart&&newEnd>o.startMin) newEnd=o.startMin;
+        if(technicianId!==null){
+          const others=slotsRef.current
+            .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
+            .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
+          for(const o of others){
+            if(o.startMin>=origStart&&newEnd>o.startMin) newEnd=o.startMin;
+          }
         }
         setPreview(p=>({...p,[id]:{start:origStart,end:newEnd}}));
       }else{
         let newStart=Math.min(origEnd-15,Math.max(origStart+dm,H_START*60));
-        // Clampe au début : ne peut pas remonter avant la fin du slot précédent
-        for(const o of others){
-          if(o.endMin<=origEnd&&newStart<o.endMin) newStart=o.endMin;
+        if(technicianId!==null){
+          const others=slotsRef.current
+            .filter(s=>s.id!==id&&s.technicianId===technicianId&&s.slotDate===date)
+            .map(s=>({startMin:timeToMin(s.startTime),endMin:timeToMin(s.endTime)}));
+          for(const o of others){
+            if(o.endMin<=origEnd&&newStart<o.endMin) newStart=o.endMin;
+          }
         }
         setPreview(p=>({...p,[id]:{start:newStart,end:origEnd}}));
       }
