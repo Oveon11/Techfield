@@ -1,5 +1,13 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import {
+  SharedProjectForm,
+  SharedProjectFormState,
+  INITIAL_SHARED_FORM,
+  PROJECT_STATUS_OPTIONS,
+  STATIC_SERVICE_OPTIONS,
+  PROJECT_COLORS,
+  type ProjectStatus,
+} from "./ProjectFormUnified";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -806,259 +814,29 @@ export function SitesPage() {
 }
 
 type ProjectServiceType = string;
-type ProjectStatus = "brouillon" | "planifie" | "en_cours" | "bloque" | "termine" | "annule" | "archive";
 
-type ProjectFormState = {
+type ProjectFormState = SharedProjectFormState & {
   clientId: string;
-  clientName: string;
   siteId: string;
-  title: string;
-  serviceType: ProjectServiceType;
-  description: string;
-  status: ProjectStatus;
-  progressPercent: number;
-  estimatedHours: string;
   actualHours: string;
   budgetAmount: string;
-  startDate: string;
-  plannedEndDate: string;
-  quoteNumber: string;
-  technicianIds: number[];
-  color: string;
-  address: string;
-  phone: string;
+  progressPercent: number;
 };
 
 const INITIAL_PROJECT_FORM: ProjectFormState = {
+  ...INITIAL_SHARED_FORM,
   clientId: "",
-  clientName: "",
   siteId: "",
-  title: "",
-  serviceType: "autre",
-  description: "",
-  status: "planifie",
-  progressPercent: 0,
-  estimatedHours: "0.00",
   actualHours: "0.00",
   budgetAmount: "0.00",
-  startDate: "",
-  plannedEndDate: "",
-  quoteNumber: "",
-  technicianIds: [],
-  color: "",
-  address: "",
-  phone: "",
-};
-
-type CreateWithClientFormState = {
-  clientName: string;
-  clientPhone: string;
-  clientAddress: string;
-  title: string;
-  serviceType: ProjectServiceType;
-  description: string;
-  status: ProjectStatus;
-  progressPercent: number;
-  estimatedHours: string;
-  actualHours: string;
-  budgetAmount: string;
-  startDate: string;
-  plannedEndDate: string;
-  quoteNumber: string;
-  technicianIds: number[];
-  color: string;
-};
-
-const INITIAL_CREATE_FORM: CreateWithClientFormState = {
-  clientName: "",
-  clientPhone: "",
-  clientAddress: "",
-  title: "",
-  serviceType: "autre",
-  description: "",
-  status: "planifie",
   progressPercent: 0,
-  estimatedHours: "0.00",
-  actualHours: "0.00",
-  budgetAmount: "0.00",
-  startDate: "",
-  plannedEndDate: "",
-  quoteNumber: "",
-  technicianIds: [],
-  color: "",
 };
 
-const PROJECT_COLORS = [
-  "#ef4444","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6",
-  "#06b6d4","#0ea5e9","#3b82f6","#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899",
-  "#be123c","#7f1d1d","#78350f","#365314","#14532d","#134e4a","#1e3a8a","#4c1d95",
-  "#64748b","#475569","#1e293b","#292524","#0c4a6e","#fbbf24",
-];
+type CreateWithClientFormState = SharedProjectFormState;
 
-const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
-  { value: "planifie", label: "Planifié" },
-  { value: "en_cours", label: "En cours" },
-  { value: "bloque", label: "Bloqué" },
-  { value: "termine", label: "Terminé" },
-];
+const INITIAL_CREATE_FORM: CreateWithClientFormState = { ...INITIAL_SHARED_FORM };
 
-const STATIC_SERVICE_OPTIONS = [
-  { value: "clim", label: "Climatisation" },
-  { value: "pac", label: "PAC" },
-  { value: "chauffe_eau", label: "Chauffe-eau" },
-  { value: "pv", label: "Photovoltaïque" },
-  { value: "vmc", label: "VMC" },
-  { value: "autre", label: "Autre" },
-];
 
-function ProjectFormFields({
-  form,
-  setForm,
-  clients,
-  sites,
-  technicians,
-}: {
-  form: ProjectFormState;
-  setForm: (updater: (prev: ProjectFormState) => ProjectFormState) => void;
-  clients: Array<{ id: number; companyName: string }>;
-  sites: Array<{ id: number; siteName: string }>;
-  technicians: Array<{ id: number; firstName: string; lastName: string }>;
-}) {
-  const stOptions = STATIC_SERVICE_OPTIONS;
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <div className="space-y-2">
-        <Label>Client</Label>
-        <Input value={form.clientName} onChange={e => setForm(prev => ({ ...prev, clientName: e.target.value }))} placeholder="Nom du client" />
-      </div>
-      <div className="space-y-2">
-        <Label>Site</Label>
-        <Select value={form.siteId || "none"} onValueChange={value => setForm(prev => ({ ...prev, siteId: value === "none" ? "" : value }))}>
-          <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">Aucun site</SelectItem>
-            {sites.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.siteName}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2 md:col-span-2">
-        <Label>Intitulé</Label>
-        <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>N° de devis</Label>
-        <Input placeholder="ex: DEV-2025-001" value={form.quoteNumber} onChange={e => setForm(prev => ({ ...prev, quoteNumber: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>Type de service</Label>
-        <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value }))}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {stOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label>Statut</Label>
-        <Select value={form.status} onValueChange={value => setForm(prev => ({ ...prev, status: value as ProjectStatus }))}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {PROJECT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label>Début</Label>
-        <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>Fin prévue</Label>
-        <Input type="date" value={form.plannedEndDate} onChange={e => setForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>Budget</Label>
-        <Input value={form.budgetAmount} onChange={e => setForm(prev => ({ ...prev, budgetAmount: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>Avancement (%)</Label>
-        <Input
-          type="number"
-          min={0}
-          max={100}
-          value={form.progressPercent}
-          onChange={e => setForm(prev => ({ ...prev, progressPercent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))}
-        />
-      </div>
-      <div className="space-y-2 md:col-span-2">
-        <Label>Description</Label>
-        <Textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>Adresse du chantier <span className="text-muted-foreground font-normal text-xs">(optionnel)</span></Label>
-        <AddressAutocomplete value={form.address} onChange={v => setForm(prev => ({ ...prev, address: v }))} placeholder="Adresse du chantier…" />
-      </div>
-      <div className="space-y-2">
-        <Label>Téléphone chantier <span className="text-muted-foreground font-normal text-xs">(optionnel)</span></Label>
-        <Input type="tel" placeholder="06 00 00 00 00" value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))} maxLength={50} />
-      </div>
-      {technicians.length ? (
-        <div className="space-y-2 md:col-span-2">
-          <Label>Techniciens à affecter</Label>
-          <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 p-3">
-            {technicians.map(tech => {
-              const checked = form.technicianIds.includes(tech.id);
-              return (
-                <button
-                  key={tech.id}
-                  type="button"
-                  className={`rounded-full border px-3 py-1 text-sm ${checked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
-                  onClick={() => setForm(prev => ({
-                    ...prev,
-                    technicianIds: checked ? prev.technicianIds.filter(id => id !== tech.id) : [...prev.technicianIds, tech.id],
-                  }))}
-                >
-                  {tech.firstName} {tech.lastName}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-      <div className="space-y-2 md:col-span-2">
-        <Label>Couleur planning</Label>
-        <div className="rounded-xl border border-border/60 p-3">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              title="Aucune couleur"
-              onClick={() => setForm(prev => ({ ...prev, color: "" }))}
-              className={`h-7 w-7 rounded-full border-2 transition-all flex items-center justify-center bg-white ${!form.color ? "border-primary ring-2 ring-primary/30 scale-110" : "border-border hover:border-slate-400"}`}
-            >
-              <span className="text-[10px] text-muted-foreground font-bold">✕</span>
-            </button>
-            {PROJECT_COLORS.map(c => (
-              <button
-                key={c}
-                type="button"
-                title={c}
-                onClick={() => setForm(prev => ({ ...prev, color: c }))}
-                style={{ backgroundColor: c }}
-                className={`h-7 w-7 rounded-full border-2 transition-all ${form.color === c ? "border-white ring-2 ring-offset-1 scale-110" : "border-transparent hover:scale-105"}`}
-              />
-            ))}
-          </div>
-          {form.color && (
-            <div className="mt-2 flex items-center gap-2">
-              <div className="h-4 w-4 rounded-full border border-border/60" style={{ backgroundColor: form.color }} />
-              <span className="text-xs text-muted-foreground font-mono">{form.color}</span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function ProjectsPage() {
   const { permissions } = useRoleMatrix();
@@ -1116,7 +894,7 @@ export function ProjectsPage() {
     sessionStorage.removeItem("tf-prefill-chantier");
     try {
       const prefill = JSON.parse(raw) as {clientName?:string;clientPhone?:string;clientAddress?:string};
-      setCreateForm(f => ({ ...f, clientName: prefill.clientName??f.clientName, clientPhone: prefill.clientPhone??f.clientPhone, clientAddress: prefill.clientAddress??f.clientAddress }));
+      setCreateForm(f => ({ ...f, clientName: prefill.clientName??f.clientName, phone: prefill.clientPhone??f.phone, address: prefill.clientAddress??f.address }));
       setCreateOpen(true);
     } catch {}
   }, []);
@@ -1126,13 +904,21 @@ export function ProjectsPage() {
   const [serviceFilter, setServiceFilter] = useState<"all" | ProjectServiceType>("all");
 
   const doCreateWithClient = () => createWithClient.mutate({
-    ...createForm,
-    clientPhone: createForm.clientPhone || null,
-    clientAddress: createForm.clientAddress || null,
+    clientName: createForm.clientName,
+    clientPhone: createForm.phone || null,
+    clientAddress: createForm.address || null,
+    title: createForm.title,
+    serviceType: createForm.serviceType,
     description: createForm.description || null,
+    status: createForm.status,
+    progressPercent: 0,
+    estimatedHours: createForm.estimatedHours,
+    actualHours: "0.00",
+    budgetAmount: "0.00",
     startDate: createForm.startDate || null,
     plannedEndDate: createForm.plannedEndDate || null,
     quoteNumber: createForm.quoteNumber || null,
+    technicianIds: createForm.technicianIds,
     color: createForm.color || null,
   });
 
@@ -1220,112 +1006,12 @@ export function ProjectsPage() {
                     <DialogDescription>Renseignez les informations client et les détails du chantier.</DialogDescription>
                   </DialogHeader>
                   <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-2">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Nom du client *</Label>
-                      <Input placeholder="Dupont Jean" value={createForm.clientName} onChange={e => setCreateForm(prev => ({ ...prev, clientName: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Téléphone client</Label>
-                      <Input placeholder="06 00 00 00 00" value={createForm.clientPhone} onChange={e => setCreateForm(prev => ({ ...prev, clientPhone: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Adresse client</Label>
-                      <Input placeholder="12 rue de la Paix, 75001 Paris" value={createForm.clientAddress} onChange={e => setCreateForm(prev => ({ ...prev, clientAddress: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2 md:col-span-2 border-t pt-4">
-                      <Label>Intitulé du chantier *</Label>
-                      <Input placeholder="Installation pompe à chaleur" value={createForm.title} onChange={e => setCreateForm(prev => ({ ...prev, title: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>N° de devis</Label>
-                      <Input placeholder="ex: DEV-2025-001" value={createForm.quoteNumber} onChange={e => setCreateForm(prev => ({ ...prev, quoteNumber: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Type de service</Label>
-                      <Select value={createForm.serviceType} onValueChange={value => setCreateForm(prev => ({ ...prev, serviceType: value }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {STATIC_SERVICE_OPTIONS.map(st => <SelectItem key={st.value} value={st.value}>{st.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Statut</Label>
-                      <Select value={createForm.status} onValueChange={value => setCreateForm(prev => ({ ...prev, status: value as ProjectStatus }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {PROJECT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Début</Label>
-                      <Input type="date" value={createForm.startDate} onChange={e => setCreateForm(prev => ({ ...prev, startDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Fin prévue</Label>
-                      <Input type="date" value={createForm.plannedEndDate} onChange={e => setCreateForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Description</Label>
-                      <Textarea value={createForm.description} onChange={e => setCreateForm(prev => ({ ...prev, description: e.target.value }))} />
-                    </div>
-                    {technicians.length ? (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Techniciens à affecter</Label>
-                        <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 p-3">
-                          {technicians.map(tech => {
-                            const checked = createForm.technicianIds.includes(tech.id);
-                            return (
-                              <button
-                                key={tech.id}
-                                type="button"
-                                className={`rounded-full border px-3 py-1 text-sm ${checked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
-                                onClick={() => setCreateForm(prev => ({
-                                  ...prev,
-                                  technicianIds: checked ? prev.technicianIds.filter(id => id !== tech.id) : [...prev.technicianIds, tech.id],
-                                }))}
-                              >
-                                {tech.firstName} {tech.lastName}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Couleur planning</Label>
-                      <div className="rounded-xl border border-border/60 p-3">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            title="Aucune couleur"
-                            onClick={() => setCreateForm(prev => ({ ...prev, color: "" }))}
-                            className={`h-7 w-7 rounded-full border-2 transition-all flex items-center justify-center bg-white ${!createForm.color ? "border-primary ring-2 ring-primary/30 scale-110" : "border-border hover:border-slate-400"}`}
-                          >
-                            <span className="text-[10px] text-muted-foreground font-bold">✕</span>
-                          </button>
-                          {PROJECT_COLORS.map(c => (
-                            <button
-                              key={c}
-                              type="button"
-                              title={c}
-                              onClick={() => setCreateForm(prev => ({ ...prev, color: c }))}
-                              style={{ backgroundColor: c }}
-                              className={`h-7 w-7 rounded-full border-2 transition-all ${createForm.color === c ? "border-white ring-2 ring-offset-1 scale-110" : "border-transparent hover:scale-105"}`}
-                            />
-                          ))}
-                        </div>
-                        {createForm.color && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="h-4 w-4 rounded-full border border-border/60" style={{ backgroundColor: createForm.color }} />
-                            <span className="text-xs text-muted-foreground font-mono">{createForm.color}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    <SharedProjectForm
+                      form={createForm}
+                      onChange={updates => setCreateForm(prev => ({ ...prev, ...updates }))}
+                      technicians={technicians}
+                      showColor={true}
+                    />
                   </div>
                   <DialogFooter className="pt-2 border-t border-border/60">
                     <Button
@@ -1427,7 +1113,28 @@ export function ProjectsPage() {
                         {projectDetailQuery.isLoading && editingId === project.id ? (
                           <p className="py-6 text-sm text-muted-foreground">Chargement…</p>
                         ) : (
-                          <ProjectFormFields form={editForm} setForm={setEditForm} clients={clients} sites={sites} technicians={technicians} />
+                          <div className="space-y-4 overflow-y-auto max-h-[calc(90vh-180px)] px-1">
+                            <SharedProjectForm
+                              form={editForm}
+                              onChange={updates => setEditForm(prev => ({ ...prev, ...updates }))}
+                              technicians={technicians}
+                              showColor={true}
+                            />
+                            <div className="grid grid-cols-3 gap-4 pt-2 border-t">
+                              <div className="space-y-2">
+                                <Label>Budget (€)</Label>
+                                <Input value={editForm.budgetAmount} onChange={e => setEditForm(prev => ({ ...prev, budgetAmount: e.target.value }))} placeholder="0.00" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Avancement (%)</Label>
+                                <Input type="number" min={0} max={100} value={editForm.progressPercent} onChange={e => setEditForm(prev => ({ ...prev, progressPercent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))} />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Heures réelles</Label>
+                                <Input value={editForm.actualHours} onChange={e => setEditForm(prev => ({ ...prev, actualHours: e.target.value }))} placeholder="0.00" />
+                              </div>
+                            </div>
+                          </div>
                         )}
                         <DialogFooter>
                           <Button
@@ -2225,21 +1932,38 @@ export function ProjectDetailPage() {
                 <DialogTitle>Modifier le chantier</DialogTitle>
                 <DialogDescription>{project.reference}</DialogDescription>
               </DialogHeader>
-              <ProjectFormFields
-                form={editForm}
-                setForm={setEditForm}
-                clients={clientsQuery.data ?? []}
-                sites={sitesQuery.data ?? []}
-                technicians={techniciansQuery.data ?? []}
-              />
+              <div className="space-y-4">
+                <SharedProjectForm
+                  form={editForm}
+                  onChange={updates => setEditForm(prev => ({ ...prev, ...updates }))}
+                  technicians={techniciansQuery.data ?? []}
+                  showColor={true}
+                />
+                <div className="grid grid-cols-3 gap-4 pt-2 border-t">
+                  <div className="space-y-2">
+                    <Label>Budget (€)</Label>
+                    <Input value={editForm.budgetAmount} onChange={e => setEditForm(prev => ({ ...prev, budgetAmount: e.target.value }))} placeholder="0.00" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Avancement (%)</Label>
+                    <Input type="number" min={0} max={100} value={editForm.progressPercent} onChange={e => setEditForm(prev => ({ ...prev, progressPercent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Heures réelles</Label>
+                    <Input value={editForm.actualHours} onChange={e => setEditForm(prev => ({ ...prev, actualHours: e.target.value }))} placeholder="0.00" />
+                  </div>
+                </div>
+              </div>
               <DialogFooter>
                 <Button
                   onClick={() => updateProject.mutate({
                     ...editForm,
                     projectId: project.id,
                     clientId: Number(editForm.clientId),
+                    clientName: editForm.clientName || null,
                     siteId: editForm.siteId ? Number(editForm.siteId) : null,
                     quoteNumber: editForm.quoteNumber || null,
+                    color: editForm.color || null,
                   })}
                   disabled={updateProject.isPending || !editForm.clientId || !editForm.title.trim()}
                 >

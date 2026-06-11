@@ -19,6 +19,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { SharedProjectForm, SharedProjectFormState, INITIAL_SHARED_FORM } from "./ProjectFormUnified";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1616,11 +1617,18 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
 
 function ConvertSlotToProjectDialog({slot,onClose}:{slot:Slot;onClose:()=>void}){
   const utils = trpc.useUtils();
-  const [clientName,setClientName] = useState(slot.freeClientName??"");
-  const [clientPhone,setClientPhone] = useState(slot.freeClientPhone??"");
-  const [clientAddress,setClientAddress] = useState(slot.freeClientAddress??"");
-  const [title,setTitle] = useState(slot.freeClientName?`Chantier ${slot.freeClientName}`:"");
-  const [serviceType,setServiceType] = useState("autre");
+  const {data:technicians=[]} = trpc.planning.listTechnicians.useQuery();
+
+  const [form, setForm] = useState<SharedProjectFormState>({
+    ...INITIAL_SHARED_FORM,
+    clientName: slot.freeClientName ?? "",
+    phone: slot.freeClientPhone ?? "",
+    address: slot.freeClientAddress ?? "",
+    title: slot.freeClientName ? `Chantier ${slot.freeClientName}` : "",
+    startDate: slot.slotDate,
+    technicianIds: slot.technicianId ? [slot.technicianId] : [],
+    status: "en_cours",
+  });
 
   const updateSlotMut = trpc.planning.update.useMutation();
   const createMut = trpc.management.projects.createWithClient.useMutation({
@@ -1643,58 +1651,40 @@ function ConvertSlotToProjectDialog({slot,onClose}:{slot:Slot;onClose:()=>void})
 
   return(
     <Dialog open onOpenChange={o=>!o&&onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Créer le chantier</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="space-y-1">
-            <Label>Nom du client</Label>
-            <Input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="Nom du client"/>
-          </div>
-          <div className="space-y-1">
-            <Label>Téléphone</Label>
-            <Input type="tel" value={clientPhone} onChange={e=>setClientPhone(e.target.value)} placeholder="06 00 00 00 00"/>
-          </div>
-          <div className="space-y-1">
-            <Label>Adresse</Label>
-            <Input value={clientAddress} onChange={e=>setClientAddress(e.target.value)} placeholder="Adresse du chantier"/>
-          </div>
-          <div className="space-y-1">
-            <Label>Intitulé du chantier</Label>
-            <Input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Intitulé…"/>
-          </div>
-          <div className="space-y-1">
-            <Label>Type de service</Label>
-            <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue/></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="clim">Climatisation</SelectItem>
-                <SelectItem value="pac">PAC</SelectItem>
-                <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
-                <SelectItem value="pv">Photovoltaïque</SelectItem>
-                <SelectItem value="vmc">VMC</SelectItem>
-                <SelectItem value="autre">Autre</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-2">
+          <SharedProjectForm
+            form={form}
+            onChange={updates => setForm(prev => ({ ...prev, ...updates }))}
+            technicians={technicians}
+            showColor={true}
+          />
         </div>
-        <DialogFooter className="mt-4">
+        <DialogFooter className="mt-4 pt-4 border-t">
           <Button variant="outline" onClick={onClose} disabled={isPending}>Annuler</Button>
           <Button
             onClick={()=>createMut.mutate({
-              clientName:clientName.trim()||"Client",
-              clientPhone:clientPhone.trim()||null,
-              clientAddress:clientAddress.trim()||null,
-              title:title.trim()||clientName.trim()||"Nouveau chantier",
-              serviceType,
-              status:"en_cours",
-              progressPercent:0,
-              estimatedHours:"0.00",
-              actualHours:"0.00",
-              budgetAmount:"0.00",
+              clientName: form.clientName.trim()||"Client",
+              clientPhone: form.phone.trim()||null,
+              clientAddress: form.address.trim()||null,
+              title: form.title.trim()||form.clientName.trim()||"Nouveau chantier",
+              serviceType: form.serviceType,
+              description: form.description||null,
+              status: form.status,
+              progressPercent: 0,
+              estimatedHours: form.estimatedHours,
+              actualHours: "0.00",
+              budgetAmount: "0.00",
+              startDate: form.startDate||null,
+              plannedEndDate: form.plannedEndDate||null,
+              quoteNumber: form.quoteNumber||null,
+              technicianIds: form.technicianIds,
+              color: form.color||null,
             })}
-            disabled={isPending||!clientName.trim()}
+            disabled={isPending||!form.clientName.trim()}
           >
             {isPending?"Création…":"Créer le chantier"}
           </Button>

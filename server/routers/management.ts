@@ -984,6 +984,8 @@ export const managementRouter = router({
         technicianIds: input.technicianIds,
         createdByUserId: ctx.user.id,
         color: input.color || null,
+        address: input.clientAddress || null,
+        phone: input.clientPhone || null,
       });
       return { success: true, id: result.id, reference, clientId: clientResult.id };
     }),
