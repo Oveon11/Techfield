@@ -1705,8 +1705,8 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
   const label=slotLabel(slot)??"Créneau sans chantier";
   return(
     <Dialog open onOpenChange={o=>!o&&onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-lg flex flex-col max-h-[90dvh] p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <div className="flex items-start gap-3">
             <div className={`h-10 w-10 rounded-xl ${color} flex items-center justify-center shrink-0`}>
               <Building2 className="h-5 w-5 text-white"/>
@@ -1718,7 +1718,7 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
           </div>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 text-sm">
+        <div className="flex-1 overflow-y-auto px-6 pb-4 flex flex-col gap-3 text-sm">
           {/* Horaires + statut */}
           <div className="flex items-center gap-2 rounded-xl border border-border/60 px-4 py-3 bg-muted/30">
             <Clock className="h-4 w-4 text-muted-foreground shrink-0"/>
@@ -1845,7 +1845,7 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
         </div>
 
         {canManage&&(
-          <DialogFooter className="gap-2 flex-wrap">
+          <DialogFooter className="gap-2 flex-wrap shrink-0 px-6 py-4 border-t border-border/60">
             <Button variant="outline" size="sm" className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={onDelete}>
               <Trash2 className="h-3.5 w-3.5"/> Supprimer
             </Button>
