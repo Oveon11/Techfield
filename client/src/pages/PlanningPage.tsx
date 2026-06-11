@@ -81,7 +81,7 @@ function slotBgStyle(slot: {projectColor:string|null;projectServiceType:string|n
   if (slot.projectColor) return {bgClass:"",bgStyle:{backgroundColor:slot.projectColor}};
   return {bgClass:slotColor(slot.projectServiceType),bgStyle:undefined};
 }
-function slotLabel(slot: Slot) { return slot.projectName ?? slot.freeClientName ?? slot.clientName ?? null; }
+function slotLabel(slot: Slot) { return slot.freeClientName ?? slot.clientName ?? slot.projectName ?? null; }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
