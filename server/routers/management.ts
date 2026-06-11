@@ -101,6 +101,37 @@ import {
 } from "../integrations/supabase/db/intervention-features";
 import { SUPABASE_ENV } from "../integrations/supabase/env";
 import { storagePut } from "../storage";
+import { createSupabaseAdminClient } from "../integrations/supabase/db/admin";
+
+async function syncProjectSlots(
+  projectId: number,
+  startDate: string | null | undefined,
+  plannedEndDate: string | null | undefined,
+  technicianIds: number[],
+) {
+  const supabase = createSupabaseAdminClient();
+  await supabase.from("planning_slots").delete().eq("project_id", projectId).eq("status", "scheduled");
+  if (!startDate) return;
+  const start = new Date(startDate + "T00:00:00");
+  const rawEnd = plannedEndDate ? new Date(plannedEndDate + "T00:00:00") : new Date(start);
+  const maxEnd = new Date(start); maxEnd.setDate(maxEnd.getDate() + 59);
+  const end = rawEnd > maxEnd ? maxEnd : rawEnd;
+  const dates: string[] = [];
+  for (const cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1))
+    dates.push(cur.toISOString().slice(0, 10));
+  if (!dates.length) return;
+  const base = { project_id: projectId, start_time: "08:00", end_time: "17:00", status: "scheduled", has_location_change: false, has_time_change: false, has_discount: false };
+  const rows: Record<string, unknown>[] = [];
+  for (const slotDate of dates) {
+    if (technicianIds.length > 0) {
+      for (const tid of technicianIds) rows.push({ ...base, technician_id: tid, slot_date: slotDate });
+    } else {
+      rows.push({ ...base, technician_id: null, slot_date: slotDate });
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await supabase.from("planning_slots").insert(rows as any);
+}
 
 const baseAddressSchema = z.object({
   city: z.string().min(1),
@@ -918,6 +949,7 @@ export const managementRouter = router({
           address: input.address || null,
           phone: input.phone || null,
         });
+        await syncProjectSlots(result.id, input.startDate || null, input.plannedEndDate || null, input.technicianIds);
         return { success: true, id: result.id, reference };
       }
 
@@ -989,6 +1021,7 @@ export const managementRouter = router({
         address: input.clientAddress || null,
         phone: input.clientPhone || null,
       });
+      await syncProjectSlots(result.id, input.startDate || null, input.plannedEndDate || null, input.technicianIds);
       return { success: true, id: result.id, reference, clientId: clientResult.id };
     }),
     update: adminProcedure.input(updateProjectSchema).mutation(async ({ ctx, input }) => {
@@ -1015,6 +1048,7 @@ export const managementRouter = router({
           phone: input.phone || null,
           clientName: input.clientName || null,
         });
+        await syncProjectSlots(input.projectId, input.startDate || null, input.plannedEndDate || null, input.technicianIds);
         return { success: true };
       }
 
