@@ -332,10 +332,12 @@ export default function PlanningPage() {
   const sortedVisibleTechs = React.useMemo(()=>{
     const orderMap = new Map(techOrder.map((id,i)=>[id,i]));
     const realFilters = new Set(Array.from(activeCategoryFilters).filter(c=>c!=="unassigned"));
+    const onlyUnassigned = activeCategoryFilters.size > 0 && realFilters.size === 0;
     return [...technicians]
       .sort((a,b)=>(orderMap.has(a.id)?orderMap.get(a.id)!:9999)-(orderMap.has(b.id)?orderMap.get(b.id)!:9999))
       .filter(t=>{
         if(hiddenTechs.has(t.id)) return false;
+        if(onlyUnassigned) return pinnedTechs.has(t.id);
         if(realFilters.size===0) return true;
         return realFilters.has(t.category as string)||pinnedTechs.has(t.id);
       });
@@ -401,7 +403,7 @@ export default function PlanningPage() {
         </div>
 
         {/* ── Filtre techniciens (en premier sur mobile) ── */}
-        {!isLoading && technicians.length > 0 && !(activeCategoryFilters.size===1&&activeCategoryFilters.has("unassigned")) && (
+        {!isLoading && technicians.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 order-first sm:order-none">
             {/* Mobile tech filter */}
             <div className="sm:hidden relative">
