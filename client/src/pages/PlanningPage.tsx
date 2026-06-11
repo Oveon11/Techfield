@@ -85,7 +85,7 @@ function slotLabel(slot: Slot) { return slot.projectName ?? slot.freeClientName 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Slot = {
-  id:number; technicianId:number; technicianName:string|null;
+  id:number; technicianId:number|null; technicianName:string|null;
   projectId:number|null; projectName:string|null; projectRef:string|null;
   projectAddress:string|null; projectServiceType:string|null; projectColor:string|null;
   freeClientName:string|null; freeClientAddress:string|null; freeClientPhone:string|null; gcalEventUid:string|null;
@@ -95,7 +95,7 @@ type Slot = {
   discountNote:string|null; changeNote:string|null;
   prevDate:string|null; prevStartTime:string|null; prevEndTime:string|null;
 };
-type Technician = {id:number;name:string;firstName:string;lastName:string;email:string|null};
+type Technician = {id:number;name:string;firstName:string;lastName:string;email:string|null;category:string};
 type ViewMode = "semaine"|"jour"|"mois";
 type GCalEvent = {technicianId:number;uid:string;summary:string;date:string;startTime:string;endTime:string;location:string|null};
 
@@ -116,6 +116,7 @@ export default function PlanningPage() {
   const [clientSearch, setClientSearch] = useState("");
   const [techFilterOpen, setTechFilterOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<"all"|"installation"|"sav"|"unassigned">("all");
   const prefsLoaded = useRef(false);
   // Charger les préférences dès que l'userId est connu (une seule fois)
   useEffect(()=>{
@@ -166,6 +167,9 @@ export default function PlanningPage() {
   const slots = view === "mois" ? monthSlots : weekSlots;
   const slotsLoading = view === "mois" ? monthSlotsLoading : weekSlotsLoading;
   const {data:technicians=[],isLoading:techLoading} = trpc.planning.listTechnicians.useQuery();
+  const {data:unassignedUpcoming=[]} = trpc.planning.getUnassignedUpcoming.useQuery(
+    undefined, {enabled: canManage, staleTime: 2*60*1000}
+  );
   const {data:projectsRaw=[]} = trpc.management.projects.list.useQuery();
   const projects = projectsRaw.map(p=>({id:p.id,name:p.title,reference:p.reference,clientName:p.clientName??null}));
 
@@ -291,23 +295,13 @@ export default function PlanningPage() {
     onError: (e) => { setGcalSyncing(false); toast.error("Erreur sync GCal : " + e.message); },
   });
 
-  const gcalSyncedOnce = useRef(false);
   const triggerGCalSync = React.useCallback(() => {
     if (gcalSyncMut.isPending) return;
     setGcalSyncing(true);
-    // Couvre juin 2025 → lundi de la semaine courante inclus (8 juin 2026)
     const startDate = "2025-06-01";
     const endDate = toDateStr(getMondayOf(new Date()));
     gcalSyncMut.mutate({startDate, endDate});
   }, [gcalSyncMut]);
-
-  // Auto-sync au chargement (une fois par session, admin seulement)
-  useEffect(()=>{
-    if (!canManage || gcalSyncedOnce.current) return;
-    gcalSyncedOnce.current = true;
-    triggerGCalSync();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[canManage]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -385,13 +379,19 @@ export default function PlanningPage() {
     inv();
   };
 
-  // Techniciens triés + filtrés selon l'ordre et la visibilité
+  // Techniciens triés + filtrés selon l'ordre, la visibilité et la catégorie
   const sortedVisibleTechs = React.useMemo(()=>{
     const orderMap = new Map(techOrder.map((id,i)=>[id,i]));
     return [...technicians]
       .sort((a,b)=>(orderMap.has(a.id)?orderMap.get(a.id)!:9999)-(orderMap.has(b.id)?orderMap.get(b.id)!:9999))
-      .filter(t=>!hiddenTechs.has(t.id));
-  },[technicians,techOrder,hiddenTechs]);
+      .filter(t=>!hiddenTechs.has(t.id))
+      .filter(t=>{
+        if(categoryFilter==="installation") return t.category==="installation";
+        if(categoryFilter==="sav") return t.category==="sav";
+        if(categoryFilter==="unassigned") return false;
+        return true;
+      });
+  },[technicians,techOrder,hiddenTechs,categoryFilter]);
 
   // Filtre slots par recherche client
   const filteredSlots = React.useMemo(()=>{
@@ -428,8 +428,27 @@ export default function PlanningPage() {
   return (
     <DashboardLayout>
       <div className="flex flex-col gap-4">
+        {/* ── Filtre catégorie ── */}
+        <div className="flex items-center gap-1.5 flex-wrap order-first sm:order-none">
+          {(["all","installation","sav","unassigned"] as const).map(cat=>{
+            const labels={all:"Tout",installation:"Installation",sav:"SAV / Dépannage",unassigned:"À affecter"};
+            const colors={
+              all: categoryFilter==="all"?"bg-slate-800 text-white border-slate-800":"border-slate-200 text-slate-500 hover:border-slate-400",
+              installation: categoryFilter==="installation"?"bg-blue-600 text-white border-blue-600":"border-blue-200 text-blue-600 hover:border-blue-400",
+              sav: categoryFilter==="sav"?"bg-violet-600 text-white border-violet-600":"border-violet-200 text-violet-600 hover:border-violet-400",
+              unassigned: categoryFilter==="unassigned"?"bg-amber-500 text-white border-amber-500":"border-amber-200 text-amber-600 hover:border-amber-400",
+            };
+            return(
+              <button key={cat} onClick={()=>setCategoryFilter(cat)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all ${colors[cat]}`}>
+                {labels[cat]}
+              </button>
+            );
+          })}
+        </div>
+
         {/* ── Filtre techniciens (en premier sur mobile) ── */}
-        {!isLoading && technicians.length > 0 && (
+        {!isLoading && technicians.length > 0 && categoryFilter!=="unassigned" && (
           <div className="flex flex-wrap items-center gap-2 order-first sm:order-none">
             {/* Mobile tech filter */}
             <div className="sm:hidden relative">
@@ -568,11 +587,32 @@ export default function PlanningPage() {
           </div>
         </div>
 
+        {/* ── Bannière alerte créneaux non affectés ── */}
+        {canManage && unassignedUpcoming.length > 0 && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-900">
+                {unassignedUpcoming.length} créneau{unassignedUpcoming.length>1?"x":""} non affecté{unassignedUpcoming.length>1?"s":""} dans les 14 prochains jours
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                {unassignedUpcoming.slice(0,3).map(s=>`${formatDateFr(s.slotDate)} ${s.startTime}–${s.endTime}${s.label?` · ${s.label}`:""}`).join(" · ")}
+                {unassignedUpcoming.length>3?` · +${unassignedUpcoming.length-3} autre${unassignedUpcoming.length-3>1?"s":""}…`:""}
+              </p>
+            </div>
+            <button onClick={()=>setCategoryFilter("unassigned")}
+              className="text-xs font-semibold text-amber-700 hover:text-amber-900 whitespace-nowrap underline underline-offset-2">
+              Voir tout
+            </button>
+          </div>
+        )}
+
         <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">Chargement…</div>
         ) : view==="semaine" ? (
           <WeekView slots={filteredSlots} technicians={sortedVisibleTechs} dayColumns={dayDates} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
+            showUnassignedRow={categoryFilter==="all"||categoryFilter==="unassigned"}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -584,6 +624,7 @@ export default function PlanningPage() {
           />
         ) : view==="jour" ? (
           <DayView slots={filteredSlots} technicians={sortedVisibleTechs} selDay={selDay} canManage={canManage} zoom={zoom} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents}
+            showUnassignedRow={categoryFilter==="all"||categoryFilter==="unassigned"}
             onClickSlot={setDetailSlot}
             onMove={(id,date,start,end,prev,technicianId)=>{
               if(technicianId!==undefined) updateMut.mutate({id,technicianId,slotDate:date,startTime:start,endTime:end});
@@ -593,7 +634,9 @@ export default function PlanningPage() {
             onReorder={setTechOrder}
           />
         ) : (
-          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}/>
+          <MonthGrid slots={filteredSlots} technicians={sortedVisibleTechs} monthRef={monthRef} canManage={canManage} approvedLeaves={allCongeIndicators} gcalEvents={gcalEvents} onClickSlot={setDetailSlot}
+            showUnassignedRow={categoryFilter==="all"||categoryFilter==="unassigned"}
+          />
         )}
         </div>
 
@@ -614,7 +657,7 @@ export default function PlanningPage() {
             technicians={technicians} projects={projects}
             existingSlots={slots}
             defaultDate={duplicateSource.slotDate}
-            defaultTechId={duplicateSource.technicianId}
+            defaultTechId={duplicateSource.technicianId ?? undefined}
             defaultStartTime={duplicateSource.startTime}
             defaultEndTime={duplicateSource.endTime}
             duplicateSource={duplicateSource}
@@ -859,6 +902,7 @@ type GridProps = {
   canManage:boolean; zoom:number;
   approvedLeaves?:ApprovedLeave[];
   gcalEvents?:GCalEvent[];
+  showUnassignedRow?:boolean;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
@@ -866,7 +910,7 @@ type GridProps = {
 };
 
 // Shared timeline grid — percentage-based, fits parent width
-function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],gcalEvents=[],onClickSlot,onMove,onCellClick,onReorder}:GridProps){
+function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeaves=[],gcalEvents=[],showUnassignedRow=false,onClickSlot,onMove,onCellClick,onReorder}:GridProps){
   const LANE_H = Math.round(52*zoom);
   const LABEL_W = 176;
   // zoom=1 → colonnes s'étirent pour remplir l'espace (1fr)
@@ -1222,7 +1266,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                             onMouseDown={canManage?e=>{
                               e.preventDefault();e.stopPropagation();
                               const colEl=dayColRefs.current[`${tech.id}-${d}`];
-                              dragRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX,targetTechId:slot.technicianId,targetDate:d};
+                              dragRef.current={id:slot.id,technicianId:slot.technicianId!,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),origSStr:slot.startTime,origEStr:slot.endTime,dayColRef:colEl,mouseX:e.clientX,targetTechId:slot.technicianId!,targetDate:d};
                               setDraggingId(slot.id);
                             }:undefined}
                           >
@@ -1242,8 +1286,8 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                             </div>
                             {canManage&&(
                               <>
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
-                                <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,technicianId:slot.technicianId,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
+                                <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,technicianId:slot.technicianId!,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"start"};}}/>
+                                <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize" onMouseDown={e=>{e.preventDefault();e.stopPropagation();const colEl=dayColRefs.current[`${tech.id}-${d}`];resizeRef.current={id:slot.id,technicianId:slot.technicianId!,date:d,origStart:timeToMin(slot.startTime),origEnd:timeToMin(slot.endTime),dayColRef:colEl,mouseX:e.clientX,edge:"end"};}}/>
                               </>
                             )}
                           </div>
@@ -1267,6 +1311,72 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
         <div className="h-0.5 bg-primary mx-0"/>
       )}
       {technicians.length===0&&<div className="py-16 text-center text-sm text-muted-foreground">Aucun technicien actif.</div>}
+
+      {/* ── Ligne "À affecter" ── */}
+      {showUnassignedRow&&(()=>{
+        const unassignedSlots=slots.filter(s=>s.technicianId===null);
+        if(unassignedSlots.length===0&&technicians.length>0) return null;
+        const maxU=Math.max(1,...dayColumns.map(d=>unassignedSlots.filter(s=>s.slotDate===d).length));
+        const rowH=maxU*LANE_H+8;
+        return(
+          <div className="border-t-2 border-amber-200">
+            <div style={{display:"grid",gridTemplateColumns:colTemplate}}>
+              {/* Label */}
+              <div style={{height:rowH}} className="flex items-start gap-2 px-3 py-2 border-r border-amber-200/60 bg-amber-50/60">
+                <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0 mt-0.5">
+                  <AlertTriangle className="h-3.5 w-3.5"/>
+                </div>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <p className="text-sm font-semibold text-amber-800 leading-tight">À affecter</p>
+                  <p className="text-[9px] text-amber-600 uppercase tracking-wide">{unassignedSlots.length} créneau{unassignedSlots.length>1?"x":""}</p>
+                </div>
+              </div>
+              {/* Day cells */}
+              {dayColumns.map(d=>{
+                const isToday=d===toDateStr(new Date());
+                const daySlots=unassignedSlots.filter(s=>s.slotDate===d);
+                return(
+                  <div key={d} style={{height:rowH}}
+                    className={`relative border-l-2 border-amber-200 ${isToday?"bg-amber-50/40":""}`}>
+                    {Array.from({length:H_TOTAL-1},(_,i)=>{
+                      const isGrad=(i+1)%3===0;
+                      return <div key={i} style={{left:`${(i+1)/H_TOTAL*100}%`}} className={`absolute top-0 bottom-0 border-l ${isGrad?"border-amber-100/60":"border-amber-100/30"} pointer-events-none`}/>;
+                    })}
+                    {daySlots.map((slot,idx)=>{
+                      const startM=timeToMin(slot.startTime);
+                      const endM=timeToMin(slot.endTime);
+                      const leftPct=(startM-H_START*60)/(H_TOTAL*60)*100;
+                      const widthPct=(endM-startM)/(H_TOTAL*60)*100;
+                      const top=idx*LANE_H+3;
+                      const height=LANE_H-6;
+                      const label=slotLabel(slot)??"Sans chantier";
+                      return(
+                        <Tooltip key={slot.id} delayDuration={400}>
+                          <TooltipTrigger asChild>
+                            <div
+                              style={{left:`${leftPct}%`,width:`max(${widthPct}%, 2px)`,top,height}}
+                              className="absolute rounded-lg bg-amber-500 text-white text-[10px] shadow-sm cursor-pointer select-none overflow-hidden px-1.5 py-1 flex flex-col hover:brightness-110 transition-all z-10"
+                              onClick={e=>{e.stopPropagation();onClickSlot(slot);}}
+                            >
+                              <div className="font-semibold leading-tight truncate">{label}</div>
+                              {zoom>=0.8&&<div className="text-white/70 text-[9px] leading-tight">{slot.startTime}–{slot.endTime}</div>}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="flex flex-col gap-0.5">
+                            <p className="font-semibold text-xs text-amber-700">⚠ À affecter</p>
+                            <p className="font-semibold text-xs">{label}</p>
+                            <p className="text-[11px] opacity-70">{slot.startTime}–{slot.endTime}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
       </div>{/* end overflow-x-auto */}
     </div>
   );
@@ -1274,29 +1384,30 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,gcalEvents,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
+function WeekView({slots,technicians,dayColumns,canManage,zoom,approvedLeaves,gcalEvents,showUnassignedRow,onClickSlot,onMove,onCellClick,onReorder,onDayClick}:GridProps&{onDayClick:(d:string)=>void}){
   void onDayClick;
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={dayColumns} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,gcalEvents,onClickSlot,onMove,onCellClick,onReorder}:{
+function DayView({slots,technicians,selDay,canManage,zoom,approvedLeaves,gcalEvents,showUnassignedRow,onClickSlot,onMove,onCellClick,onReorder}:{
   slots:Slot[];technicians:Technician[];selDay:string;canManage:boolean;zoom:number;
   approvedLeaves?:ApprovedLeave[];
   gcalEvents?:GCalEvent[];
+  showUnassignedRow?:boolean;
   onClickSlot:(s:Slot)=>void;
   onMove:(id:number,date:string,start:string,end:string,prev:{prevDate?:string;prevStartTime?:string;prevEndTime?:string},technicianId?:number)=>void;
   onCellClick?:(technicianId:number,date:string,startTime:string,endTime:string)=>void;
   onReorder?:(orderedIds:number[])=>void;
 }){
-  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
+  return <TimelineGrid slots={slots} technicians={technicians} dayColumns={[selDay]} canManage={canManage} zoom={zoom} approvedLeaves={approvedLeaves} gcalEvents={gcalEvents} showUnassignedRow={showUnassignedRow} onClickSlot={onClickSlot} onMove={onMove} onCellClick={onCellClick} onReorder={onReorder}/>;
 }
 
 // ─── Month Grid ───────────────────────────────────────────────────────────────
 
-function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalEvents=[],onClickSlot}:{
-  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;approvedLeaves?:ApprovedLeave[];gcalEvents?:GCalEvent[];onClickSlot:(s:Slot)=>void;
+function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalEvents=[],onClickSlot,showUnassignedRow=false}:{
+  slots:Slot[];technicians:Technician[];monthRef:Date;canManage:boolean;approvedLeaves?:ApprovedLeave[];gcalEvents?:GCalEvent[];onClickSlot:(s:Slot)=>void;showUnassignedRow?:boolean;
 }){
   void canManage;
   const year=monthRef.getFullYear();
@@ -1420,6 +1531,44 @@ function MonthGrid({slots,technicians,monthRef,canManage,approvedLeaves=[],gcalE
             </div>
           );
         })}
+        {/* Ligne "À affecter" vue mois */}
+        {showUnassignedRow&&(()=>{
+          const unassignedSlots=slots.filter(s=>s.technicianId===null);
+          if(unassignedSlots.length===0) return null;
+          return(
+            <div className="border-t-2 border-amber-200">
+              <div style={{display:"grid",gridTemplateColumns:colTemplate}}
+                className="hover:bg-amber-50/60 transition-colors">
+                <div className="flex items-center gap-2 px-3 py-2 border-r border-amber-200/60 bg-amber-50/50">
+                  <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-bold text-amber-700 shrink-0">
+                    <AlertTriangle className="h-3.5 w-3.5"/>
+                  </div>
+                  <p className="text-sm font-semibold text-amber-800 truncate">À affecter</p>
+                </div>
+                {days.map(d=>{
+                  const daySlots=unassignedSlots.filter(s=>s.slotDate===d);
+                  return(
+                    <div key={d} className="relative border-l border-amber-100 py-1 px-0.5 flex flex-col gap-0.5 min-h-[40px]">
+                      {daySlots.map(s=>(
+                        <Tooltip key={s.id} delayDuration={300}>
+                          <TooltipTrigger asChild>
+                            <button onClick={()=>onClickSlot(s)}
+                              className="w-full h-3 rounded-sm bg-amber-400 hover:brightness-110 transition-all shrink-0 shadow-sm"/>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="flex flex-col gap-0.5">
+                            <p className="font-semibold text-xs text-amber-700">⚠ À affecter</p>
+                            <p className="font-semibold text-xs">{slotLabel(s)??"Sans chantier"}</p>
+                            <p className="text-[11px] opacity-70">{s.startTime}–{s.endTime}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -1461,11 +1610,17 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
           </div>
 
           {/* Technicien */}
-          {slot.technicianName&&(
+          {slot.technicianName ? (
             <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border/60 bg-white">
               <User className="h-3.5 w-3.5 text-muted-foreground"/>
               <span className="font-medium">{slot.technicianName}</span>
               <Badge variant="secondary" className="text-[10px] ml-auto">Technicien</Badge>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600"/>
+              <span className="font-medium text-amber-800">Non affecté</span>
+              <Badge className="text-[10px] ml-auto bg-amber-100 text-amber-700 border-amber-300">À affecter</Badge>
             </div>
           )}
 
@@ -1593,7 +1748,7 @@ function SlotDetailDialog({slot,onClose,onEdit,onDuplicate,onDelete,onOpenProjec
 // ─── Slot Form Dialog ─────────────────────────────────────────────────────────
 
 type SlotFormRow = {
-  technicianId:number;projectId:number|null;freeClientName?:string|null;
+  technicianId:number|null;projectId:number|null;freeClientName?:string|null;
   freeClientAddress?:string|null;freeClientPhone?:string|null;
   slotDate:string;startTime:string;endTime:string;notes?:string|null;
   status:"scheduled"|"in_progress"|"completed"|"cancelled";
@@ -1609,9 +1764,13 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
   onSave:(rows:SlotFormRow[])=>void;saving:boolean;
 }){
   const src = duplicateSource ?? null;
-  const [selectedTechIds,setSelectedTechIds]=useState<Set<number>>(
-    new Set(initialSlot?[initialSlot.technicianId]:defaultTechId?[defaultTechId]:technicians.slice(0,1).map(t=>t.id))
-  );
+  const [isUnassignedMode,setIsUnassignedMode]=useState(initialSlot?.technicianId===null);
+  const [selectedTechIds,setSelectedTechIds]=useState<Set<number>>(()=>{
+    if(initialSlot?.technicianId===null) return new Set<number>();
+    if(initialSlot?.technicianId) return new Set([initialSlot.technicianId]);
+    if(defaultTechId) return new Set([defaultTechId]);
+    return new Set(technicians.slice(0,1).map(t=>t.id));
+  });
   const [projId,setProjId]=useState(initialSlot?.projectId?String(initialSlot.projectId):src?.projectId?String(src.projectId):"none");
   const [freeClientName,setFreeClientName]=useState(initialSlot?.freeClientName??src?.freeClientName??"");
   const [freeClientAddress,setFreeClientAddress]=useState(initialSlot?.freeClientAddress??src?.freeClientAddress??"");
@@ -1627,8 +1786,11 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
   const [discountNote,setDiscountNote]=useState(initialSlot?.discountNote??"");
   const [changeNote,setChangeNote]=useState(initialSlot?.changeNote??"");
 
-  const toggleTech=(id:number)=>setSelectedTechIds(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
-  const canSubmit=selectedTechIds.size>0&&date&&startTime&&endTime&&startTime<endTime;
+  const toggleTech=(id:number)=>{
+    setIsUnassignedMode(false);
+    setSelectedTechIds(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+  };
+  const canSubmit=(selectedTechIds.size>0||isUnassignedMode)&&date&&startTime&&endTime&&startTime<endTime;
 
   // Live overlap warning
   const conflicts = Array.from(selectedTechIds).flatMap(tid=>{
@@ -1642,7 +1804,7 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
   });
 
   const handleSave=()=>{
-    if(conflicts.length>0){
+    if(!isUnassignedMode&&conflicts.length>0){
       toast.warning(`Conflit horaire : ${conflicts[0].tech} a déjà un créneau ${conflicts[0].slot.startTime}–${conflicts[0].slot.endTime}`);
     }
     const isFree=projId==="none";
@@ -1655,7 +1817,11 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
       hasLocationChange:hasLocChange,hasTimeChange,hasDiscount,
       discountNote:discountNote.trim()||null,changeNote:changeNote.trim()||null,
     };
-    onSave(Array.from(selectedTechIds).map(tid=>({...base,technicianId:tid})));
+    if(isUnassignedMode){
+      onSave([{...base,technicianId:null}]);
+    } else {
+      onSave(Array.from(selectedTechIds).map(tid=>({...base,technicianId:tid})));
+    }
   };
 
   return(
@@ -1667,8 +1833,14 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
           <div className="space-y-2">
             <label className="text-sm font-medium">Technicien(s)</label>
             <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 p-2 bg-slate-50/60">
+              {/* Bouton "À affecter" */}
+              <button type="button" onClick={()=>{setIsUnassignedMode(true);setSelectedTechIds(new Set());}}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-all border ${isUnassignedMode?"bg-amber-500 text-white border-amber-500":"bg-white text-amber-700 border-amber-200 hover:border-amber-400"}`}>
+                <AlertTriangle className="h-3.5 w-3.5"/>
+                À affecter
+              </button>
               {technicians.map(t=>{
-                const sel=selectedTechIds.has(t.id);
+                const sel=!isUnassignedMode&&selectedTechIds.has(t.id);
                 return(
                   <button key={t.id} type="button" onClick={()=>toggleTech(t.id)}
                     className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-all border ${sel?"bg-primary text-white border-primary":"bg-white text-foreground border-border hover:border-primary/40"}`}>
@@ -1679,7 +1851,8 @@ function SlotFormDialog({open,onClose,technicians,projects,existingSlots,initial
                 );
               })}
             </div>
-            {selectedTechIds.size>1&&<p className="text-xs text-muted-foreground">→ {selectedTechIds.size} créneaux identiques seront créés</p>}
+            {isUnassignedMode&&<p className="text-xs text-amber-700 font-medium">Créneau créé sans technicien — à affecter ultérieurement</p>}
+            {!isUnassignedMode&&selectedTechIds.size>1&&<p className="text-xs text-muted-foreground">→ {selectedTechIds.size} créneaux identiques seront créés</p>}
           </div>
           {/* Chantier */}
           <div className="space-y-1.5">

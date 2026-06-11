@@ -12,7 +12,7 @@ async function getScope(openId: string) {
 }
 
 const slotSchema = z.object({
-  technicianId: z.number().int().positive(),
+  technicianId: z.number().int().positive().nullable(),
   projectId: z.number().int().positive().nullable().optional(),
   slotDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -35,7 +35,7 @@ const slotSchema = z.object({
 function mapSlot(r: Record<string, unknown>) {
   return {
     id: Number(r.id),
-    technicianId: Number(r.technician_id),
+    technicianId: r.technician_id != null ? Number(r.technician_id) : null,
     technicianName: r.technician_name as string | null,
     projectId: r.project_id ? Number(r.project_id) : null,
     projectName: r.project_name as string | null,
@@ -88,7 +88,7 @@ async function fetchAndEnrichSlots(
   const slots = (raw ?? []) as Record<string, unknown>[];
   if (slots.length === 0) return [];
 
-  const techIds = Array.from(new Set(slots.map(s => s.technician_id as number)));
+  const techIds = Array.from(new Set(slots.filter(s => s.technician_id != null).map(s => s.technician_id as number)));
   const projectIds = Array.from(new Set(slots.filter(s => s.project_id).map(s => s.project_id as number)));
 
   const [techRes, projRes] = await Promise.all([
@@ -286,7 +286,7 @@ export const planningRouter = router({
     const supabase = createSupabaseAdminClient();
     const { data, error } = await supabase
       .from("technicians")
-      .select("id, first_name, last_name, email")
+      .select("id, first_name, last_name, email, category")
       .eq("is_active", true)
       .order("last_name");
     if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
@@ -296,6 +296,7 @@ export const planningRouter = router({
       firstName: t.first_name as string,
       lastName: t.last_name as string,
       email: t.email as string | null,
+      category: (t.category as string) ?? "installation",
     }));
   }),
 
@@ -381,6 +382,29 @@ export const planningRouter = router({
     const { error } = await supabase.from("planning_slots").delete().eq("id", input.id);
     if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
     return { success: true };
+  }),
+
+  /** Slots non affectés dans les 14 prochains jours (pour bannière d'alerte admin) */
+  getUnassignedUpcoming: adminProcedure.query(async () => {
+    const supabase = createSupabaseAdminClient();
+    const today = new Date().toISOString().slice(0, 10);
+    const in14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from("planning_slots")
+      .select("id, slot_date, start_time, end_time, free_client_name, project_id")
+      .is("technician_id", null)
+      .gte("slot_date", today)
+      .lte("slot_date", in14)
+      .order("slot_date");
+    if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+    return (data ?? []).map((s: Record<string, unknown>) => ({
+      id: Number(s.id),
+      slotDate: s.slot_date as string,
+      startTime: (s.start_time as string).slice(0, 5),
+      endTime: (s.end_time as string).slice(0, 5),
+      label: (s.free_client_name as string | null) ?? null,
+      projectId: s.project_id ? Number(s.project_id) : null,
+    }));
   }),
 
   gcalSync: adminProcedure
