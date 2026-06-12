@@ -244,168 +244,151 @@ function useInvalidateAfterSuccess() {
   };
 }
 
+const DASH_SVC_BG: Record<string, string> = {
+  clim: "bg-sky-500", pac: "bg-violet-500", chauffe_eau: "bg-orange-500",
+  pv: "bg-yellow-500", vmc: "bg-teal-500", autre: "bg-slate-400",
+};
+const DASH_SVC_EMOJI: Record<string, string> = {
+  clim: "❄️", pac: "♨️", chauffe_eau: "🚿", pv: "☀️", vmc: "💨", autre: "🔧",
+};
+
 export function DashboardPage() {
   const { role } = useRoleMatrix();
-  const summary = trpc.management.dashboard.summary.useQuery();
+  const summary = trpc.management.dashboard.summary.useQuery(undefined, { enabled: role === "admin" });
+  const isTechnicien = role === "technicien";
 
-  if (role === "technicien") {
-    return <FeedPage />;
-  }
+  // Today’s weekStart
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  const dow = today.getDay();
+  const mon = new Date(today); mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  const weekStart = `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,"0")}-${String(mon.getDate()).padStart(2,"0")}`;
+  const dayLabel = today.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+
+  const { data: weekSlots = [] } = trpc.planning.listWeek.useQuery({ weekStart });
+  const { data: myTechProfile } = trpc.planning.getMyTechnicianId.useQuery(undefined, { enabled: isTechnicien });
+  const myTechId = myTechProfile?.technicianId ?? null;
+
+  const todaySlots = weekSlots.filter(s => {
+    if (s.slotDate !== todayStr) return false;
+    if (isTechnicien && myTechId && s.technicianId !== myTechId) return false;
+    return true;
+  });
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        <PageHeader
-          title="Pilotage d'activité"
-        />
+      <div className="space-y-5 pb-6 max-w-lg mx-auto">
+        {/* En-tête */}
+        <div className="pt-1">
+          <p className="text-xs text-muted-foreground capitalize">{dayLabel}</p>
+          <h1 className="text-xl font-bold text-foreground">Tableau de bord</h1>
+        </div>
 
-        {(summary.data?.blockedProjects?.length ?? 0) > 0 && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-              <p className="text-sm font-semibold text-amber-700">
-                {summary.data!.blockedProjects!.length} chantier{summary.data!.blockedProjects!.length > 1 ? "s" : ""} bloqué{summary.data!.blockedProjects!.length > 1 ? "s" : ""}
-              </p>
-            </div>
-            <div className="space-y-2">
-              {summary.data!.blockedProjects!.map(p => (
-                <Link key={p.id} href={`/chantiers/${p.id}`}>
-                  <div className="flex flex-col gap-1 rounded-xl border border-amber-100 bg-white px-4 py-3 hover:bg-amber-50 transition-colors cursor-pointer sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <ServiceTypePill type={p.serviceType} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{p.title}</p>
-                        <p className="text-xs text-muted-foreground">{p.reference}</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-amber-700 font-medium shrink-0 sm:ml-2">{p.clientName}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
+        {/* Alertes admin */}
+        {role === "admin" && (summary.data?.blockedProjects?.length ?? 0) > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <p className="text-sm font-semibold text-amber-700">
+              {summary.data!.blockedProjects!.length} chantier{summary.data!.blockedProjects!.length > 1 ? "s" : ""} bloqué{summary.data!.blockedProjects!.length > 1 ? "s" : ""}
+            </p>
           </div>
         )}
 
-        {(summary.data?.overdueProjects?.length ?? 0) > 0 && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
-              <p className="text-sm font-semibold text-rose-700">
-                {summary.data!.overdueProjects!.length} chantier{summary.data!.overdueProjects!.length > 1 ? "s" : ""} en retard
-              </p>
+        {/* Planning du jour */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">Planning du jour</p>
+          {todaySlots.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 py-5 text-center">
+              <p className="text-sm text-muted-foreground">Aucun créneau aujourd’hui</p>
             </div>
-            <div className="space-y-2">
-              {summary.data!.overdueProjects!.map(p => (
-                <Link key={p.id} href={`/chantiers/${p.id}`}>
-                  <div className="flex flex-col gap-1 rounded-xl border border-rose-100 bg-white px-4 py-3 hover:bg-rose-50 transition-colors cursor-pointer sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <ServiceTypePill type={p.serviceType} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{p.title}</p>
-                        <p className="text-xs text-muted-foreground">{p.reference}</p>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-1 snap-x -mx-4 px-4">
+              {todaySlots.map(slot => {
+                const label = slot.freeClientName ?? slot.clientName ?? slot.projectName ?? "Sans chantier";
+                const svcBg = DASH_SVC_BG[slot.projectServiceType ?? ""] ?? "bg-slate-400";
+                const emoji = DASH_SVC_EMOJI[slot.projectServiceType ?? ""] ?? slot.technicianName?.charAt(0).toUpperCase() ?? "?";
+                return (
+                  <Link key={slot.id} href={slot.projectId ? `/chantiers/${slot.projectId}` : "/planning"}>
+                    <div className="flex-shrink-0 w-52 snap-start rounded-xl border border-slate-100 bg-white shadow-sm overflow-hidden flex cursor-pointer hover:shadow-md transition-all">
+                      <div className={`${svcBg} w-14 flex-shrink-0 flex items-center justify-center text-xl`}>{emoji}</div>
+                      <div className="p-3 min-w-0">
+                        <p className="font-semibold text-sm text-foreground truncate">{label}</p>
+                        {slot.projectName && slot.clientName && (
+                          <p className="text-xs text-muted-foreground truncate">{slot.projectName}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">{slot.startTime} – {slot.endTime}</p>
                       </div>
                     </div>
-                    <span className="text-xs text-rose-600 font-medium shrink-0 sm:ml-2">
-                      Échéance dépassée le {new Date(p.plannedEndDate).toLocaleDateString("fr-FR")}
-                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Accès rapide */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">Accès rapide</p>
+          <div className="space-y-3">
+
+            {/* Planning */}
+            <Link href="/planning">
+              <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all cursor-pointer">
+                <div className="h-1 bg-sky-500" />
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div>
+                    <div className="h-0.5 w-6 bg-sky-500 rounded mb-2" />
+                    <p className="text-lg font-bold text-foreground">Planning</p>
+                  </div>
+                  <CalendarRange className="h-8 w-8 text-sky-400" />
+                </div>
+              </div>
+            </Link>
+
+            {/* Chantiers + Mémos */}
+            <div className="grid grid-cols-2 gap-3">
+              <Link href="/chantiers">
+                <div className="rounded-xl bg-slate-800 shadow-sm px-4 py-5 flex flex-col gap-3 hover:bg-slate-700 transition-colors cursor-pointer h-full">
+                  <div className="h-0.5 w-6 bg-white/50 rounded" />
+                  <p className="text-base font-bold text-white">Chantiers</p>
+                  <BriefcaseBusiness className="h-8 w-8 text-white/70" />
+                </div>
+              </Link>
+              <Link href="/memos-globaux">
+                <div className="rounded-xl bg-rose-500 shadow-sm px-4 py-5 flex flex-col gap-3 hover:bg-rose-600 transition-colors cursor-pointer h-full">
+                  <div className="h-0.5 w-6 bg-white/50 rounded" />
+                  <p className="text-base font-bold text-white">Mémos</p>
+                  <StickyNote className="h-8 w-8 text-white/70" />
+                </div>
+              </Link>
+            </div>
+
+            {/* Heures */}
+            <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden">
+              <div className="h-1 bg-blue-400" />
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div>
+                  <div className="h-0.5 w-6 bg-blue-400 rounded mb-2" />
+                  <p className="text-lg font-bold text-foreground">Heures</p>
+                </div>
+                <Clock className="h-8 w-8 text-blue-400" />
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-slate-100">
+                <Link href="/heures">
+                  <div className="px-4 py-4 text-center hover:bg-slate-50 transition-colors cursor-pointer">
+                    <p className="text-sm font-semibold text-foreground">Saisir mes heures</p>
                   </div>
                 </Link>
-              ))}
+                <Link href="/heures">
+                  <div className="px-4 py-4 text-center hover:bg-slate-50 transition-colors cursor-pointer">
+                    <p className="text-sm font-semibold text-foreground">Demander des congés</p>
+                  </div>
+                </Link>
+              </div>
             </div>
+
           </div>
-        )}
-
-        <SectionGrid>
-          <MetricCard
-            title="Chantiers en cours"
-            value={summary.data?.cards.projectsInProgress ?? 0}
-            hint="Nombre de chantiers actifs actuellement suivis dans la plateforme."
-            icon={<BriefcaseBusiness className="h-5 w-5" />}
-          />
-          <MetricCard
-            title="Interventions à venir"
-            value={summary.data?.cards.upcomingInterventions ?? 0}
-            hint="Volume d'interventions planifiées dans les prochains créneaux."
-            icon={<CalendarClock className="h-5 w-5" />}
-          />
-          <MetricCard
-            title="Contrats proches d'expiration"
-            value={summary.data?.cards.expiringContracts ?? 0}
-            hint="Contrats nécessitant une action de renouvellement ou de relance."
-            icon={<ShieldCheck className="h-5 w-5" />}
-          />
-        </SectionGrid>
-
-        <SectionGrid>
-          <SurfaceCard className="xl:col-span-7">
-            <CardHeader>
-              <CardTitle>Interventions imminentes</CardTitle>
-              <CardDescription>Les prochaines opérations planifiées à suivre en priorité.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {summary.data?.upcomingInterventions?.length ? (
-                summary.data.upcomingInterventions.map(item => (
-                  <div key={item.id} className="flex flex-col gap-3 rounded-2xl border border-border/60 p-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-medium text-foreground">{item.title}</p>
-                      <p className="text-sm text-muted-foreground">{item.reference}</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <StatusBadge value={item.status} />
-                      <span className="text-sm text-muted-foreground">
-                        {item.scheduledStartAt ? new Date(item.scheduledStartAt).toLocaleString() : "Date non planifiée"}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <EmptyState title="Aucune intervention à venir" description="Le planning ne contient pas encore d'interventions futures visibles pour ce profil." />
-              )}
-            </CardContent>
-          </SurfaceCard>
-
-          <SurfaceCard className="xl:col-span-5">
-            <CardHeader>
-              <CardTitle>Échéances contrats</CardTitle>
-              <CardDescription>Contrats à surveiller sur l'horizon des 30 prochains jours.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {summary.data?.expiringContracts?.length ? (
-                summary.data.expiringContracts.map(item => (
-                  <div key={item.id} className="rounded-2xl border border-border/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{item.title}</p>
-                        <p className="text-sm text-muted-foreground">{item.contractNumber}</p>
-                      </div>
-                      <StatusBadge value={item.status} />
-                    </div>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Expiration prévue le {item.endDate ? new Date(item.endDate).toLocaleDateString() : "non renseigné"}.
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <EmptyState title="Aucune échéance proche" description="Aucun contrat n’arrive à expiration prochainement dans votre périmètre visible." />
-              )}
-            </CardContent>
-          </SurfaceCard>
-        </SectionGrid>
-
-        <SurfaceCard>
-          <CardHeader>
-            <CardTitle>Positionnement de l'utilisateur</CardTitle>
-            <CardDescription>Les droits et la visibilité applicative sont pilotés par le rôle connecté.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge className="border-primary/20 bg-primary/10 text-primary">Rôle actif: {role ?? "inconnu"}</Badge>
-              <p className="text-sm text-muted-foreground">
-                Les écrans d’administration permettent la création et l’organisation des données, tandis que les profils technicien et client bénéficient d’un accès ciblé sur leurs opérations et documents.
-              </p>
-            </div>
-          </CardContent>
-        </SurfaceCard>
+        </div>
       </div>
     </AppShell>
   );
