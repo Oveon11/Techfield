@@ -139,6 +139,7 @@ export default function HoursPage() {
   const [hrMode, setHrMode] = useState(false);
   const [hrTechIds, setHrTechIds] = useState<Set<number>>(new Set());
   const [hrDate, setHrDate] = useState<string>("");
+  const [hrDateEnd, setHrDateEnd] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"heures" | "conges">("heures");
   const [exportMode, setExportMode] = useState<"mois" | "plage">("mois");
   const [exportStart, setExportStart] = useState("");
@@ -244,21 +245,40 @@ export default function HoursPage() {
       ? Array.from(hrTechIds)
       : myTechId ? [myTechId] : [];
     if (techIds.length === 0) return;
-    try {
-      for (const techId of techIds) {
-        await saveMutation.mutateAsync({
-          technicianId: techId,
-          date: selectedDate,
-          entryType: form.entryType,
-          startTime: form.entryType === "travail" ? form.startTime : null,
-          endTime: form.entryType === "travail" ? (form.endTime || null) : null,
-          breakMinutes: form.entryType === "travail" ? form.breakMinutes : 0,
-          projectId: form.projectId,
-          panier: form.panier,
-          note: form.note || null,
-        });
+
+    // Plage de dates (Mode RH uniquement) — skip dimanche
+    const dates: string[] = [];
+    if (role === "admin" && hrMode && hrDateEnd && hrDateEnd >= selectedDate) {
+      const cur = new Date(selectedDate + "T12:00:00");
+      const end = new Date(hrDateEnd + "T12:00:00");
+      while (cur <= end) {
+        if (cur.getDay() !== 0) dates.push(toLocalDateString(cur));
+        cur.setDate(cur.getDate() + 1);
       }
-      toast.success(techIds.length > 1 ? `Saisie effectuée pour ${techIds.length} techniciens.` : "Heures enregistrées.");
+    } else {
+      dates.push(selectedDate);
+    }
+
+    try {
+      for (const date of dates) {
+        for (const techId of techIds) {
+          await saveMutation.mutateAsync({
+            technicianId: techId,
+            date,
+            entryType: form.entryType,
+            startTime: form.entryType === "travail" ? form.startTime : null,
+            endTime: form.entryType === "travail" ? (form.endTime || null) : null,
+            breakMinutes: form.entryType === "travail" ? form.breakMinutes : 0,
+            projectId: form.projectId,
+            panier: form.panier,
+            note: form.note || null,
+          });
+        }
+      }
+      const totalOps = dates.length * techIds.length;
+      toast.success(totalOps > 1
+        ? `${dates.length} jour(s) × ${techIds.length} tech. — ${totalOps} entrées créées.`
+        : "Heures enregistrées.");
       if (myTechId) await utils.management.timeEntries.list.invalidate({ technicianId: myTechId, year, month });
       setAddOpen(false);
     } catch {
@@ -622,15 +642,24 @@ export default function HoursPage() {
           </div>
           {hrMode && (
             <div className="flex flex-wrap items-center gap-2 pl-11">
+              <span className="text-xs font-medium text-muted-foreground">Du</span>
               <input
                 type="date"
                 value={hrDate}
-                onChange={e => setHrDate(e.target.value)}
+                onChange={e => { setHrDate(e.target.value); if (!hrDateEnd || hrDateEnd < e.target.value) setHrDateEnd(e.target.value); }}
+                className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <span className="text-xs font-medium text-muted-foreground">Au</span>
+              <input
+                type="date"
+                value={hrDateEnd}
+                min={hrDate}
+                onChange={e => setHrDateEnd(e.target.value)}
                 className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <Button
                 size="sm"
-                disabled={hrTechIds.size === 0 || !hrDate}
+                disabled={hrTechIds.size === 0 || !hrDate || !hrDateEnd}
                 onClick={() => { setSelectedDate(hrDate); setForm(defaultForm()); setAddOpen(true); }}
               >
                 Saisir · {hrTechIds.size} technicien{hrTechIds.size !== 1 ? "s" : ""}
@@ -842,7 +871,9 @@ export default function HoursPage() {
             </DialogTitle>
             {selectedDate && (
               <p className="text-sm text-muted-foreground">
-                {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                {role === "admin" && hrMode && hrDateEnd && hrDateEnd > selectedDate
+                  ? `Du ${new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} au ${new Date(hrDateEnd + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`
+                  : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
               </p>
             )}
             {role === "admin" && hrMode && hrTechIds.size > 0 && (
