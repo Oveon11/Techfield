@@ -258,6 +258,32 @@ const renewContractSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+const createContractWithClientSchema = z.object({
+  clientName: z.string().min(1),
+  clientPhone: z.string().optional().nullable(),
+  clientAddress: z.string().optional().nullable(),
+  title: z.string().min(3),
+  serviceType: z.enum(["clim", "pac", "chauffe_eau", "pv", "vmc", "autre"]).default("autre"),
+  frequency: z.enum(["mensuelle", "trimestrielle", "semestrielle", "annuelle", "personnalisee"]).default("annuelle"),
+  annualAmount: z.string().default("0.00"),
+  renewalNoticeDays: z.number().int().min(0).max(365).default(30),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+const updateContractSchema = z.object({
+  contractId: z.number().int().positive(),
+  title: z.string().min(3),
+  serviceType: z.enum(["clim", "pac", "chauffe_eau", "pv", "vmc", "autre"]).default("autre"),
+  frequency: z.enum(["mensuelle", "trimestrielle", "semestrielle", "annuelle", "personnalisee"]).default("annuelle"),
+  annualAmount: z.string().default("0.00"),
+  renewalNoticeDays: z.number().int().min(0).max(365).default(30),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
 const createInterventionSchema = z.object({
   clientId: z.number().int().positive(),
   siteId: z.number().int().positive().optional().nullable(),
@@ -1234,6 +1260,55 @@ export const managementRouter = router({
       const createdId = Number(created?.id ?? 0);
       await logActivity(db, ctx.user.id, "contract", createdId, "contract.created", `Contrat créé: ${contractNumber}`);
       return { success: true, id: createdId, contractNumber };
+    }),
+    createWithClient: adminProcedure.input(createContractWithClientSchema).mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const contractNumber = makeReference("CTR");
+      const clientResult = await createSupabaseClientInline({
+        companyName: input.clientName,
+        phone: input.clientPhone ?? null,
+        billingAddress: input.clientAddress ?? null,
+      });
+      const [created] = await db
+        .insert(maintenanceContracts)
+        .values({
+          contractNumber,
+          clientId: clientResult.id,
+          siteId: null,
+          title: input.title,
+          serviceType: input.serviceType,
+          frequency: input.frequency,
+          status: "actif",
+          annualAmount: input.annualAmount,
+          renewalNoticeDays: input.renewalNoticeDays,
+          startDate: input.startDate ?? null,
+          nextServiceDate: null,
+          endDate: input.endDate ?? null,
+          notes: input.notes ?? null,
+          createdByUserId: ctx.user.id,
+        } as any)
+        .$returningId();
+      const createdId = Number(created?.id ?? 0);
+      await logActivity(db, ctx.user.id, "contract", createdId, "contract.created", `Contrat créé: ${contractNumber}`);
+      return { success: true, id: createdId, contractNumber };
+    }),
+    update: adminProcedure.input(updateContractSchema).mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await db
+        .update(maintenanceContracts)
+        .set({
+          title: input.title,
+          serviceType: input.serviceType,
+          frequency: input.frequency,
+          annualAmount: input.annualAmount,
+          renewalNoticeDays: input.renewalNoticeDays,
+          startDate: input.startDate ?? null,
+          endDate: input.endDate ?? null,
+          notes: input.notes ?? null,
+        } as any)
+        .where(eq(maintenanceContracts.id, input.contractId));
+      await logActivity(db, ctx.user.id, "contract", input.contractId, "contract.updated", "Contrat mis à jour");
+      return { success: true };
     }),
     renew: adminProcedure.input(renewContractSchema).mutation(async ({ ctx, input }) => {
       const db = await requireDb();

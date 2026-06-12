@@ -332,8 +332,8 @@ export function DashboardPage() {
           <div className="space-y-3">
 
             {/* Planning */}
-            <Link href="/planning">
-              <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all cursor-pointer">
+            <Link href="/planning" className="block outline-none">
+              <div className="rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all cursor-pointer">
                 <div className="h-1 bg-sky-500" />
                 <div className="flex items-center justify-between px-5 py-4">
                   <div>
@@ -347,24 +347,24 @@ export function DashboardPage() {
 
             {/* Chantiers + Mémos */}
             <div className="grid grid-cols-2 gap-3">
-              <Link href="/chantiers">
-                <div className="rounded-xl bg-slate-800 shadow-sm px-4 py-5 flex flex-col gap-3 hover:bg-slate-700 transition-colors cursor-pointer h-full">
-                  <div className="h-0.5 w-6 bg-white/50 rounded" />
-                  <p className="text-base font-bold text-white">Chantiers</p>
-                  <BriefcaseBusiness className="h-8 w-8 text-white/70" />
+              <Link href="/chantiers" className="block outline-none">
+                <div className="rounded-xl bg-white border-2 border-slate-800 shadow-sm px-4 py-5 flex flex-col gap-3 hover:bg-slate-50 transition-colors cursor-pointer h-full">
+                  <div className="h-0.5 w-6 bg-slate-400 rounded" />
+                  <p className="text-base font-bold text-slate-800">Chantiers</p>
+                  <BriefcaseBusiness className="h-8 w-8 text-slate-500" />
                 </div>
               </Link>
-              <Link href="/memos-globaux">
-                <div className="rounded-xl bg-rose-500 shadow-sm px-4 py-5 flex flex-col gap-3 hover:bg-rose-600 transition-colors cursor-pointer h-full">
-                  <div className="h-0.5 w-6 bg-white/50 rounded" />
-                  <p className="text-base font-bold text-white">Mémos</p>
-                  <StickyNote className="h-8 w-8 text-white/70" />
+              <Link href="/memos-globaux" className="block outline-none">
+                <div className="rounded-xl bg-white border-2 border-rose-500 shadow-sm px-4 py-5 flex flex-col gap-3 hover:bg-rose-50 transition-colors cursor-pointer h-full">
+                  <div className="h-0.5 w-6 bg-rose-300 rounded" />
+                  <p className="text-base font-bold text-rose-600">Mémos</p>
+                  <StickyNote className="h-8 w-8 text-rose-400" />
                 </div>
               </Link>
             </div>
 
             {/* Heures */}
-            <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden">
+            <div className="rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden">
               <div className="h-1 bg-blue-400" />
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                 <div>
@@ -374,12 +374,12 @@ export function DashboardPage() {
                 <Clock className="h-8 w-8 text-blue-400" />
               </div>
               <div className="grid grid-cols-2 divide-x divide-slate-100">
-                <Link href="/heures">
+                <Link href="/heures" className="block outline-none">
                   <div className="px-4 py-4 text-center hover:bg-slate-50 transition-colors cursor-pointer">
                     <p className="text-sm font-semibold text-foreground">Saisir mes heures</p>
                   </div>
                 </Link>
-                <Link href="/heures">
+                <Link href="/heures" className="block outline-none">
                   <div className="px-4 py-4 text-center hover:bg-slate-50 transition-colors cursor-pointer">
                     <p className="text-sm font-semibold text-foreground">Demander des congés</p>
                   </div>
@@ -2277,15 +2277,107 @@ export function ProjectDetailPage() {
   );
 }
 
+type ContractFormFields = {
+  clientName: string; clientPhone: string; clientAddress: string;
+  title: string;
+  serviceType: "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
+  frequency: "mensuelle" | "trimestrielle" | "semestrielle" | "annuelle" | "personnalisee";
+  annualAmount: string; renewalNoticeDays: number;
+  startDate: string; endDate: string; notes: string;
+};
+function ContractFields({ form, onChange }: { form: ContractFormFields; onChange: (u: Partial<ContractFormFields>) => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Nom du client <span className="text-destructive text-xs">*</span></Label>
+        <Input value={form.clientName} onChange={e => onChange({ clientName: e.target.value })} placeholder="Dupont Jean" />
+      </div>
+      <div className="space-y-2">
+        <Label>Adresse</Label>
+        <Input value={form.clientAddress} onChange={e => onChange({ clientAddress: e.target.value })} placeholder="12 rue de la Paix, 75001 Paris…" />
+      </div>
+      <div className="space-y-2">
+        <Label>Téléphone</Label>
+        <Input type="tel" value={form.clientPhone} onChange={e => onChange({ clientPhone: e.target.value })} placeholder="06 00 00 00 00" maxLength={50} />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Intitulé <span className="text-destructive text-xs">*</span></Label>
+          <Input value={form.title} onChange={e => onChange({ title: e.target.value })} placeholder="Entretien annuel climatisation" />
+        </div>
+        <div className="space-y-2">
+          <Label>Type de service</Label>
+          <Select value={form.serviceType} onValueChange={v => onChange({ serviceType: v as ContractFormFields["serviceType"] })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="clim">Climatisation</SelectItem>
+              <SelectItem value="pac">PAC</SelectItem>
+              <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
+              <SelectItem value="pv">Photovoltaïque</SelectItem>
+              <SelectItem value="vmc">VMC</SelectItem>
+              <SelectItem value="autre">Autre</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Notes</Label>
+        <Textarea value={form.notes} onChange={e => onChange({ notes: e.target.value })} placeholder="Détails du contrat…" rows={3} className="resize-none" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Montant annuel</Label>
+          <Input value={form.annualAmount} onChange={e => onChange({ annualAmount: e.target.value })} placeholder="0.00" />
+        </div>
+        <div className="space-y-2">
+          <Label>Délai d'alerte (jours)</Label>
+          <Input type="number" value={form.renewalNoticeDays} onChange={e => onChange({ renewalNoticeDays: Number(e.target.value) })} />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="space-y-2">
+          <Label>Date de début</Label>
+          <Input type="date" value={form.startDate} onChange={e => onChange({ startDate: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <Label>Date de fin</Label>
+          <Input type="date" value={form.endDate} onChange={e => onChange({ endDate: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <Label>Périodicité</Label>
+          <Select value={form.frequency} onValueChange={v => onChange({ frequency: v as ContractFormFields["frequency"] })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mensuelle">Mensuelle</SelectItem>
+              <SelectItem value="trimestrielle">Trimestrielle</SelectItem>
+              <SelectItem value="semestrielle">Semestrielle</SelectItem>
+              <SelectItem value="annuelle">Annuelle</SelectItem>
+              <SelectItem value="personnalisee">Personnalisée</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ContractsPage() {
   const { permissions } = useRoleMatrix();
   const invalidateAll = useInvalidateAfterSuccess();
   const contractsQuery = trpc.management.contracts.list.useQuery();
-  const clientsQuery = trpc.management.clients.list.useQuery();
-  const sitesQuery = trpc.management.sites.list.useQuery();
-  const createContract = trpc.management.contracts.create.useMutation({
+  const createWithClient = trpc.management.contracts.createWithClient.useMutation({
     onSuccess: async () => {
       toast.success("Contrat créé avec succès.");
+      setCreateOpen(false);
+      setForm(INITIAL_CONTRACT_FORM);
+      await invalidateAll();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateContract = trpc.management.contracts.update.useMutation({
+    onSuccess: async () => {
+      toast.success("Contrat modifié.");
+      setEditForm(null);
       await invalidateAll();
     },
     onError: error => toast.error(error.message),
@@ -2298,48 +2390,39 @@ export function ContractsPage() {
     onError: error => toast.error(error.message),
   });
 
-  const [form, setForm] = useState<{
-    clientId: string;
-    siteId: string;
+  type ContractFormState = {
+    clientName: string;
+    clientPhone: string;
+    clientAddress: string;
     title: string;
     serviceType: "clim" | "pac" | "chauffe_eau" | "pv" | "vmc" | "autre";
     frequency: "mensuelle" | "trimestrielle" | "semestrielle" | "annuelle" | "personnalisee";
-    status: "brouillon" | "actif" | "renouvellement_proche" | "expire" | "suspendu";
     annualAmount: string;
     renewalNoticeDays: number;
     startDate: string;
-    nextServiceDate: string;
     endDate: string;
     notes: string;
-  }>({
-    clientId: "",
-    siteId: "",
+  };
+  const INITIAL_CONTRACT_FORM: ContractFormState = {
+    clientName: "",
+    clientPhone: "",
+    clientAddress: "",
     title: "",
     serviceType: "autre",
     frequency: "annuelle",
-    status: "actif",
     annualAmount: "0.00",
     renewalNoticeDays: 30,
     startDate: "",
-    nextServiceDate: "",
     endDate: "",
     notes: "",
-  });
-  const [renewForm, setRenewForm] = useState<{
-    contractId: string;
-    startDate: string;
-    nextServiceDate: string;
-    endDate: string;
-    annualAmount: string;
-    notes: string;
-  }>({
-    contractId: "",
-    startDate: "",
-    nextServiceDate: "",
-    endDate: "",
-    annualAmount: "",
-    notes: "",
-  });
+  };
+
+  type EditContractState = ContractFormState & { id: number };
+
+  const [form, setForm] = useState<ContractFormState>(INITIAL_CONTRACT_FORM);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editForm, setEditForm] = useState<EditContractState | null>(null);
+  const [renewForm, setRenewForm] = useState<{ contractId: string; startDate: string; nextServiceDate: string; endDate: string; annualAmount: string; notes: string }>({ contractId: "", startDate: "", nextServiceDate: "", endDate: "", annualAmount: "", notes: "" });
 
   const contractAlerts = useMemo(() => {
     const now = new Date();
@@ -2373,103 +2456,22 @@ export function ContractsPage() {
           title="Contrats d'entretien"
           action={
             permissions?.manageContracts ? (
-              <Dialog>
+              <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) setForm(INITIAL_CONTRACT_FORM); }}>
                 <DialogTrigger asChild>
                   <Button>Nouveau contrat</Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Nouveau contrat d’entretien</DialogTitle>
-                    <DialogDescription>Structurez le cycle de maintenance et les échéances associées.</DialogDescription>
+                    <DialogDescription>Renseignez les informations du client et les conditions contractuelles.</DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Client <span className="text-destructive text-xs">*</span></Label>
-                      <Select value={form.clientId} onValueChange={value => setForm(prev => ({ ...prev, clientId: value }))}>
-                        <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
-                        <SelectContent>
-                          {clientsQuery.data?.map(client => <SelectItem key={client.id} value={String(client.id)}>{client.companyName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Site</Label>
-                      <Select value={form.siteId || "none"} onValueChange={value => setForm(prev => ({ ...prev, siteId: value === "none" ? "" : value }))}>
-                        <SelectTrigger><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Aucun site</SelectItem>
-                          {sitesQuery.data?.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.siteName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Intitulé <span className="text-destructive text-xs">*</span></Label>
-                        <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} placeholder="Entretien annuel climatisation" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Type de service</Label>
-                        <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value as typeof form.serviceType }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="clim">Climatisation</SelectItem>
-                            <SelectItem value="pac">PAC</SelectItem>
-                            <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
-                            <SelectItem value="pv">Photovoltaïque</SelectItem>
-                            <SelectItem value="vmc">VMC</SelectItem>
-                            <SelectItem value="autre">Autre</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Notes</Label>
-                      <Textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Détails du contrat…" rows={3} className="resize-none" />
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Montant annuel</Label>
-                        <Input value={form.annualAmount} onChange={e => setForm(prev => ({ ...prev, annualAmount: e.target.value }))} placeholder="0.00" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Délai d’alerte (jours)</Label>
-                        <Input type="number" value={form.renewalNoticeDays} onChange={e => setForm(prev => ({ ...prev, renewalNoticeDays: Number(e.target.value) }))} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label>Date de début</Label>
-                        <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Date de fin</Label>
-                        <Input type="date" value={form.endDate} onChange={e => setForm(prev => ({ ...prev, endDate: e.target.value }))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Périodicité</Label>
-                        <Select value={form.frequency} onValueChange={value => setForm(prev => ({ ...prev, frequency: value as typeof form.frequency }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="mensuelle">Mensuelle</SelectItem>
-                            <SelectItem value="trimestrielle">Trimestrielle</SelectItem>
-                            <SelectItem value="semestrielle">Semestrielle</SelectItem>
-                            <SelectItem value="annuelle">Annuelle</SelectItem>
-                            <SelectItem value="personnalisee">Personnalisée</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
+                  <ContractFields form={form} onChange={updates => setForm(prev => ({ ...prev, ...updates }))} />
                   <DialogFooter>
                     <Button
-                      onClick={() => createContract.mutate({
-                        ...form,
-                        clientId: Number(form.clientId),
-                        siteId: form.siteId ? Number(form.siteId) : null,
-                      })}
-                      disabled={createContract.isPending || !form.clientId || !form.title.trim()}
+                      onClick={() => createWithClient.mutate(form)}
+                      disabled={createWithClient.isPending || !form.clientName.trim() || !form.title.trim()}
                     >
-                      Enregistrer
+                      {createWithClient.isPending ? "Enregistrement…" : "Enregistrer"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -2477,6 +2479,28 @@ export function ContractsPage() {
             ) : null
           }
         />
+
+        {/* Edit dialog */}
+        <Dialog open={!!editForm} onOpenChange={open => { if (!open) setEditForm(null); }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Modifier le contrat</DialogTitle>
+            </DialogHeader>
+            {editForm && (
+              <>
+                <ContractFields form={editForm} onChange={updates => setEditForm(prev => prev ? { ...prev, ...updates } : null)} />
+                <DialogFooter>
+                  <Button
+                    onClick={() => editForm && updateContract.mutate({ contractId: editForm.id, title: editForm.title, serviceType: editForm.serviceType, frequency: editForm.frequency, annualAmount: editForm.annualAmount, renewalNoticeDays: editForm.renewalNoticeDays, startDate: editForm.startDate || null, endDate: editForm.endDate || null, notes: editForm.notes || null })}
+                    disabled={updateContract.isPending || !editForm.title.trim()}
+                  >
+                    {updateContract.isPending ? "Enregistrement…" : "Enregistrer les modifications"}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <SurfaceCard>
           <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
@@ -2530,7 +2554,28 @@ export function ContractsPage() {
                     </div>
                   </div>
                   {permissions?.manageContracts && (
-                    <Dialog>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditForm({
+                          id: contract.id,
+                          clientName: contract.clientName || "",
+                          clientPhone: "",
+                          clientAddress: "",
+                          title: contract.title,
+                          serviceType: (contract.serviceType as ContractFormFields["serviceType"]) || "autre",
+                          frequency: (contract.frequency as ContractFormFields["frequency"]) || "annuelle",
+                          annualAmount: String(contract.annualAmount ?? "0.00"),
+                          renewalNoticeDays: Number(contract.renewalNoticeDays ?? 30),
+                          startDate: contract.startDate ? new Date(contract.startDate).toISOString().slice(0, 10) : "",
+                          endDate: contract.endDate ? new Date(contract.endDate).toISOString().slice(0, 10) : "",
+                          notes: contract.notes || "",
+                        })}
+                      >
+                        Modifier
+                      </Button>
+                      <Dialog>
                       <DialogTrigger asChild>
                         <Button
                           variant="outline"
@@ -2591,6 +2636,7 @@ export function ContractsPage() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
+                    </div>
                   )}
                 </div>
               </div>
