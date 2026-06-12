@@ -4156,7 +4156,7 @@ export function MemosGlobalPage() {
 }
 
 export const techfieldMenu = [
-  { icon: LayoutDashboard, label: "Tableau de bord", path: "/", roles: ["admin", "client"] },
+  { icon: LayoutDashboard, label: "Tableau de bord", path: "/", roles: ["admin", "technicien", "client"] },
   { icon: Newspaper, label: "Fil d'actualité", path: "/fil-actualite", roles: ["admin", "technicien"] },
   { icon: BriefcaseBusiness, label: "Chantiers", path: "/chantiers", roles: ["admin", "technicien", "client"] },
   { icon: StickyNote, label: "Mémos", path: "/memos-globaux", roles: ["admin", "technicien"] },

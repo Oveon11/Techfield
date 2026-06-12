@@ -293,7 +293,11 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
                 </div>
               </div>
               <button
-                onClick={logout}
+                onClick={() => {
+                  void logout().finally(() => {
+                    window.location.replace("/");
+                  });
+                }}
                 className="mt-2.5 w-full text-left text-[11px] font-semibold text-rose-400 transition-colors hover:text-rose-300 group-data-[collapsible=icon]:hidden"
               >
                 Déconnexion
