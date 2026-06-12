@@ -71,6 +71,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   Clock,
+  Eye,
   FileDown,
   FileText,
   ImageIcon,
@@ -2422,6 +2423,7 @@ export function ContractsPage() {
   const [form, setForm] = useState<ContractFormState>(INITIAL_CONTRACT_FORM);
   const [createOpen, setCreateOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditContractState | null>(null);
+  const [viewContractId, setViewContractId] = useState<number | null>(null);
   const [renewForm, setRenewForm] = useState<{ contractId: string; startDate: string; nextServiceDate: string; endDate: string; annualAmount: string; notes: string }>({ contractId: "", startDate: "", nextServiceDate: "", endDate: "", annualAmount: "", notes: "" });
 
   const contractAlerts = useMemo(() => {
@@ -2502,6 +2504,112 @@ export function ContractsPage() {
           </DialogContent>
         </Dialog>
 
+        {/* View contract dialog */}
+        {(() => {
+          const vc = contractAlerts.find(c => c.id === viewContractId) ?? null;
+          const FREQ: Record<string, string> = { mensuelle: "Mensuelle", trimestrielle: "Trimestrielle", semestrielle: "Semestrielle", annuelle: "Annuelle", personnalisee: "Personnalisée" };
+          const SVC: Record<string, string> = { clim: "Climatisation", pac: "PAC", chauffe_eau: "Chauffe-eau", pv: "Photovoltaïque", vmc: "VMC", autre: "Autre" };
+          return (
+            <Dialog open={!!vc} onOpenChange={open => { if (!open) setViewContractId(null); }}>
+              <DialogContent className="sm:max-w-md">
+                {vc && (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="text-lg">{vc.title}</DialogTitle>
+                      <DialogDescription className="font-mono text-xs">{vc.contractNumber}</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Client</span>
+                        <span className="font-medium">{vc.clientName || "—"}</span>
+                      </div>
+                      {vc.siteName && (
+                        <div className="flex justify-between py-2 border-b border-border/40">
+                          <span className="text-muted-foreground">Site</span>
+                          <span className="font-medium">{vc.siteName}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Statut</span>
+                        <StatusBadge value={vc.alertLevel} />
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Type de service</span>
+                        <span className="font-medium">{SVC[vc.serviceType] ?? vc.serviceType}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Périodicité</span>
+                        <span className="font-medium">{FREQ[vc.frequency] ?? vc.frequency}</span>
+                      </div>
+                      {vc.annualAmount != null && Number(vc.annualAmount) > 0 && (
+                        <div className="flex justify-between py-2 border-b border-border/40">
+                          <span className="text-muted-foreground">Montant annuel</span>
+                          <span className="font-medium">{Number(vc.annualAmount).toLocaleString("fr-FR")} €</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Date de début</span>
+                        <span className="font-medium">{vc.startDate ? new Date(vc.startDate).toLocaleDateString("fr-FR") : "—"}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Date d'échéance</span>
+                        <span className="font-medium">{vc.endDate ? new Date(vc.endDate).toLocaleDateString("fr-FR") : "—"}</span>
+                      </div>
+                      {vc.nextServiceDate && (
+                        <div className="flex justify-between py-2 border-b border-border/40">
+                          <span className="text-muted-foreground">Prochaine visite</span>
+                          <span className="font-medium">{new Date(vc.nextServiceDate).toLocaleDateString("fr-FR")}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-2 border-b border-border/40">
+                        <span className="text-muted-foreground">Délai d'alerte</span>
+                        <span className="font-medium">{vc.renewalNoticeDays ?? 30} jours</span>
+                      </div>
+                      {vc.daysLeft !== null && (
+                        <div className="flex justify-between py-2 border-b border-border/40">
+                          <span className="text-muted-foreground">Jours restants</span>
+                          <span className={`font-semibold ${vc.daysLeft <= 0 ? "text-rose-600" : vc.daysLeft <= Number(vc.renewalNoticeDays ?? 30) ? "text-amber-600" : "text-emerald-600"}`}>
+                            {vc.daysLeft <= 0 ? "Expiré" : `J-${vc.daysLeft}`}
+                          </span>
+                        </div>
+                      )}
+                      {vc.notes && (
+                        <div className="pt-1">
+                          <p className="text-muted-foreground mb-1">Notes</p>
+                          <p className="rounded-lg bg-muted/50 p-3 text-sm leading-relaxed">{vc.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                    {permissions?.manageContracts && (
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => {
+                          setViewContractId(null);
+                          setEditForm({
+                            id: vc.id,
+                            clientName: vc.clientName || "",
+                            clientPhone: "",
+                            clientAddress: "",
+                            title: vc.title,
+                            serviceType: (vc.serviceType as ContractFormFields["serviceType"]) || "autre",
+                            frequency: (vc.frequency as ContractFormFields["frequency"]) || "annuelle",
+                            annualAmount: String(vc.annualAmount ?? "0.00"),
+                            renewalNoticeDays: Number(vc.renewalNoticeDays ?? 30),
+                            startDate: vc.startDate ? new Date(vc.startDate).toISOString().slice(0, 10) : "",
+                            endDate: vc.endDate ? new Date(vc.endDate).toISOString().slice(0, 10) : "",
+                            notes: vc.notes || "",
+                          });
+                        }}>
+                          Modifier
+                        </Button>
+                      </DialogFooter>
+                    )}
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
+
         <SurfaceCard>
           <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
             <div className="relative flex-1">
@@ -2553,6 +2661,11 @@ export function ContractsPage() {
                       )}
                     </div>
                   </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setViewContractId(contract.id)}>
+                      <Eye className="h-4 w-4" />
+                      Voir
+                    </Button>
                   {permissions?.manageContracts && (
                     <div className="flex gap-2">
                       <Button
@@ -2638,6 +2751,7 @@ export function ContractsPage() {
                     </Dialog>
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
             ))
