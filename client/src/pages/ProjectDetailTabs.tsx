@@ -1211,11 +1211,48 @@ export function ProjectDocumentsPanel({ projectId, canManage, canContribute }: {
     },
     onError: error => toast.error(error.message),
   });
+  const silentDeleteMutation = trpc.management.projectDocuments.delete.useMutation({
+    onError: error => toast.error(error.message),
+  });
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [form, setForm] = useState<DocumentFormState>(INITIAL_DOCUMENT_FORM);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [reimportDocId, setReimportDocId] = useState<number | null>(null);
+  const [reimporting, setReimporting] = useState(false);
+  const reimportInputRef = useRef<HTMLInputElement>(null);
+
+  const handleReimportFile = async (file: File) => {
+    const doc = listQuery.data?.find(d => d.id === reimportDocId);
+    if (!doc) return;
+    setReimporting(true);
+    try {
+      const upload = await createUploadMutation.mutateAsync({
+        projectId,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+      });
+      await uploadFileToSignedUrl(upload.signedUrl, file);
+      await registerMutation.mutateAsync({
+        projectId,
+        title: doc.title,
+        documentType: doc.documentType as DocumentCategory,
+        visibility: doc.visibility as DocumentVisibility,
+        fileName: file.name,
+        fileKey: upload.fileKey,
+        mimeType: file.type || "application/octet-stream",
+      });
+      await silentDeleteMutation.mutateAsync({ id: doc.id });
+      await utils.management.projectDocuments.list.invalidate({ projectId });
+      toast.success("Document réimporté avec succès.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Échec du réimport.");
+    } finally {
+      setReimporting(false);
+      setReimportDocId(null);
+    }
+  };
 
   const resetUploadDialog = () => {
     setForm(INITIAL_DOCUMENT_FORM);
@@ -1364,7 +1401,7 @@ export function ProjectDocumentsPanel({ projectId, canManage, canContribute }: {
                       <Badge className="border bg-indigo-500/10 text-indigo-700 border-indigo-200">{visibilityLabel}</Badge>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {doc.signedUrl ? (
                       <>
                         <Button asChild variant="outline" size="sm">
@@ -1380,7 +1417,27 @@ export function ProjectDocumentsPanel({ projectId, canManage, canContribute }: {
                           </a>
                         </Button>
                       </>
-                    ) : null}
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Badge className="border border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                          Fichier manquant
+                        </Badge>
+                        {canContribute && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={reimporting && reimportDocId === doc.id}
+                            onClick={() => {
+                              setReimportDocId(doc.id);
+                              reimportInputRef.current?.click();
+                            }}
+                          >
+                            <Upload className="h-4 w-4" />
+                            {reimporting && reimportDocId === doc.id ? "Envoi…" : "Réimporter"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     {canManage ? (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -1412,6 +1469,16 @@ export function ProjectDocumentsPanel({ projectId, canManage, canContribute }: {
           })}
         </div>
       )}
+      <input
+        ref={reimportInputRef}
+        type="file"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) void handleReimportFile(file);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

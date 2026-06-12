@@ -2377,16 +2377,16 @@ export function ContractsPage() {
                 <DialogTrigger asChild>
                   <Button>Nouveau contrat</Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
+                <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
-                    <DialogTitle>Nouveau contrat d'entretien</DialogTitle>
+                    <DialogTitle>Nouveau contrat d’entretien</DialogTitle>
                     <DialogDescription>Structurez le cycle de maintenance et les échéances associées.</DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Client</Label>
+                      <Label>Client <span className="text-destructive text-xs">*</span></Label>
                       <Select value={form.clientId} onValueChange={value => setForm(prev => ({ ...prev, clientId: value }))}>
-                        <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
                         <SelectContent>
                           {clientsQuery.data?.map(client => <SelectItem key={client.id} value={String(client.id)}>{client.companyName}</SelectItem>)}
                         </SelectContent>
@@ -2395,67 +2395,69 @@ export function ContractsPage() {
                     <div className="space-y-2">
                       <Label>Site</Label>
                       <Select value={form.siteId || "none"} onValueChange={value => setForm(prev => ({ ...prev, siteId: value === "none" ? "" : value }))}>
-                        <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Aucun site</SelectItem>
                           {sitesQuery.data?.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.siteName}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Intitulé</Label>
-                      <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Intitulé <span className="text-destructive text-xs">*</span></Label>
+                        <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} placeholder="Entretien annuel climatisation" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Type de service</Label>
+                        <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value as typeof form.serviceType }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="clim">Climatisation</SelectItem>
+                            <SelectItem value="pac">PAC</SelectItem>
+                            <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
+                            <SelectItem value="pv">Photovoltaïque</SelectItem>
+                            <SelectItem value="vmc">VMC</SelectItem>
+                            <SelectItem value="autre">Autre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Type de service</Label>
-                      <Select value={form.serviceType} onValueChange={value => setForm(prev => ({ ...prev, serviceType: value as typeof form.serviceType }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="clim">CLIM</SelectItem>
-                          <SelectItem value="pac">PAC</SelectItem>
-                          <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
-                          <SelectItem value="pv">PV</SelectItem>
-                          <SelectItem value="vmc">VMC</SelectItem>
-                          <SelectItem value="autre">Autre</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Périodicité</Label>
-                      <Select value={form.frequency} onValueChange={value => setForm(prev => ({ ...prev, frequency: value as typeof form.frequency }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="mensuelle">Mensuelle</SelectItem>
-                          <SelectItem value="trimestrielle">Trimestrielle</SelectItem>
-                          <SelectItem value="semestrielle">Semestrielle</SelectItem>
-                          <SelectItem value="annuelle">Annuelle</SelectItem>
-                          <SelectItem value="personnalisee">Personnalisée</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Montant annuel</Label>
-                      <Input value={form.annualAmount} onChange={e => setForm(prev => ({ ...prev, annualAmount: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Délai d’alerte (jours)</Label>
-                      <Input type="number" value={form.renewalNoticeDays} onChange={e => setForm(prev => ({ ...prev, renewalNoticeDays: Number(e.target.value) }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date de début</Label>
-                      <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Prochaine visite</Label>
-                      <Input type="date" value={form.nextServiceDate} onChange={e => setForm(prev => ({ ...prev, nextServiceDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date d’expiration</Label>
-                      <Input type="date" value={form.endDate} onChange={e => setForm(prev => ({ ...prev, endDate: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
                       <Label>Notes</Label>
-                      <Textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} />
+                      <Textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Détails du contrat…" rows={3} className="resize-none" />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Montant annuel</Label>
+                        <Input value={form.annualAmount} onChange={e => setForm(prev => ({ ...prev, annualAmount: e.target.value }))} placeholder="0.00" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Délai d’alerte (jours)</Label>
+                        <Input type="number" value={form.renewalNoticeDays} onChange={e => setForm(prev => ({ ...prev, renewalNoticeDays: Number(e.target.value) }))} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Date de début</Label>
+                        <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Date de fin</Label>
+                        <Input type="date" value={form.endDate} onChange={e => setForm(prev => ({ ...prev, endDate: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Périodicité</Label>
+                        <Select value={form.frequency} onValueChange={value => setForm(prev => ({ ...prev, frequency: value as typeof form.frequency }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="mensuelle">Mensuelle</SelectItem>
+                            <SelectItem value="trimestrielle">Trimestrielle</SelectItem>
+                            <SelectItem value="semestrielle">Semestrielle</SelectItem>
+                            <SelectItem value="annuelle">Annuelle</SelectItem>
+                            <SelectItem value="personnalisee">Personnalisée</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                   <DialogFooter>
