@@ -1262,7 +1262,7 @@ function TimelineGrid({slots,technicians,dayColumns,canManage,zoom,approvedLeave
                                 <span className="font-bold text-[12px] text-white drop-shadow-sm tracking-tight">{displayStart} – {displayEnd}</span>
                               </div>
                             )}
-                            <div className="font-semibold leading-tight truncate">{emoji&&<span className="mr-0.5">{emoji}</span>}{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
+                            <div className="font-semibold leading-tight truncate">{emoji&&<span className="mr-0.5 inline-flex items-center justify-center w-4 h-4 bg-white/90 rounded-full shadow-sm text-[10px] leading-none">{emoji}</span>}{slot.freeClientName??slot.clientName??slot.projectName??"Sans chantier"}</div>
                             {slot.projectName&&(slot.freeClientName||slot.clientName)&&<div className={`${isFreeSlot?"text-slate-500":"text-white/85"} text-[9px] leading-tight truncate`}>{slot.projectName}</div>}
                             {(zoom>=0.8||isInteracting)&&<div className={`${isFreeSlot?"text-slate-400":"text-white/70"} text-[9px] leading-tight`}>{displayStart}–{displayEnd}</div>}
                             <div className="flex gap-0.5 mt-auto">
