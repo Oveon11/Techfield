@@ -428,9 +428,8 @@ export default function HoursPage() {
             : "";
           const hVal = e.entryType === "travail" && e.startTime && e.endTime
             ? workedHours(e.startTime, e.endTime, e.breakMinutes) : null;
-          const project = (projectsQuery.data ?? []).find(p => p.id === e.projectId);
           const comment = e.entryType === "travail"
-            ? [project?.title, e.note].filter(Boolean).join(" — ").substring(0, 28)
+            ? (e.note ?? "")
             : (typeLabels[e.entryType] ?? e.entryType) + (e.note ? ` — ${e.note}` : "");
           if (e.panier) totalPaniers++;
           drawRow([
@@ -456,13 +455,14 @@ export default function HoursPage() {
     doc.text(`Résumé au total du mois de ${techName}`, ML, y);
     y += 7;
 
-    const planifie = pdfWeeks.length * pdfWeeklyTarget;
-    const sup = Math.max(0, pdfTotal - planifie);
-    const reste = Math.max(0, planifie - pdfTotal);
-    const fixe = Math.min(pdfTotal, planifie);
+    // Heures supp par semaine (une semaine déficitaire ne compense pas une semaine en heure sup)
+    const sup = pdfWeekTotals.reduce((acc, wt) => acc + Math.max(0, wt - pdfWeeklyTarget), 0);
+    const fixe = pdfTotal - sup;
+    const planifie = weekdayDays.length * (pdfWeeklyTarget / 5);
+    const reste = Math.max(0, planifie - fixe);
 
-    drawSumRow(["Planifié", "Fixe", "Supplémentaire", "Reste", "Paniers repas"], true, y);  y += RH;
-    drawSumRow([fmtH(planifie), fmtH(fixe), fmtH(sup), fmtH(reste), String(totalPaniers)], false, y); y += RH + 12;
+    drawSumRow(["Total", "Fixe", "Supplémentaire", "Reste", "Paniers repas"], true, y);  y += RH;
+    drawSumRow([fmtH(pdfTotal), fmtH(fixe), fmtH(sup), fmtH(reste), String(totalPaniers)], false, y); y += RH + 12;
 
     doc.setLineWidth(0.5);
     doc.line(ML, y, W - ML, y);
