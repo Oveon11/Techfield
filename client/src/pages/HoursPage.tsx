@@ -325,133 +325,147 @@ export default function HoursPage() {
     const pdfWeeklyTarget = weeklyTarget;
     const pdfTotal = pdfWeekTotals.reduce((a, b) => a + b, 0);
 
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const pageW = 297;
-    const ML = 12;
-    const colW = [32, 22, 16, 16, 14, 16, 80, 14, 0];
-    const noteW = pageW - ML * 2 - colW.slice(0, 8).reduce((a, b) => a + b, 0);
-    colW[8] = noteW;
-    const headers = ["Date", "Type", "Début", "Fin", "Pause", "Heures", "Chantier", "Panier", "Note"];
+    // Portrait A4 — layout identique au document de référence
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const W = 210;
+    const ML = 15, CW = W - ML * 2; // 180mm
+    const RH = 6;
 
-    let y = 18;
-    try { doc.addImage("data:image/png;base64," + OVEON_LOGO_B64, "PNG", pageW - ML - 40, 10, 40, 16); } catch { /* logo load failed */ }
+    const fmtTime = (t: string | null) => (t ? t.replace(":", "h") : "—");
+    const fmtBreak = (m: number) => {
+      if (m === 0) return "—";
+      const h = Math.floor(m / 60), mn = m % 60;
+      return `${String(h).padStart(2, "0")}h${String(mn).padStart(2, "0")}`;
+    };
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text(`Feuille de temps — ${periodLabel}`, ML, y);
-    y += 7;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(`Technicien : ${techName}`, ML, y);
-    doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, pageW - ML, y, { align: "right" });
-    y += 6;
+    // Colonnes tableau principal : Date(42) Début(20) Fin(20) Pause(18) Total(18) Repas(16) Commentaire(46)
+    const colW = [42, 20, 20, 18, 18, 16, 46];
+    const heads = ["Date", "Début", "Fin", "Pause", "Total", "Repas", "Commentaire"];
 
-    doc.setFillColor(37, 99, 235);
-    doc.setTextColor(255, 255, 255);
-    doc.rect(ML, y, pageW - ML * 2, 6, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    let x = ML + 1;
-    headers.forEach((h, i) => { doc.text(h, x, y + 4); x += colW[i]; });
-    doc.setTextColor(0, 0, 0);
-    y += 6;
+    const drawRow = (cells: string[], isHeader: boolean, yPos: number) => {
+      if (isHeader) { doc.setFillColor(235, 235, 235); doc.rect(ML, yPos, CW, RH, "F"); }
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.2);
+      doc.rect(ML, yPos, CW, RH, "S");
+      doc.setFont("helvetica", isHeader ? "bold" : "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      let x = ML;
+      cells.forEach((cell, i) => {
+        if (i > 0) { doc.setLineWidth(0.15); doc.line(x, yPos, x, yPos + RH); }
+        doc.text(cell, x + 2, yPos + RH / 2 + 1.5);
+        x += colW[i];
+      });
+    };
 
+    // Colonnes résumé : 5 × 36mm
+    const sCols = [36, 36, 36, 36, 36];
+    const drawSumRow = (cells: string[], isHeader: boolean, yPos: number) => {
+      if (isHeader) { doc.setFillColor(235, 235, 235); doc.rect(ML, yPos, CW, RH, "F"); }
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.2);
+      doc.rect(ML, yPos, CW, RH, "S");
+      doc.setFont("helvetica", isHeader ? "bold" : "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      let x = ML;
+      cells.forEach((cell, i) => {
+        if (i > 0) { doc.setLineWidth(0.15); doc.line(x, yPos, x, yPos + RH); }
+        doc.text(cell, x + 2, yPos + RH / 2 + 1.5);
+        x += sCols[i];
+      });
+    };
+
+    let y = 15;
     let totalPaniers = 0;
 
-    pdfWeeks.forEach((week, wi) => {
-      const weekHours = pdfWeekTotals[wi];
-      const weekOver = weekHours > pdfWeeklyTarget;
+    // ── Logo + nom société ──
+    try { doc.addImage("data:image/png;base64," + OVEON_LOGO_B64, "PNG", ML, y, 22, 9); } catch { /* logo */ }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text("OVEON", ML + 25, y + 6.5);
+    y += 17;
 
-      doc.setFillColor(241, 245, 249);
-      doc.rect(ML, y, pageW - ML * 2, 4.5, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7);
-      if (weekOver) doc.setTextColor(220, 38, 38); else doc.setTextColor(100, 116, 139);
-      doc.text(`Semaine ${wi + 1} — ${fmtH(weekHours)}${weekOver ? " ⚠ HEURES SUP" : ""}`, ML + 1, y + 3);
-      doc.setTextColor(0, 0, 0);
-      y += 4.5;
+    // ── Titre global ──
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(`Déclaration des heures de travail : ${periodLabel}`, ML, y);
+    y += 8;
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.line(ML, y, W - ML, y);
+    y += 11;
 
+    // ── Section technicien ──
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(`Heures de travail de ${techName}`, ML, y);
+    y += 7;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Retrouvez ici la liste des heures de travail de ${techName} pour le mois de ${periodLabel}`, ML, y);
+    doc.setTextColor(0, 0, 0);
+    y += 9;
+
+    // ── Tableau des heures ──
+    drawRow(heads, true, y);
+    y += RH;
+
+    const typeLabels: Record<string, string> = { conge: "Congé", cfa: "CFA", maladie: "Maladie", absence: "Absence" };
+
+    pdfWeeks.forEach(week => {
       week.forEach(day => {
         const ds = toLocalDateString(day);
         const dayEntries = pdfEntriesByDate.get(ds) ?? [];
-        const dayHours = dayEntries.reduce((acc, e) => {
-          if (e.entryType === "travail" && e.startTime && e.endTime) return acc + workedHours(e.startTime, e.endTime, e.breakMinutes);
-          return acc;
-        }, 0);
-        const dayOver = dayHours > 8;
-
-        if (dayEntries.length === 0) {
-          if (y > 185) { doc.addPage(); y = 15; }
-          doc.setFillColor(255, 255, 255);
-          doc.rect(ML, y, pageW - ML * 2, 5, "F");
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(7);
-          doc.setTextColor(200, 200, 200);
-          const m = day.getMonth() + 1;
-          doc.text(`${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(m).padStart(2, "0")}`, ML + 1, y + 3.5);
-          doc.setTextColor(0, 0, 0);
-          y += 5;
-          return;
-        }
+        if (dayEntries.length === 0) return;
 
         dayEntries.forEach((e, ei) => {
-          if (y > 185) { doc.addPage(); y = 15; }
-          const rowH = 5.5;
-          const bg = ei % 2 === 0 ? [255, 255, 255] : [250, 251, 253];
-          doc.setFillColor(bg[0], bg[1], bg[2]);
-          doc.rect(ML, y, pageW - ML * 2, rowH, "F");
-          doc.setFont("helvetica", ei === 0 ? "bold" : "normal");
-          doc.setFontSize(7.5);
-          x = ML + 1;
-
-          if (ei === 0) {
-            const m = day.getMonth() + 1;
-            const dateLabel = `${DAYS_FR_LONG[(day.getDay() + 6) % 7].substring(0, 3)} ${day.getDate().toString().padStart(2, "0")}/${String(m).padStart(2, "0")}`;
-            doc.setTextColor(0, 0, 0);
-            doc.text(dateLabel, x, y + rowH / 2 + 1.5);
-          }
-          x += colW[0];
-
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(0, 0, 0);
-          doc.text(ENTRY_TYPES.find(t => t.value === e.entryType)?.label ?? e.entryType.toUpperCase(), x, y + rowH / 2 + 1.5);
-          x += colW[1];
-
-          doc.setFont("helvetica", "normal");
-          doc.text(e.startTime ?? "—", x, y + rowH / 2 + 1.5); x += colW[2];
-          doc.text(e.endTime ?? "—", x, y + rowH / 2 + 1.5); x += colW[3];
-          doc.text(e.breakMinutes > 0 ? `${e.breakMinutes}m` : "—", x, y + rowH / 2 + 1.5); x += colW[4];
-
+          if (y > 265) { doc.addPage(); y = 20; }
+          const dateLabel = ei === 0
+            ? day.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+            : "";
           const hVal = e.entryType === "travail" && e.startTime && e.endTime
             ? workedHours(e.startTime, e.endTime, e.breakMinutes) : null;
-          const hLabel = hVal !== null ? fmtH(hVal) : "—";
-          doc.setFont("helvetica", "bold");
-          if (dayOver && hVal !== null) doc.setTextColor(220, 38, 38); else doc.setTextColor(0, 0, 0);
-          doc.text(hLabel, x, y + rowH / 2 + 1.5); x += colW[5];
-          doc.setTextColor(0, 0, 0);
-
-          doc.setFont("helvetica", "normal");
           const project = (projectsQuery.data ?? []).find(p => p.id === e.projectId);
-          doc.text(project ? `${project.reference} — ${project.title}`.substring(0, 38) : "—", x, y + rowH / 2 + 1.5); x += colW[6];
+          const comment = e.entryType === "travail"
+            ? [project?.title, e.note].filter(Boolean).join(" — ").substring(0, 28)
+            : (typeLabels[e.entryType] ?? e.entryType) + (e.note ? ` — ${e.note}` : "");
           if (e.panier) totalPaniers++;
-          doc.text(e.panier ? "OUI" : "NON", x, y + rowH / 2 + 1.5); x += colW[7];
-          doc.text((e.note ?? "").substring(0, 40), x, y + rowH / 2 + 1.5);
-          y += rowH;
+          drawRow([
+            dateLabel,
+            fmtTime(e.startTime),
+            fmtTime(e.endTime),
+            fmtBreak(e.breakMinutes),
+            hVal !== null ? fmtH(hVal) : "—",
+            e.panier ? "Oui" : "Non",
+            comment.substring(0, 28),
+          ], false, y);
+          y += RH;
         });
       });
     });
 
-    y += 3;
-    if (y > 185) { doc.addPage(); y = 15; }
-    doc.setFillColor(37, 99, 235);
-    doc.setTextColor(255, 255, 255);
-    doc.rect(ML, y, pageW - ML * 2, 7, "F");
+    // ── Résumé ──
+    y += 7;
+    if (y > 265) { doc.addPage(); y = 20; }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text(`Total heures travaillées : ${fmtH(pdfTotal)}`, ML + 2, y + 4.8);
-    doc.text(`Paniers repas : ${totalPaniers}`, pageW / 2, y + 4.8, { align: "center" });
-    if (pdfWeekTotals.some(w => w > weeklyTarget)) doc.text("⚠ Heures supplémentaires", pageW - ML - 2, y + 4.8, { align: "right" });
+    doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
+    doc.text(`Résumé au total du mois de ${techName}`, ML, y);
+    y += 7;
+
+    const planifie = pdfWeeks.length * pdfWeeklyTarget;
+    const sup = Math.max(0, pdfTotal - planifie);
+    const reste = Math.max(0, planifie - pdfTotal);
+    const fixe = Math.min(pdfTotal, planifie);
+
+    drawSumRow(["Planifié", "Fixe", "Supplémentaire", "Reste", "Paniers repas"], true, y);  y += RH;
+    drawSumRow([fmtH(planifie), fmtH(fixe), fmtH(sup), fmtH(reste), String(totalPaniers)], false, y); y += RH + 12;
+
+    doc.setLineWidth(0.5);
+    doc.line(ML, y, W - ML, y);
 
     doc.save(pdfFileName);
   };

@@ -810,6 +810,7 @@ export function LeaveRequestsPanel({ role }: { role: "admin" | "technicien" }) {
                   contractHours: req.contractHours, startDate: req.startDate, endDate: req.endDate,
                   days: req.days, comment: req.comment, adminComment: approveComment || null,
                   status: "approved", approvedAt: null, createdAt: req.createdAt,
+                  techSignature: req.techSignature,
                 };
                 approveMut.mutate({ id: approveId!, adminComment: approveComment || null, adminSignature: adminSig });
               }}
