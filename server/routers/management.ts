@@ -323,7 +323,7 @@ const uploadDocumentSchema = z.object({
   fileName: z.string().min(2),
   mimeType: z.string().min(3),
   base64Content: z.string().min(10),
-  documentType: z.enum(["rapport", "photo", "contrat", "bon_intervention", "plan", "autre"]).default("autre"),
+  documentType: z.enum(["rapport", "pv_reception", "photo", "contrat", "bon_intervention", "plan", "autre"]).default("autre"),
   visibility: z.enum(["interne", "client", "restreint"]).default("interne"),
 });
 
@@ -333,7 +333,7 @@ const uploadDocumentSchema = z.object({
 
 const journalEntryTypeSchema = z.enum(["etape", "blocage", "livraison", "contact_client", "note", "memo"]);
 const mediaTypeSchema = z.enum(["photo", "video"]);
-const documentCategorySchema = z.enum(["rapport", "photo", "contrat", "bon_intervention", "plan", "autre"]);
+const documentCategorySchema = z.enum(["rapport", "pv_reception", "photo", "contrat", "bon_intervention", "plan", "autre"]);
 const documentVisibilitySchema = z.enum(["interne", "client", "restreint"]);
 
 const projectIdSchema = z.object({ projectId: z.number().int().positive() });
@@ -1192,6 +1192,7 @@ export const managementRouter = router({
           title: maintenanceContracts.title,
           status: maintenanceContracts.status,
           frequency: maintenanceContracts.frequency,
+          serviceType: maintenanceContracts.serviceType,
           annualAmount: maintenanceContracts.annualAmount,
           renewalNoticeDays: maintenanceContracts.renewalNoticeDays,
           startDate: maintenanceContracts.startDate,

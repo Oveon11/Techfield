@@ -2362,7 +2362,7 @@ export function ContractsPage() {
     const now = new Date();
     return (contractsQuery.data ?? []).map(contract => {
       if (!contract.endDate) {
-        return { ...contract, alertLevel: "info", daysLeft: null } as const;
+        return { ...contract, alertLevel: "info" as const, daysLeft: null as null };
       }
       const end = new Date(contract.endDate);
       const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -2371,11 +2371,21 @@ export function ContractsPage() {
     });
   }, [contractsQuery.data]);
 
-  const highlightedContracts = contractAlerts.filter(item => item.alertLevel !== "actif");
+  const [contractSearch, setContractSearch] = useState("");
+  const [contractServiceFilter, setContractServiceFilter] = useState("all");
+
+  const filteredContracts = useMemo(() => {
+    const needle = contractSearch.trim().toLowerCase();
+    return contractAlerts.filter(c => {
+      if (contractServiceFilter !== "all" && c.serviceType !== contractServiceFilter) return false;
+      if (!needle) return true;
+      return [c.title, c.contractNumber, c.clientName, c.siteName].filter(Boolean).join(" ").toLowerCase().includes(needle);
+    });
+  }, [contractAlerts, contractSearch, contractServiceFilter]);
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         <PageHeader
           title="Contrats d'entretien"
           action={
@@ -2483,137 +2493,127 @@ export function ContractsPage() {
           }
         />
 
-        <SectionGrid>
-          <SurfaceCard className="xl:col-span-4">
-            <CardHeader>
-              <CardTitle>Alertes contractuelles</CardTitle>
-              <CardDescription>Échéances proches ou expirées nécessitant une action de renouvellement.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {highlightedContracts.length ? (
-                highlightedContracts.map(contract => (
-                  <div key={contract.id} className="rounded-2xl border border-border/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{contract.title}</p>
-                        <p className="text-sm text-muted-foreground">{contract.contractNumber}</p>
-                      </div>
+        <SurfaceCard>
+          <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={contractSearch} onChange={e => setContractSearch(e.target.value)} placeholder="Rechercher par intitulé, référence, client…" className="pl-9" />
+            </div>
+            <div className="flex gap-2">
+              <Select value={contractServiceFilter} onValueChange={setContractServiceFilter}>
+                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les services</SelectItem>
+                  <SelectItem value="clim">Clim</SelectItem>
+                  <SelectItem value="pac">PAC</SelectItem>
+                  <SelectItem value="chauffe_eau">Chauffe-eau</SelectItem>
+                  <SelectItem value="pv">PV Solaire</SelectItem>
+                  <SelectItem value="vmc">VMC</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </SurfaceCard>
+
+        <div className="flex flex-col gap-2">
+          {contractsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Chargement…</p>
+          ) : filteredContracts.length ? (
+            filteredContracts.map(contract => (
+              <div key={contract.id} className={`rounded-xl border border-l-4 ${serviceBorder(contract.serviceType)} border-slate-100 bg-white px-4 py-3 shadow-sm transition-all hover:shadow-md`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-foreground truncate">{contract.title}</p>
                       <StatusBadge value={contract.alertLevel} />
                     </div>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      {contract.daysLeft !== null ? `${contract.daysLeft} jour(s) avant échéance.` : "Échéance non renseignée."}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {contract.contractNumber} · {contract.clientName}{contract.siteName ? ` · ${contract.siteName}` : ""}
                     </p>
+                    <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-muted-foreground">
+                      {contract.startDate && <span>Début : {new Date(contract.startDate).toLocaleDateString("fr-FR")}</span>}
+                      {contract.endDate && <span>Échéance : {new Date(contract.endDate).toLocaleDateString("fr-FR")}</span>}
+                      {contract.annualAmount != null && Number(contract.annualAmount) > 0 && (
+                        <span>{Number(contract.annualAmount).toLocaleString("fr-FR")} €/an</span>
+                      )}
+                      {contract.daysLeft !== null && contract.daysLeft <= Number(contract.renewalNoticeDays ?? 30) && (
+                        <span className={contract.daysLeft <= 0 ? "font-semibold text-rose-600" : "font-semibold text-amber-600"}>
+                          {contract.daysLeft <= 0 ? "Expiré" : `J-${contract.daysLeft}`}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                ))
-              ) : (
-                <EmptyState title="Aucune alerte en cours" description="Les contrats proches de renouvellement remonteront ici automatiquement." />
-              )}
-            </CardContent>
-          </SurfaceCard>
-
-          <SurfaceCard className="xl:col-span-8">
-            <CardContent className="pt-6">
-              {contractAlerts.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Contrat</TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Échéance</TableHead>
-                      <TableHead>Alerte</TableHead>
-                      <TableHead>Statut</TableHead>
-                      {permissions?.manageContracts ? <TableHead>Action</TableHead> : null}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {contractAlerts.map(contract => (
-                      <TableRow key={contract.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-foreground">{contract.title}</p>
-                            <p className="text-xs text-muted-foreground">{contract.contractNumber} · {contract.siteName || "Sans site"}</p>
+                  {permissions?.manageContracts && (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRenewForm({
+                            contractId: String(contract.id),
+                            startDate: contract.startDate ? new Date(contract.startDate).toISOString().slice(0, 10) : "",
+                            nextServiceDate: contract.nextServiceDate ? new Date(contract.nextServiceDate).toISOString().slice(0, 10) : "",
+                            endDate: contract.endDate ? new Date(contract.endDate).toISOString().slice(0, 10) : "",
+                            annualAmount: String(contract.annualAmount ?? "0.00"),
+                            notes: contract.notes || "",
+                          })}
+                        >
+                          Renouveler
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Renouveler le contrat</DialogTitle>
+                          <DialogDescription>Actualisez la période, la prochaine visite et le montant contractuel.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Nouvelle date de début</Label>
+                            <Input type="date" value={renewForm.startDate} onChange={e => setRenewForm(prev => ({ ...prev, startDate: e.target.value }))} />
                           </div>
-                        </TableCell>
-                        <TableCell>{contract.clientName}</TableCell>
-                        <TableCell>
-                          {contract.endDate ? new Date(contract.endDate).toLocaleDateString() : "—"}
-                        </TableCell>
-                        <TableCell><StatusBadge value={contract.alertLevel} /></TableCell>
-                        <TableCell><StatusBadge value={contract.status} /></TableCell>
-                        {permissions?.manageContracts ? (
-                          <TableCell>
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => setRenewForm({
-                                    contractId: String(contract.id),
-                                    startDate: contract.startDate ? new Date(contract.startDate).toISOString().slice(0, 10) : "",
-                                    nextServiceDate: contract.nextServiceDate ? new Date(contract.nextServiceDate).toISOString().slice(0, 10) : "",
-                                    endDate: contract.endDate ? new Date(contract.endDate).toISOString().slice(0, 10) : "",
-                                    annualAmount: String(contract.annualAmount ?? "0.00"),
-                                    notes: contract.notes || "",
-                                  })}
-                                >
-                                  Renouveler
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="sm:max-w-2xl">
-                                <DialogHeader>
-                                  <DialogTitle>Renouveler le contrat</DialogTitle>
-                                  <DialogDescription>Actualisez la période, la prochaine visite et le montant contractuel.</DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div className="space-y-2">
-                                    <Label>Nouvelle date de début</Label>
-                                    <Input type="date" value={renewForm.startDate} onChange={e => setRenewForm(prev => ({ ...prev, startDate: e.target.value }))} />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>Nouvelle prochaine visite</Label>
-                                    <Input type="date" value={renewForm.nextServiceDate} onChange={e => setRenewForm(prev => ({ ...prev, nextServiceDate: e.target.value }))} />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>Nouvelle échéance</Label>
-                                    <Input type="date" value={renewForm.endDate} onChange={e => setRenewForm(prev => ({ ...prev, endDate: e.target.value }))} />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>Montant annuel</Label>
-                                    <Input value={renewForm.annualAmount} onChange={e => setRenewForm(prev => ({ ...prev, annualAmount: e.target.value }))} />
-                                  </div>
-                                  <div className="space-y-2 md:col-span-2">
-                                    <Label>Notes</Label>
-                                    <Textarea value={renewForm.notes} onChange={e => setRenewForm(prev => ({ ...prev, notes: e.target.value }))} />
-                                  </div>
-                                </div>
-                                <DialogFooter>
-                                  <Button
-                                    onClick={() => renewContract.mutate({
-                                      contractId: Number(renewForm.contractId),
-                                      startDate: renewForm.startDate,
-                                      nextServiceDate: renewForm.nextServiceDate || null,
-                                      endDate: renewForm.endDate,
-                                      annualAmount: renewForm.annualAmount || null,
-                                      notes: renewForm.notes || null,
-                                    })}
-                                    disabled={renewContract.isPending || !renewForm.contractId || !renewForm.startDate || !renewForm.endDate}
-                                  >
-                                    Valider le renouvellement
-                                  </Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
-                          </TableCell>
-                        ) : null}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <EmptyState title="Aucun contrat enregistré" description="Les contrats créés ici alimenteront les alertes, le calendrier de maintenance et l’historique des interventions contractuelles." />
-              )}
-            </CardContent>
-          </SurfaceCard>
-        </SectionGrid>
+                          <div className="space-y-2">
+                            <Label>Nouvelle prochaine visite</Label>
+                            <Input type="date" value={renewForm.nextServiceDate} onChange={e => setRenewForm(prev => ({ ...prev, nextServiceDate: e.target.value }))} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Nouvelle échéance</Label>
+                            <Input type="date" value={renewForm.endDate} onChange={e => setRenewForm(prev => ({ ...prev, endDate: e.target.value }))} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Montant annuel</Label>
+                            <Input value={renewForm.annualAmount} onChange={e => setRenewForm(prev => ({ ...prev, annualAmount: e.target.value }))} />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Notes</Label>
+                            <Textarea value={renewForm.notes} onChange={e => setRenewForm(prev => ({ ...prev, notes: e.target.value }))} />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            onClick={() => renewContract.mutate({
+                              contractId: Number(renewForm.contractId),
+                              startDate: renewForm.startDate,
+                              nextServiceDate: renewForm.nextServiceDate || null,
+                              endDate: renewForm.endDate,
+                              annualAmount: renewForm.annualAmount || null,
+                              notes: renewForm.notes || null,
+                            })}
+                            disabled={renewContract.isPending || !renewForm.contractId || !renewForm.startDate || !renewForm.endDate}
+                          >
+                            Valider le renouvellement
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <EmptyState title="Aucun contrat enregistré" description="Les contrats créés ici alimenteront les alertes et l’historique des interventions contractuelles." />
+          )}
+        </div>
       </div>
     </AppShell>
   );
@@ -4131,10 +4131,7 @@ export const techfieldMenu = [
   { icon: StickyNote, label: "Mémos", path: "/memos-globaux", roles: ["admin", "technicien"] },
   { icon: ClipboardCheck, label: "Contrats", path: "/contrats", roles: ["admin", "client"] },
   { icon: Clock, label: "Heures", path: "/heures", roles: ["admin", "technicien"] },
-  { icon: Users, label: "Équipe", path: "/equipe", roles: ["admin"] },
   { icon: UserCog, label: "Utilisateurs", path: "/utilisateurs", roles: ["admin"] },
   { icon: CalendarRange, label: "Planning", path: "/planning", roles: ["admin", "technicien"] },
-  { icon: CalendarClock, label: "Calendrier", path: "/calendrier", roles: ["admin"] },
-  { icon: FileText, label: "Documents", path: "/documents", roles: ["admin", "client"] },
   { icon: Settings, label: "Réglages", path: "/reglages", roles: ["admin"] },
 ];

@@ -10,16 +10,13 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
-  CalendarPage,
   ClientsPage,
   ContractsPage,
   DashboardPage,
-  DocumentsPage,
   FeedPage,
   MemosGlobalPage,
   ProjectDetailPage,
   ProjectsPage,
-  TeamPage,
 } from "./pages/TechfieldPages";
 
 function Router() {
@@ -33,11 +30,8 @@ function Router() {
       <Route path="/contrats" component={ContractsPage} />
       <Route path="/heures" component={HoursPage} />
       <Route path="/memos-globaux" component={MemosGlobalPage} />
-      <Route path="/equipe" component={TeamPage} />
       <Route path="/utilisateurs" component={UsersPage} />
       <Route path="/planning" component={PlanningPage} />
-      <Route path="/calendrier" component={CalendarPage} />
-      <Route path="/documents" component={DocumentsPage} />
       <Route path="/reglages" component={SettingsPage} />
       <Route path="/auth/callback" component={AuthCallbackPage} />
       <Route path="/404" component={NotFound} />

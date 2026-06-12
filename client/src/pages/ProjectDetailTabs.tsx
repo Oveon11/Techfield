@@ -37,6 +37,7 @@ import {
   Camera,
   ClipboardList,
   Download,
+  Eye,
   FolderOpen,
   ImageIcon,
   Pencil,
@@ -56,7 +57,7 @@ import { toast } from "sonner";
 
 type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note" | "memo";
 type MediaType = "photo" | "video";
-type DocumentCategory = "rapport" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
+type DocumentCategory = "rapport" | "pv_reception" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
 type DocumentVisibility = "interne" | "client" | "restreint";
 
 const JOURNAL_TYPE_OPTIONS: { value: JournalEntryType; label: string; tone: string }[] = [
@@ -70,6 +71,7 @@ const JOURNAL_TYPE_OPTIONS: { value: JournalEntryType; label: string; tone: stri
 
 const DOCUMENT_CATEGORY_OPTIONS: { value: DocumentCategory; label: string }[] = [
   { value: "rapport", label: "Rapport" },
+  { value: "pv_reception", label: "PV de réception" },
   { value: "photo", label: "Photo" },
   { value: "contrat", label: "Contrat" },
   { value: "bon_intervention", label: "Bon d'intervention" },
@@ -1364,12 +1366,20 @@ export function ProjectDocumentsPanel({ projectId, canManage, canContribute }: {
                   </div>
                   <div className="flex gap-2">
                     {doc.signedUrl ? (
-                      <Button asChild variant="outline" size="sm">
-                        <a href={doc.signedUrl} target="_blank" rel="noreferrer noopener" download={doc.fileName}>
-                          <Download className="h-4 w-4" />
-                          Télécharger
-                        </a>
-                      </Button>
+                      <>
+                        <Button asChild variant="outline" size="sm">
+                          <a href={doc.signedUrl} target="_blank" rel="noreferrer noopener">
+                            <Eye className="h-4 w-4" />
+                            Ouvrir
+                          </a>
+                        </Button>
+                        <Button asChild variant="outline" size="sm">
+                          <a href={doc.signedUrl} target="_blank" rel="noreferrer noopener" download={doc.fileName}>
+                            <Download className="h-4 w-4" />
+                            Télécharger
+                          </a>
+                        </Button>
+                      </>
                     ) : null}
                     {canManage ? (
                       <AlertDialog>

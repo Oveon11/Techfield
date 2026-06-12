@@ -17,7 +17,7 @@ type AccessScope = {
 
 export type JournalEntryType = "etape" | "blocage" | "livraison" | "contact_client" | "note" | "memo";
 export type MediaType = "photo" | "video";
-export type DocumentCategory = "rapport" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
+export type DocumentCategory = "rapport" | "pv_reception" | "photo" | "contrat" | "bon_intervention" | "plan" | "autre";
 
 const MEDIA_BUCKET = "techfield-media";
 const DOCUMENT_BUCKET = "techfield-documents";

@@ -183,6 +183,7 @@ function mapContractRow(row: Record<string, unknown>) {
     nextServiceDate: (row.next_service_date as string | null | undefined) ?? null,
     endDate: (row.end_date as string | null | undefined) ?? null,
     notes: (row.notes as string | null | undefined) ?? null,
+    serviceType: String(row.service_type ?? "autre"),
     clientName: (client?.company_name as string | undefined) ?? "",
     siteName: (site?.site_name as string | undefined) ?? null,
   };
@@ -817,7 +818,7 @@ export async function getSupabaseContractsList(scope: AccessScope) {
 
   let query = supabase
     .from("maintenance_contracts")
-    .select("id, contract_number, title, status, frequency, annual_amount, renewal_notice_days, start_date, next_service_date, end_date, notes, created_at, clients(company_name), sites(site_name)")
+    .select("id, contract_number, title, status, frequency, service_type, annual_amount, renewal_notice_days, start_date, next_service_date, end_date, notes, created_at, clients(company_name), sites(site_name)")
     .order("end_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
