@@ -1434,6 +1434,7 @@ export function ProjectActivityFeedPanel({
   const [composeText, setComposeText] = useState("");
   const [composeFile, setComposeFile] = useState<File | null>(null);
   const [composing, setComposing] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   // --- Document upload dialog state ---
   const [docOpen, setDocOpen] = useState(false);
@@ -1584,7 +1585,7 @@ export function ProjectActivityFeedPanel({
         />
       ) : (
         <div className="space-y-3">
-          {feedItems.map(item => {
+          {feedItems.slice(0, visibleCount).map(item => {
             if (item._type === "journal") {
               const entry = item.data;
               const tone = JOURNAL_TYPE_OPTIONS.find(o => o.value === entry.entryType)?.tone ?? "bg-slate-500/10 text-slate-700 border-slate-200";
@@ -1746,6 +1747,14 @@ export function ProjectActivityFeedPanel({
 
             return null;
           })}
+          {visibleCount < feedItems.length && (
+            <button
+              onClick={() => setVisibleCount(c => c + 10)}
+              className="w-full rounded-xl border border-dashed border-slate-200 py-2.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+            >
+              Afficher + ({feedItems.length - visibleCount} de plus)
+            </button>
+          )}
         </div>
       )}
 
