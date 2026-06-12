@@ -969,6 +969,7 @@ export function ProjectsPage() {
     return list.filter(project => {
       if (archiveTab === "archives") {
         if (project.status !== "archive") return false;
+        if (serviceFilter !== "all" && project.serviceType !== serviceFilter) return false;
       } else {
         if (project.status === "archive") return false;
         if (statusFilter !== "all" && project.status !== statusFilter) return false;
