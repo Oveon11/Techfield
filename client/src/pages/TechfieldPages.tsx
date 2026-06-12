@@ -3771,6 +3771,7 @@ const FEED_URGENCY_DOT: Record<string, string> = {
 };
 
 export function FeedPage() {
+  const [visibleCount, setVisibleCount] = useState(10);
   const journalQuery = trpc.management.projectJournal.listAll.useQuery();
   const mediaQuery = trpc.management.projectMedia.listAll.useQuery();
   const memosQuery = trpc.management.projectMemos.listAll.useQuery();
@@ -3837,7 +3838,7 @@ export function FeedPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-5">
-            {feed.map(item => {
+            {feed.slice(0, visibleCount).map(item => {
               const authorName = item.kind === "media" ? item.authorName : item.createdByName;
               const serviceType = item.projectServiceType;
               const itemDate = getItemDate(item);
@@ -3947,6 +3948,14 @@ export function FeedPage() {
                 </LinkedInCard>
               );
             })}
+            {visibleCount < feed.length && (
+              <button
+                onClick={() => setVisibleCount(c => c + 10)}
+                className="w-full rounded-xl border border-dashed border-slate-200 py-2.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
+                Afficher + ({feed.length - visibleCount} de plus)
+              </button>
+            )}
           </div>
         )}
       </div>
